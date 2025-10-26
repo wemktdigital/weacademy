@@ -1,6 +1,9 @@
 import '@testing-library/jest-dom'
 import { vi } from 'vitest'
 
+// Mock global do fetch
+global.fetch = vi.fn()
+
 // Mock do Next.js
 vi.mock('next/navigation', () => ({
   useRouter: () => ({

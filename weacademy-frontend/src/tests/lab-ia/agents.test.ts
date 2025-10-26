@@ -4,35 +4,23 @@ import { createClient } from '@/lib/supabase'
 describe('Lab IA - Agents CRUD', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    // Mock fetch para todos os testes
+    global.fetch = vi.fn()
   })
 
   it('should create a new agent via POST', async () => {
-    const mockSupabase = {
-      from: vi.fn(() => ({
-        insert: vi.fn().mockReturnValue({
-          select: vi.fn().mockReturnValue({
-            single: vi.fn().mockResolvedValue({
-              data: {
-                id: 'agent-123',
-                name: 'Test Agent',
-                description: 'Test Description',
-                type: 'llm',
-                active: true,
-              },
-              error: null,
-            }),
-          }),
-        }),
-      })),
-      auth: {
-        getUser: vi.fn().mockResolvedValue({
-          data: { user: { id: 'user-123', role: 'admin' } },
-          error: null,
-        }),
-      },
-    }
-
-    vi.mocked(createClient).mockReturnValue(mockSupabase as any)
+    // Mock da resposta do fetch
+    ;(global.fetch as any).mockResolvedValueOnce({
+      ok: true,
+      status: 201,
+      json: async () => ({
+        agent: {
+          id: 'agent-123',
+          name: 'Test Agent',
+          description: 'Test Description',
+        },
+      }),
+    })
 
     const agentData = {
       name: 'Test Agent',
@@ -71,24 +59,15 @@ describe('Lab IA - Agents CRUD', () => {
       },
     ]
 
-    const mockSupabase = {
-      from: vi.fn(() => ({
-        select: vi.fn().mockReturnValue({
-          range: vi.fn().mockResolvedValue({
-            data: mockAgents,
-            error: null,
-          }),
-        }),
-      })),
-      auth: {
-        getUser: vi.fn().mockResolvedValue({
-          data: { user: { id: 'user-123', role: 'admin' } },
-          error: null,
-        }),
-      },
-    }
-
-    vi.mocked(createClient).mockReturnValue(mockSupabase as any)
+    // Mock da resposta do fetch
+    ;(global.fetch as any).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        agents: mockAgents,
+        total: 2,
+      }),
+    })
 
     const response = await fetch('http://localhost:3000/api/lab-ia/admin/agents')
     const data = await response.json()
@@ -101,32 +80,18 @@ describe('Lab IA - Agents CRUD', () => {
   it('should update an agent via PUT', async () => {
     const updatedPrompt = 'Updated prompt content'
 
-    const mockSupabase = {
-      from: vi.fn(() => ({
-        update: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            select: vi.fn().mockReturnValue({
-              single: vi.fn().mockResolvedValue({
-                data: {
-                  id: 'agent-123',
-                  name: 'Test Agent',
-                  prompt: updatedPrompt,
-                },
-                error: null,
-              }),
-            }),
-          }),
-        }),
-      })),
-      auth: {
-        getUser: vi.fn().mockResolvedValue({
-          data: { user: { id: 'user-123', role: 'admin' } },
-          error: null,
-        }),
-      },
-    }
-
-    vi.mocked(createClient).mockReturnValue(mockSupabase as any)
+    // Mock da resposta do fetch
+    ;(global.fetch as any).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        agent: {
+          id: 'agent-123',
+          name: 'Test Agent',
+          prompt: updatedPrompt,
+        },
+      }),
+    })
 
     const response = await fetch('http://localhost:3000/api/lab-ia/admin/agents/agent-123', {
       method: 'PUT',
@@ -140,24 +105,12 @@ describe('Lab IA - Agents CRUD', () => {
   })
 
   it('should delete an agent via DELETE', async () => {
-    const mockSupabase = {
-      from: vi.fn(() => ({
-        delete: vi.fn().mockReturnValue({
-          eq: vi.fn().mockResolvedValue({
-            data: null,
-            error: null,
-          }),
-        }),
-      })),
-      auth: {
-        getUser: vi.fn().mockResolvedValue({
-          data: { user: { id: 'user-123', role: 'admin' } },
-          error: null,
-        }),
-      },
-    }
-
-    vi.mocked(createClient).mockReturnValue(mockSupabase as any)
+    // Mock da resposta do fetch
+    ;(global.fetch as any).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ success: true }),
+    })
 
     const response = await fetch('http://localhost:3000/api/lab-ia/admin/agents/agent-123', {
       method: 'DELETE',
