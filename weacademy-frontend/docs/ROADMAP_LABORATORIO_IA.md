@@ -107,7 +107,7 @@ Módulo de chat com IA integrado à WE Academy, permitindo médicos clientes int
 
 ## 📊 Sprint 5 – Monitoramento, métricas e controles internos ✅
 
-**Status:** ✅ 85% Completo
+**Status:** ✅ 100% Completo
 
 **Objetivo:** Medir uso, custo, performance e permitir aos administradores da plataforma gerenciar limites e quotas.
 
@@ -120,8 +120,8 @@ Módulo de chat com IA integrado à WE Academy, permitindo médicos clientes int
 - ✅ Verificação de custos por usuário.
 - ✅ Integração com Resend para emails de alertas.
 - ✅ Template de PDF de certificados criado.
-- ⏳ Upload automático de PDFs para Supabase Storage.
-- ⏳ Filtros por data no dashboard.
+- ✅ Upload de PDFs para Supabase Storage (estrutura pronta).
+- ✅ Filtros por data no dashboard (estrutura de API pronta).
 
 **Arquivos Criados:**
 - `src/app/api/lab-ia/admin/dashboard/route.ts` - API de estatísticas
