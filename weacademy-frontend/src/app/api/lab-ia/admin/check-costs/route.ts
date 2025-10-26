@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase'
+import { Resend } from 'resend'
+
+const resend = new Resend(process.env.RESEND_API_KEY)
 
 export async function POST(request: Request) {
   try {
@@ -86,7 +89,35 @@ export async function POST(request: Request) {
             alertSent: false,
           })
 
-          // TODO: Enviar email via Resend
+          // Enviar email via Resend
+          try {
+            await resend.emails.send({
+              from: 'WE Academy <noreply@wemarketingdigital.com.br>',
+              to: alertEmail,
+              subject: `⚠️ Alerta: Usuário excedeu limite de custo - ${userItem.email}`,
+              html: `
+                <h2>Alerta de Custo - Laboratório de IA</h2>
+                <p>O usuário <strong>${userItem.email}</strong> excedeu o limite de custo configurado.</p>
+                <ul>
+                  <li><strong>Limite configurado:</strong> $${maxCost.toFixed(4)}</li>
+                  <li><strong>Custo atual:</strong> $${totalCost.toFixed(4)}</li>
+                  <li><strong>Excesso:</strong> $${(totalCost - maxCost).toFixed(4)}</li>
+                </ul>
+                <p>Ação recomendada: Revisar o uso do usuário ou ajustar os limites.</p>
+              `,
+            })
+            
+            // Marcar alerta como enviado
+            await supabase
+              .from('lab_cost_alerts')
+              .update({ alert_sent: true })
+              .eq('user_id', userItem.id)
+              .order('created_at', { ascending: false })
+              .limit(1)
+          } catch (emailError) {
+            console.error('Error sending email:', emailError)
+          }
+          
           console.log(`ALERT: User ${userItem.email} exceeded cost limit: $${totalCost.toFixed(4)}`)
         }
       }

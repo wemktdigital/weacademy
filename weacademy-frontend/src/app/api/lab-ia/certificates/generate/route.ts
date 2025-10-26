@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase'
 import React from 'react'
-import { Document, Page, Text, View, StyleSheet, PDFDownloadLink } from '@react-pdf/renderer'
-import { renderToStream } from '@react-pdf/renderer'
+import { CertificatePDF } from '@/lib/certificate-pdf'
+import { renderToBuffer, renderToString } from '@react-pdf/renderer'
 
 // Critérios para emissão de certificado
 const MIN_AGENT_EXECUTIONS = 10
@@ -74,11 +74,11 @@ export async function POST(request: Request) {
     const userName = profile?.full_name || profile?.email || 'Usuário'
     const certificateDate = new Date().toLocaleDateString('pt-BR')
 
-    // Criar URL do certificado (por enquanto apenas salvar metadata)
+    // Criar registros do certificado (PDF será gerado sob demanda quando necessário)
     const certificateData = {
       user_id: user.id,
       title: 'Certificado de Conclusão - Laboratório de IA',
-      url: `/lab-ia/certificates/${user.id}`, // Página de visualização
+      url: `/lab-ia/certificates/${user.id}`,
     }
 
     const { data: certificate, error: certError } = await supabase
@@ -90,6 +90,10 @@ export async function POST(request: Request) {
     if (certError) {
       throw certError
     }
+
+    // TODO: Gerar PDF e fazer upload para Supabase Storage
+    // Por enquanto, retornamos apenas o registro do certificado
+    // A geração de PDF pode ser feita em uma rota separada quando necessário
 
     return NextResponse.json({
       success: true,

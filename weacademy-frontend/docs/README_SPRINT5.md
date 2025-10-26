@@ -120,16 +120,22 @@ LAB_ALERT_EMAIL=contato@wemarketingdigital.com.br
 
 ## 📈 Próximos Passos
 
-- [ ] Implementar envio de email via Resend
+- [x] Implementar envio de email via Resend ✅
 - [ ] Adicionar filtros por data no dashboard
-- [ ] Implementar geração de PDF de certificados
+- [x] Criar template de PDF de certificados ✅
+- [ ] Implementar geração completa de PDF com upload
 - [ ] Adicionar mais gráficos e métricas
 - [ ] Implementar notificações push
 
 ---
 
-**Status:** ✅ 70% Completo  
+**Status:** ✅ 85% Completo  
+**Implementado:**
+- ✅ Integração com Resend para emails de alertas
+- ✅ Template de PDF de certificados criado
+- ✅ Sistema de verificação de custos com notificações
+
 **Pendências:**
-- Integração com Resend para emails
-- Geração de PDF de certificados
-- Upload para Supabase Storage
+- Geração completa de PDF com upload para Supabase Storage
+- Filtros por data no dashboard
+- Mais métricas e gráficos
