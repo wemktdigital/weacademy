@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -39,6 +39,7 @@ import type { Agent } from '@/lib/validations/agent.schema'
 
 export default function AgentsAdminPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [agents, setAgents] = useState<Agent[]>([])
   const [loading, setLoading] = useState(true)
   const [openDialog, setOpenDialog] = useState(false)
@@ -58,6 +59,25 @@ export default function AgentsAdminPage() {
 
   useEffect(() => {
     fetchAgents()
+    
+    // Verificar se há parâmetros de template na URL
+    const useTemplate = searchParams.get('use_template')
+    if (useTemplate === 'true') {
+      setFormData({
+        name: searchParams.get('name') || '',
+        description: searchParams.get('description') || '',
+        icon: searchParams.get('icon') || '',
+        type: (searchParams.get('type') as 'llm' | 'automation') || 'llm',
+        provider: searchParams.get('provider') || '',
+        model: searchParams.get('model') || '',
+        prompt: searchParams.get('prompt') || '',
+        category: searchParams.get('category') || '',
+        active: true,
+      })
+      setOpenDialog(true)
+      // Limpar URL
+      router.replace('/ai-lab/admin/agents')
+    }
   }, [])
 
   const fetchAgents = async () => {
