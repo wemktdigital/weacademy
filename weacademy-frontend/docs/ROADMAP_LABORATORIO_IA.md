@@ -136,7 +136,9 @@ Módulo de chat com IA integrado à WE Academy, permitindo médicos clientes int
 
 ---
 
-## 🔐 Sprint 6 – Interface Visual de Criação e Edição de Agentes
+## 🔐 Sprint 6 – Interface Visual de Criação e Edição de Agentes ✅
+
+**Status:** ✅ 100% Completo
 
 **Objetivo:** Transformar os agentes em entidades dinâmicas que podem ser criadas, editadas e excluídas pela equipe WE Academy, sem alterar código.
 
@@ -161,11 +163,23 @@ create table if not exists public.lab_agents (
   provider text,
   model text,
   prompt text,
+  category text,
   active boolean default true,
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );
 ```
+
+**Arquivos Criados:**
+- `supabase/migrations/20251026150000_lab_agents_crud.sql` - Tabela lab_agents
+- `src/app/api/lab-ia/admin/agents/route.ts` - GET e POST
+- `src/app/api/lab-ia/admin/agents/[id]/route.ts` - PUT e DELETE
+- `src/app/ai-lab/admin/agents/page.tsx` - Página CRUD visual
+- `src/lib/validations/agent.schema.ts` - Schema Zod
+- `docs/README_SPRINT6.md` - Documentação
+
+**Atualizados:**
+- `src/modules/laboratorio-ia/components/AgentSelector.tsx` - Busca agentes do banco
 
 ---
 

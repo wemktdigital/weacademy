@@ -1,7 +1,7 @@
 'use client'
 
-import { useState } from 'react'
-import { agents, Agent } from '@/modules/laboratorio-ia/agents'
+import { useState, useEffect } from 'react'
+import { Agent } from '@/lib/validations/agent.schema'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -21,6 +21,15 @@ interface AgentSelectorProps {
 export function AgentSelector({ selectedAgentId, onSelect }: AgentSelectorProps) {
   const { toast } = useToast()
   const [open, setOpen] = useState(false)
+  const [agents, setAgents] = useState<Agent[]>([])
+
+  useEffect(() => {
+    // Buscar agentes ativos do banco de dados
+    fetch('/api/lab-ia/admin/agents')
+      .then(res => res.json())
+      .then(data => setAgents(data.agents || []))
+      .catch(err => console.error('Error fetching agents:', err))
+  }, [])
 
   const selectedAgent = selectedAgentId 
     ? agents.find(a => a.id === selectedAgentId) 
@@ -98,29 +107,31 @@ export function AgentSelector({ selectedAgentId, onSelect }: AgentSelectorProps)
             </div>
           </DropdownMenuItem>
           
-          {agents.map((agent) => (
-            <DropdownMenuItem
-              key={agent.id}
-              className="p-2 cursor-pointer"
-              onClick={() => handleSelect(agent)}
-            >
-              <div className="flex items-center gap-3 w-full">
-                <div className="text-2xl">{agent.icon}</div>
-                <div className="flex-1">
-                  <div className="font-medium">{agent.name}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {agent.description}
+          {agents
+            .filter(agent => agent.active)
+            .map((agent) => (
+              <DropdownMenuItem
+                key={agent.id}
+                className="p-2 cursor-pointer"
+                onClick={() => handleSelect(agent)}
+              >
+                <div className="flex items-center gap-3 w-full">
+                  <div className="text-2xl">{agent.icon || '🤖'}</div>
+                  <div className="flex-1">
+                    <div className="font-medium">{agent.name}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {agent.description}
+                    </div>
+                    <div className="text-xs text-primary mt-1">
+                      {agent.type === 'llm' ? 'Local' : 'Automação Externa'}
+                    </div>
                   </div>
-                  <div className="text-xs text-primary mt-1">
-                    {agent.type === 'local' ? 'Local' : 'Automação Externa'}
-                  </div>
+                  {selectedAgentId === agent.id && (
+                    <div className="h-2 w-2 rounded-full bg-primary"></div>
+                  )}
                 </div>
-                {selectedAgentId === agent.id && (
-                  <div className="h-2 w-2 rounded-full bg-primary"></div>
-                )}
-              </div>
-            </DropdownMenuItem>
-          ))}
+              </DropdownMenuItem>
+            ))}
         </div>
       </DropdownMenuContent>
     </DropdownMenu>
