@@ -89,8 +89,8 @@ describe('Lab IA - Memory System', () => {
     expect(mockSupabase.from).toHaveBeenCalledWith('lab_agent_memory')
   })
 
-  it('should handle PHI detection', () => {
-    const { containsPHI } = require('@/modules/laboratorio-ia/services/summary')
+  it('should handle PHI detection', async () => {
+    const { containsPHI } = await import('@/modules/laboratorio-ia/services/summary')
 
     expect(containsPHI('CPF: 123.456.789-00')).toBe(true)
     expect(containsPHI('Telefone: 9999-8888')).toBe(true)
@@ -99,8 +99,8 @@ describe('Lab IA - Memory System', () => {
     expect(containsPHI('Mensagem normal')).toBe(false)
   })
 
-  it('should sanitize PHI', () => {
-    const { sanitizePHI } = require('@/modules/laboratorio-ia/services/summary')
+  it('should sanitize PHI', async () => {
+    const { sanitizePHI } = await import('@/modules/laboratorio-ia/services/summary')
 
     expect(sanitizePHI('CPF: 123.456.789-00')).toBe('CPF: [CPF]')
     expect(sanitizePHI('Telefone: 9999-8888')).toBe('Telefone: [TELEFONE]')

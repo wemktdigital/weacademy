@@ -12,4 +12,13 @@ vi.mock('next/navigation', () => ({
   usePathname: () => '/',
 }))
 
-// Mock do Supabase será feito nos testes individuais
+// Mock do Supabase
+vi.mock('@/lib/supabase', () => ({
+  createClient: vi.fn(),
+  supabase: {
+    from: vi.fn(),
+    auth: {
+      getUser: vi.fn(),
+    },
+  },
+}))
