@@ -14,8 +14,7 @@ import {
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Plus, Trash2, ArrowLeft, ArrowRight, Save } from 'lucide-react'
+import { Plus, Trash2, Save } from 'lucide-react'
 import { toast } from '@/hooks/use-toast'
 
 interface Module {
@@ -48,7 +47,6 @@ interface CourseFormProps {
 }
 
 export function CourseForm({ courseData, categories, onSubmit, onCancel }: CourseFormProps) {
-  const [step, setStep] = useState(1)
   const [loading, setLoading] = useState(false)
   
   const [formData, setFormData] = useState({
@@ -149,15 +147,8 @@ export function CourseForm({ courseData, categories, onSubmit, onCancel }: Cours
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      <Tabs value={step.toString()} onValueChange={(v) => setStep(parseInt(v))}>
-        <TabsList>
-          <TabsTrigger value="1">Informações Básicas</TabsTrigger>
-          <TabsTrigger value="2" disabled={step < 2}>Módulos</TabsTrigger>
-          <TabsTrigger value="3" disabled={step < 3}>Configurações</TabsTrigger>
-        </TabsList>
-
-        {/* Step 1: Basic Info */}
-        <TabsContent value="1" className="space-y-4">
+      {/* Informações Básicas */}
+      <div className="space-y-4">
           <Card>
             <CardHeader>
               <CardTitle>Informações Básicas</CardTitle>
@@ -254,20 +245,13 @@ export function CourseForm({ courseData, categories, onSubmit, onCancel }: Cours
                     </SelectContent>
                   </Select>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
+                        </div>
+        </CardContent>
+      </Card>
+      </div>
 
-          <div className="flex justify-end">
-            <Button type="button" onClick={() => setStep(2)}>
-              Próximo
-              <ArrowRight className="ml-2 h-4 w-4" />
-            </Button>
-          </div>
-        </TabsContent>
-
-        {/* Step 2: Modules */}
-        <TabsContent value="2" className="space-y-4">
+      {/* Módulos e Lições */}
+      <div className="space-y-4">
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
@@ -392,21 +376,10 @@ export function CourseForm({ courseData, categories, onSubmit, onCancel }: Cours
               ))}
             </CardContent>
           </Card>
+      </div>
 
-          <div className="flex justify-between">
-            <Button type="button" variant="outline" onClick={() => setStep(1)}>
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Anterior
-            </Button>
-            <Button type="button" onClick={() => setStep(3)}>
-              Próximo
-              <ArrowRight className="ml-2 h-4 w-4" />
-            </Button>
-          </div>
-        </TabsContent>
-
-        {/* Step 3: Settings */}
-        <TabsContent value="3" className="space-y-4">
+      {/* Configurações */}
+      <div className="space-y-4">
           <Card>
             <CardHeader>
               <CardTitle>Configurações</CardTitle>
@@ -463,19 +436,15 @@ export function CourseForm({ courseData, categories, onSubmit, onCancel }: Cours
               </div>
             </CardContent>
           </Card>
+      </div>
 
-          <div className="flex justify-between">
-            <Button type="button" variant="outline" onClick={() => setStep(2)}>
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Anterior
-            </Button>
-            <Button type="submit" disabled={loading}>
-              <Save className="mr-2 h-4 w-4" />
-              {loading ? 'Salvando...' : 'Salvar Curso'}
-            </Button>
-          </div>
-        </TabsContent>
-      </Tabs>
+      {/* Botão de salvar */}
+      <div className="flex justify-end">
+        <Button type="submit" disabled={loading}>
+          <Save className="mr-2 h-4 w-4" />
+          {loading ? 'Salvando...' : 'Salvar Curso'}
+        </Button>
+      </div>
     </form>
   )
 }

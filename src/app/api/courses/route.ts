@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { createClient } from '@supabase/supabase-js'
 import { createCourseSchema, listCoursesSchema } from '@/lib/validations'
+import { cookies } from 'next/headers'
 
 // GET /api/courses - Listar cursos
 export async function GET(request: NextRequest) {
@@ -16,6 +17,20 @@ export async function GET(request: NextRequest) {
       search: searchParams.get('search') || undefined,
       page: searchParams.get('page') || '1',
       limit: searchParams.get('limit') || '20',
+    })
+
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    const cookieStore = await cookies()
+    
+    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+      auth: {
+        storage: {
+          getItem: async (key: string) => cookieStore.get(key)?.value || null,
+          setItem: async () => {},
+          removeItem: async () => {},
+        },
+      },
     })
 
     let query = supabase
@@ -74,18 +89,37 @@ export async function GET(request: NextRequest) {
 // POST /api/courses - Criar curso
 export async function POST(request: NextRequest) {
   try {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    const cookieStore = await cookies()
+    
+    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+      auth: {
+        storage: {
+          getItem: async (key: string) => cookieStore.get(key)?.value || null,
+          setItem: async () => {},
+          removeItem: async () => {},
+        },
+      },
+    })
+    
     // Verificar autenticação
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    
+    console.log('POST /api/courses - Auth check:', { user: user?.id, error: authError })
+    
     if (!user) {
       return NextResponse.json({ error: 'Não autenticado' }, { status: 401 })
     }
 
     // Verificar se é admin ou instrutor
-    const { data: profile } = await supabase
+    const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('role')
       .eq('id', user.id)
       .single()
+
+    console.log('POST /api/courses - Profile check:', { profile, error: profileError })
 
     if (!['admin', 'instructor'].includes(profile?.role)) {
       return NextResponse.json({ error: 'Sem permissão' }, { status: 403 })

@@ -31,10 +31,8 @@ import {
   Settings,
   Activity,
   AlertCircle,
-  BookOpen,
   BarChart3,
   FileText,
-  Plus
 } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { getAllUsers, updateUserRole, getAdminLogs, UserRole } from '@/lib/auth'
@@ -59,7 +57,7 @@ interface AdminLog {
 }
 
 export default function AdminDashboard() {
-  const { user, isAdmin } = useAuth()
+  const { user, loading: authLoading, isAdmin } = useAuth()
   const [users, setUsers] = useState<User[]>([])
   const [logs, setLogs] = useState<AdminLog[]>([])
   const [loading, setLoading] = useState(true)
@@ -128,6 +126,15 @@ export default function AdminDashboard() {
       case 'guest': return 'Convidado'
       default: return role
     }
+  }
+
+  // Mostrar loading enquanto verifica permissões
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <p>Carregando...</p>
+      </div>
+    )
   }
 
   if (!isAdmin) {
@@ -215,23 +222,7 @@ export default function AdminDashboard() {
         </div>
 
         {/* Quick Access */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          <Link href="/admin/courses">
-            <Card className="cursor-pointer hover:shadow-lg transition-shadow">
-              <CardContent className="p-6">
-                <div className="flex items-center space-x-4">
-                  <div className="p-3 rounded-lg bg-primary/10">
-                    <BookOpen className="h-6 w-6 text-primary" />
-                  </div>
-                  <div>
-                    <h3 className="font-semibold">Cursos</h3>
-                    <p className="text-sm text-muted-foreground">Gerenciar cursos</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </Link>
-
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-4 mb-8">
           <Link href="/admin/analytics">
             <Card className="cursor-pointer hover:shadow-lg transition-shadow">
               <CardContent className="p-6">
@@ -258,22 +249,6 @@ export default function AdminDashboard() {
                   <div>
                     <h3 className="font-semibold">Audit Logs</h3>
                     <p className="text-sm text-muted-foreground">Ver logs</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </Link>
-
-          <Link href="/admin">
-            <Card className="cursor-pointer hover:shadow-lg transition-shadow border-primary">
-              <CardContent className="p-6">
-                <div className="flex items-center space-x-4">
-                  <div className="p-3 rounded-lg bg-primary">
-                    <Plus className="h-6 w-6 text-white" />
-                  </div>
-                  <div>
-                    <h3 className="font-semibold">Criar Curso</h3>
-                    <p className="text-sm text-muted-foreground">Adicionar novo</p>
                   </div>
                 </div>
               </CardContent>

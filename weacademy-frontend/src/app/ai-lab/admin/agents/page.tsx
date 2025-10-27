@@ -35,13 +35,17 @@ import {
 import { Switch } from '@/components/ui/switch'
 import { Badge } from '@/components/ui/badge'
 import { toast } from 'sonner'
+import { useAuth } from '@/contexts/AuthContext'
+import { supabase } from '@/lib/supabase'
 import type { Agent } from '@/lib/validations/agent.schema'
 
 export default function AgentsAdminPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const { user } = useAuth()
   const [agents, setAgents] = useState<Agent[]>([])
   const [loading, setLoading] = useState(true)
+  const [checkingRole, setCheckingRole] = useState(true)
   const [openDialog, setOpenDialog] = useState(false)
   const [deleteAgentId, setDeleteAgentId] = useState<string | null>(null)
   const [editingAgent, setEditingAgent] = useState<Agent | null>(null)
@@ -58,27 +62,62 @@ export default function AgentsAdminPage() {
   })
 
   useEffect(() => {
-    fetchAgents()
-    
-    // Verificar se há parâmetros de template na URL
-    const useTemplate = searchParams.get('use_template')
-    if (useTemplate === 'true') {
-      setFormData({
-        name: searchParams.get('name') || '',
-        description: searchParams.get('description') || '',
-        icon: searchParams.get('icon') || '',
-        type: (searchParams.get('type') as 'llm' | 'automation') || 'llm',
-        provider: searchParams.get('provider') || '',
-        model: searchParams.get('model') || '',
-        prompt: searchParams.get('prompt') || '',
-        category: searchParams.get('category') || '',
-        active: true,
-      })
-      setOpenDialog(true)
-      // Limpar URL
-      router.replace('/ai-lab/admin/agents')
+    checkUserRole()
+  }, [user])
+
+  useEffect(() => {
+    if (!checkingRole && user) {
+      fetchAgents()
+      
+      // Verificar se há parâmetros de template na URL
+      const useTemplate = searchParams.get('use_template')
+      if (useTemplate === 'true') {
+        setFormData({
+          name: searchParams.get('name') || '',
+          description: searchParams.get('description') || '',
+          icon: searchParams.get('icon') || '',
+          type: (searchParams.get('type') as 'llm' | 'automation') || 'llm',
+          provider: searchParams.get('provider') || '',
+          model: searchParams.get('model') || '',
+          prompt: searchParams.get('prompt') || '',
+          category: searchParams.get('category') || '',
+          active: true,
+        })
+        setOpenDialog(true)
+        // Limpar URL
+        router.replace('/ai-lab/admin/agents')
+      }
     }
-  }, [])
+  }, [checkingRole, user])
+
+  const checkUserRole = async () => {
+    if (!user) {
+      router.push('/auth/login')
+      return
+    }
+
+    try {
+      const { data: profile, error } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single()
+
+      if (error) throw error
+
+      if (!profile || !['admin', 'gestor_we'].includes(profile.role)) {
+        toast.error('Acesso negado. Apenas administradores podem acessar esta página.')
+        router.push('/ai-lab')
+        return
+      }
+
+      setCheckingRole(false)
+    } catch (error) {
+      console.error('Error checking user role:', error)
+      toast.error('Erro ao verificar permissões')
+      router.push('/ai-lab')
+    }
+  }
 
   const fetchAgents = async () => {
     try {
@@ -174,12 +213,14 @@ export default function AgentsAdminPage() {
     setOpenDialog(true)
   }
 
-  if (loading) {
+  if (checkingRole || loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
-          <p className="mt-4 text-muted-foreground">Carregando agentes...</p>
+          <p className="mt-4 text-muted-foreground">
+            {checkingRole ? 'Verificando permissões...' : 'Carregando agentes...'}
+          </p>
         </div>
       </div>
     )

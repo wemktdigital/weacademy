@@ -188,6 +188,28 @@ export default function Header() {
                           <span>Audit Logs</span>
                         </Link>
                       </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuLabel className="text-xs font-semibold text-muted-foreground">
+                        Laboratório de IA
+                      </DropdownMenuLabel>
+                      <DropdownMenuItem asChild>
+                        <Link href="/ai-lab/admin/agents" className="flex items-center">
+                          <Sparkles className="mr-2 h-4 w-4" />
+                          <span>Gerenciar Agentes</span>
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem asChild>
+                        <Link href="/ai-lab/admin/agents/templates" className="flex items-center">
+                          <FileText className="mr-2 h-4 w-4" />
+                          <span>Templates de Agentes</span>
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem asChild>
+                        <Link href="/ai-lab/admin/pipelines" className="flex items-center">
+                          <Sparkles className="mr-2 h-4 w-4" />
+                          <span>Pipelines</span>
+                        </Link>
+                      </DropdownMenuItem>
                     </>
                   )}
                   <DropdownMenuSeparator />

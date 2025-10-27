@@ -10,9 +10,10 @@ import { AgentSelector } from '@/modules/laboratorio-ia/components/AgentSelector
 import { useChatStore } from '@/modules/laboratorio-ia/hooks/useChatStore'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Sparkles, Loader2 } from 'lucide-react'
+import { Sparkles, Loader2, Settings } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useToast } from '@/hooks/use-toast'
+import Link from 'next/link'
 
 interface Message {
   id: string
@@ -28,7 +29,7 @@ interface Conversation {
 }
 
 export default function AILabPage() {
-  const { user } = useAuth()
+  const { user, isAdmin } = useAuth()
   const { toast } = useToast()
   const {
     provider,
@@ -43,14 +44,31 @@ export default function AILabPage() {
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
   const [loading, setLoading] = useState(false)
+  const [userRole, setUserRole] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   // Carregar conversas ao montar
   useEffect(() => {
     if (user) {
       loadConversations()
+      loadUserRole()
     }
   }, [user])
+
+  const loadUserRole = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user?.id)
+        .single()
+
+      if (error) throw error
+      setUserRole(data?.role || null)
+    } catch (error) {
+      console.error('Erro ao carregar role:', error)
+    }
+  }
 
   // Scroll automático para última mensagem
   useEffect(() => {
@@ -289,6 +307,14 @@ export default function AILabPage() {
                   setModel(newModel)
                 }}
               />
+              {isAdmin && (
+                <Link href="/ai-lab/admin/agents">
+                  <Button variant="outline" size="sm">
+                    <Settings className="h-4 w-4 mr-2" />
+                    Admin
+                  </Button>
+                </Link>
+              )}
             </div>
           </div>
         </div>
@@ -350,7 +376,17 @@ export default function AILabPage() {
         </div>
 
         {/* Input */}
-        <ChatInput onSend={handleNewMessage} loading={loading} />
+        {userRole === 'guest' ? (
+          <div className="border-t p-4 bg-muted/50">
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <div className="flex-1 px-4 py-3 rounded-lg border bg-background/50 opacity-60 cursor-not-allowed">
+                Usuários Guest não podem usar o Laboratório de IA. Faça upgrade para conta USER ou ADMIN.
+              </div>
+            </div>
+          </div>
+        ) : (
+          <ChatInput onSend={handleNewMessage} loading={loading} disabled={userRole === 'guest'} />
+        )}
       </div>
     </div>
   )

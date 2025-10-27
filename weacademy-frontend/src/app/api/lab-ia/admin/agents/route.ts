@@ -1,11 +1,29 @@
-import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase'
+import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
 import { agentSchema } from '@/lib/validations/agent.schema'
 import { z } from 'zod'
+import { cookies } from 'next/headers'
 
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
   try {
-    const supabase = await createClient()
+    // Criar cliente Supabase com cookies da requisição
+    const cookieStore = await cookies()
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    
+    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+      auth: {
+        storage: {
+          getItem: async (key: string) => cookieStore.get(key)?.value || null,
+          setItem: async (key: string, value: string) => {
+            // Não implementado - cookies são gerenciados pelo servidor
+          },
+          removeItem: async (key: string) => {
+            // Não implementado - cookies são gerenciados pelo servidor
+          },
+        },
+      },
+    })
     
     // Verificar autenticação
     const {
@@ -69,9 +87,26 @@ export async function GET(request: Request) {
   }
 }
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
-    const supabase = await createClient()
+    // Criar cliente Supabase com cookies da requisição
+    const cookieStore = await cookies()
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    
+    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+      auth: {
+        storage: {
+          getItem: async (key: string) => cookieStore.get(key)?.value || null,
+          setItem: async (key: string, value: string) => {
+            // Não implementado - cookies são gerenciados pelo servidor
+          },
+          removeItem: async (key: string) => {
+            // Não implementado - cookies são gerenciados pelo servidor
+          },
+        },
+      },
+    })
     
     // Verificar autenticação
     const {

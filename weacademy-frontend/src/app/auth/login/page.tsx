@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { BookOpen, Mail, Lock, Eye, EyeOff } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
+import { supabase } from '@/lib/supabase'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -32,7 +33,28 @@ export default function LoginPage() {
       if (error) {
         setError(error.message)
       } else if (data) {
-        router.push('/')
+        // Aguardar um pouco para o contexto de autenticação atualizar
+        await new Promise(resolve => setTimeout(resolve, 1000))
+        
+        // Buscar role do usuário para redirecionar corretamente
+        try {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('role')
+            .eq('id', data.user.id)
+            .single()
+
+          // Redirecionar baseado na role usando router.push em vez de window.location
+          if (profile?.role === 'admin') {
+            router.push('/admin')
+          } else {
+            router.push('/')
+          }
+        } catch (err) {
+          // Se não conseguir buscar o perfil, redireciona para home
+          console.error('Erro ao buscar perfil:', err)
+          router.push('/')
+        }
       }
     } catch (err) {
       setError('Erro inesperado. Tente novamente.')

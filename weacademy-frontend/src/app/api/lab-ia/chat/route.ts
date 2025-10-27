@@ -5,6 +5,31 @@ import { getAgentById } from '@/modules/laboratorio-ia/agents'
 
 export async function POST(request: NextRequest) {
   try {
+    // Verificar autenticação
+    const { data: { user } } = await supabase.auth.getUser()
+    
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Não autenticado' },
+        { status: 401 }
+      )
+    }
+
+    // Buscar role do usuário
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single()
+
+    // Verificar se é guest (que não deveria ter acesso)
+    if (profile?.role === 'guest') {
+      return NextResponse.json(
+        { error: 'Acesso negado. Guest não pode usar o Laboratório de IA' },
+        { status: 403 }
+      )
+    }
+
     const { 
       messages, 
       provider = 'OpenAI', 
