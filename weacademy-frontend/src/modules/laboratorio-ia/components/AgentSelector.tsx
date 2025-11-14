@@ -12,6 +12,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { useToast } from '@/hooks/use-toast'
+import { supabase } from '@/lib/supabase'
 
 interface AgentSelectorProps {
   selectedAgentId?: string
@@ -22,14 +23,46 @@ export function AgentSelector({ selectedAgentId, onSelect }: AgentSelectorProps)
   const { toast } = useToast()
   const [open, setOpen] = useState(false)
   const [agents, setAgents] = useState<Agent[]>([])
+  const [loading, setLoading] = useState(false)
+
+  const fetchAgents = async () => {
+    setLoading(true)
+    try {
+      // Usar endpoint público que não requer autenticação admin
+      const response = await fetch('/api/lab-ia/agents', {
+        credentials: 'include',
+        cache: 'no-store', // Evitar cache
+      })
+
+      if (!response.ok) {
+        console.warn('[AgentSelector] Erro ao buscar agentes:', response.status, response.statusText)
+        setAgents([])
+        return
+      }
+
+      const data = await response.json()
+      console.log('[AgentSelector] Agentes recebidos:', data.agents?.length || 0, data.agents)
+      setAgents(data.agents || [])
+    } catch (err) {
+      console.error('[AgentSelector] Error fetching agents:', err)
+      setAgents([])
+    } finally {
+      setLoading(false)
+    }
+  }
 
   useEffect(() => {
-    // Buscar agentes ativos do banco de dados
-    fetch('/api/lab-ia/admin/agents')
-      .then(res => res.json())
-      .then(data => setAgents(data.agents || []))
-      .catch(err => console.error('Error fetching agents:', err))
+    // Buscar agentes ao montar
+    fetchAgents()
   }, [])
+
+  // Recarregar agentes quando o dropdown abrir (para pegar atualizações)
+  useEffect(() => {
+    if (open) {
+      fetchAgents()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
 
   const selectedAgent = selectedAgentId 
     ? agents.find(a => a.id === selectedAgentId) 
@@ -107,31 +140,44 @@ export function AgentSelector({ selectedAgentId, onSelect }: AgentSelectorProps)
             </div>
           </DropdownMenuItem>
           
-          {agents
-            .filter(agent => agent.active)
-            .map((agent) => (
+          {loading ? (
+            <div className="p-4 text-center text-sm text-muted-foreground">
+              Carregando agentes...
+            </div>
+          ) : agents.length === 0 ? (
+            <div className="p-4 text-center text-sm text-muted-foreground">
+              Nenhum agente disponível no momento
+            </div>
+          ) : (
+            agents.map((agent) => (
               <DropdownMenuItem
                 key={agent.id}
                 className="p-2 cursor-pointer"
                 onClick={() => handleSelect(agent)}
               >
-                <div className="flex items-center gap-3 w-full">
-                  <div className="text-2xl">{agent.icon || '🤖'}</div>
-                  <div className="flex-1">
+                <div className="flex items-start gap-3 w-full">
+                  <div className="text-2xl flex-shrink-0">{agent.icon || '🤖'}</div>
+                  <div className="flex-1 min-w-0">
                     <div className="font-medium">{agent.name}</div>
                     <div className="text-xs text-muted-foreground">
-                      {agent.description}
+                      {agent.description || 'Sem descrição'}
                     </div>
+                    {(agent as any).usage_instructions && (
+                      <div className="text-xs text-muted-foreground mt-1 line-clamp-1">
+                        📖 {(agent as any).usage_instructions}
+                      </div>
+                    )}
                     <div className="text-xs text-primary mt-1">
                       {agent.type === 'llm' ? 'Local' : 'Automação Externa'}
                     </div>
                   </div>
                   {selectedAgentId === agent.id && (
-                    <div className="h-2 w-2 rounded-full bg-primary"></div>
+                    <div className="h-2 w-2 rounded-full bg-primary flex-shrink-0 mt-1"></div>
                   )}
                 </div>
               </DropdownMenuItem>
-            ))}
+            ))
+          )}
         </div>
       </DropdownMenuContent>
     </DropdownMenu>

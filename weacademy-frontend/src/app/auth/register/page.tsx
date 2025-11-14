@@ -56,7 +56,17 @@ export default function RegisterPage() {
       if (error) {
         setError(error.message)
       } else if (data) {
-        router.push('/auth/login?message=Conta criada com sucesso! Faça login para continuar.')
+        // Verificar se a sessão foi criada automaticamente
+        // Se sim, fazer login automático e redirecionar para home
+        // Se não, redirecionar para login
+        if (data.session) {
+          // Sessão criada automaticamente - aguardar contexto atualizar e redirecionar
+          await new Promise(resolve => setTimeout(resolve, 500))
+          router.push('/?message=Conta criada com sucesso! Bem-vindo à WE Academy.')
+        } else {
+          // Precisa confirmar email ou fazer login manual
+          router.push('/auth/login?message=Conta criada com sucesso! Faça login para continuar.')
+        }
       }
     } catch (err) {
       setError('Erro inesperado. Tente novamente.')

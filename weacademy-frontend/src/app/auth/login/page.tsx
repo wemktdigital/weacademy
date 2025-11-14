@@ -1,8 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -19,8 +20,29 @@ export default function LoginPage() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   
-  const { signIn } = useAuth()
+  const { signIn, user, loading: authLoading } = useAuth()
   const router = useRouter()
+  const searchParams = useSearchParams()
+
+  // Redirecionar se já estiver logado
+  useEffect(() => {
+    if (!authLoading && user) {
+      // Usuário já está logado, redirecionar para home
+      router.push('/')
+    }
+  }, [user, authLoading, router])
+
+  // Mostrar mensagem da URL se houver
+  useEffect(() => {
+    const message = searchParams?.get('message')
+    if (message) {
+      toast.success(message)
+      // Limpar a URL removendo o parâmetro message
+      const url = new URL(window.location.href)
+      url.searchParams.delete('message')
+      window.history.replaceState({}, '', url.toString())
+    }
+  }, [searchParams])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()

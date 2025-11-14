@@ -3,89 +3,101 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
-import { CourseForm } from '@/components/admin/course-form'
 import { Button } from '@/components/ui/button'
-import { ArrowLeft } from 'lucide-react'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
+import { ArrowLeft, Save } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { toast } from '@/hooks/use-toast'
+import { ImageUpload } from '@/components/admin/image-upload'
+import { ModuleManager } from '@/components/admin/module-manager'
 
 export default function NewCoursePage() {
   const router = useRouter()
-  const { user, loading, isAdmin } = useAuth()
-  const [categories, setCategories] = useState([])
+  const { user, loading: authLoading, isAdmin } = useAuth()
+  const [saving, setSaving] = useState(false)
+  const [errors, setErrors] = useState<Record<string, string>>({})
+  const [modules, setModules] = useState<any[]>([])
+  const [formData, setFormData] = useState({
+    title: '',
+    slug: '',
+    description: '',
+    price: 0,
+    is_free: false,
+    thumbnail_url: '',
+  })
 
   useEffect(() => {
-    // Aguardar loading terminar antes de verificar permissões
-    if (loading) return;
-    
+    if (authLoading) return;
     if (!user || !isAdmin) {
       router.push('/access-denied')
-      return
     }
+  }, [user, isAdmin, router, authLoading])
 
-    loadCategories()
-  }, [user, isAdmin, router, loading])
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setSaving(true)
+    console.log('[DEBUG] Iniciando submit do curso', { formData, modules })
 
-  const loadCategories = async () => {
     try {
-      const { data, error } = await supabase
-        .from('categories')
-        .select('*')
-        .order('name', { ascending: true })
-
-      if (error) throw error
-      setCategories(data || [])
-    } catch (error: any) {
-      console.error('Error loading categories:', error)
-      toast({
-        title: 'Erro',
-        description: 'Erro ao carregar categorias',
-        variant: 'destructive',
-      })
-    }
-  }
-
-  const handleSubmit = async (data: any) => {
-    try {
-      // Obter a sessão do Supabase
+      // Obter sessão
       const { data: sessionData } = await supabase.auth.getSession()
-      const accessToken = sessionData?.session?.access_token
-      
-      if (process.env.NEXT_PUBLIC_LAB_DEBUG_AUTH === "1") {
-        console.log("[LABAUTH][CLIENT] session", { 
-          hasSession: !!sessionData?.session, 
-          hasToken: !!accessToken,
-          userId: sessionData?.session?.user?.id 
-        });
+      const token = sessionData?.session?.access_token
+
+      if (!token) {
+        throw new Error('Não autenticado')
       }
-      
-      const headers: HeadersInit = {
-        'Content-Type': 'application/json',
-      }
-      
-      // Adicionar token no header se disponível
-      if (accessToken) {
-        headers['Authorization'] = `Bearer ${accessToken}`
-      }
-      
+
+      console.log('[DEBUG] Enviando para API')
+
+      // Enviar para API
       const response = await fetch('/api/courses', {
         method: 'POST',
-        headers,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
         credentials: 'include',
-        body: JSON.stringify(data),
+          body: JSON.stringify({
+          title: formData.title,
+          slug: formData.slug || formData.title.toLowerCase().replace(/\s+/g, '-'),
+          description: formData.description,
+          price: formData.price,
+          is_free: formData.is_free,
+          thumbnail_url: formData.thumbnail_url,
+          modules: modules,
+        }),
       })
 
-      const resultText = await response.clone().text();
-      if (process.env.NEXT_PUBLIC_LAB_DEBUG_AUTH === "1") {
-        console.log("[LABAUTH][CLIENT] submit", response.status, resultText);
-      }
-
-      const result = JSON.parse(resultText);
+      const result = await response.json()
+      console.log('[DEBUG] Resposta da API', { status: response.status, result })
 
       if (!response.ok) {
-        throw new Error(result.error || 'Erro ao criar curso')
+        // Mostrar erro detalhado se disponível
+        const errorMsg = result.details 
+          ? `${result.error}: ${result.details}` 
+          : result.error || 'Erro ao criar curso'
+
+        // Tentar mapear detalhes para os campos
+        if (result.details && typeof result.details === 'string') {
+          const newErrors: Record<string, string> = {}
+          result.details.split(',').forEach((pair: string) => {
+            const [rawKey, ...rest] = pair.split(':')
+            const key = rawKey?.trim()
+            const msg = rest.join(':').trim()
+            if (key && msg) newErrors[key] = msg
+          })
+          if (Object.keys(newErrors).length > 0) {
+            setErrors(newErrors)
+          }
+        }
+
+        throw new Error(errorMsg)
       }
 
+      console.log('[DEBUG] Sucesso! Redirecionando...')
+      
       toast({
         title: 'Sucesso',
         description: 'Curso criado com sucesso!',
@@ -93,53 +105,146 @@ export default function NewCoursePage() {
 
       router.push('/admin/courses')
     } catch (error: any) {
+      console.error('[DEBUG] Erro ao criar curso', error)
       toast({
         title: 'Erro',
         description: error.message,
         variant: 'destructive',
       })
-      throw error
+    } finally {
+      setSaving(false)
+      console.log('[DEBUG] setSaving(false) chamado')
     }
   }
 
-  const handleCancel = () => {
-    router.push('/admin/courses')
-  }
-
-  // Mostrar loading enquanto verifica permissões
-  if (loading) {
+  if (authLoading) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center">
         <p>Carregando...</p>
       </div>
     )
   }
 
-  // Se não for admin, não mostrar nada (já foi redirecionado)
   if (!user || !isAdmin) {
-    return null;
+    return null
   }
 
   return (
     <div className="min-h-screen bg-background p-8">
-      <div className="max-w-4xl mx-auto space-y-6">
+      <div className="max-w-3xl mx-auto space-y-6">
         <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={handleCancel}>
+          <Button variant="ghost" size="icon" onClick={() => router.push('/admin/courses')}>
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">Novo Curso</h1>
-            <p className="text-muted-foreground mt-1">
-              Crie um novo curso para a plataforma
-            </p>
+            <h1 className="text-3xl font-bold">Novo Curso</h1>
+            <p className="text-muted-foreground">Crie um novo curso</p>
           </div>
         </div>
 
-        <CourseForm
-          categories={categories}
-          onSubmit={handleSubmit}
-          onCancel={handleCancel}
-        />
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <div className="space-y-2">
+            <Label htmlFor="title">Título *</Label>
+            <Input
+              id="title"
+              value={formData.title}
+              onChange={(e) => {
+                setFormData({ ...formData, title: e.target.value })
+                if (errors.title) setErrors({ ...errors, title: '' })
+              }}
+              placeholder="Título do curso"
+              required
+            />
+            {errors.title && (
+              <p className="text-sm text-destructive">{errors.title}</p>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="slug">Slug (opcional)</Label>
+            <Input
+              id="slug"
+              value={formData.slug}
+              onChange={(e) => {
+                setFormData({ ...formData, slug: e.target.value })
+                if (errors.slug) setErrors({ ...errors, slug: '' })
+              }}
+              placeholder="url-amigavel-do-curso"
+            />
+            <p className="text-sm text-muted-foreground">
+              Deixe em branco para gerar automaticamente
+            </p>
+            {errors.slug && (
+              <p className="text-sm text-destructive">{errors.slug}</p>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="description">Descrição</Label>
+            <Textarea
+              id="description"
+              value={formData.description}
+              onChange={(e) => {
+                setFormData({ ...formData, description: e.target.value })
+                if (errors.description) setErrors({ ...errors, description: '' })
+              }}
+              placeholder="Descrição do curso"
+              rows={5}
+            />
+            {errors.description && (
+              <p className="text-sm text-destructive">{errors.description}</p>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <Label>Thumbnail (opcional)</Label>
+            <ImageUpload
+              value={formData.thumbnail_url}
+              onChange={(url) => setFormData({ ...formData, thumbnail_url: url })}
+            />
+          </div>
+
+          <div className="flex gap-6">
+            <div className="space-y-2 flex-1">
+              <Label htmlFor="price">Preço (opcional)</Label>
+              <Input
+                id="price"
+                type="number"
+                value={formData.price}
+                onChange={(e) => setFormData({ ...formData, price: Number(e.target.value) })}
+                placeholder="0.00"
+                step="0.01"
+              />
+            </div>
+
+            <div className="flex items-center gap-2 pt-8">
+              <input
+                type="checkbox"
+                id="is_free"
+                checked={formData.is_free}
+                onChange={(e) => setFormData({ ...formData, is_free: e.target.checked })}
+                className="h-4 w-4"
+              />
+              <Label htmlFor="is_free">Curso gratuito</Label>
+            </div>
+          </div>
+
+          <ModuleManager modules={modules} onChange={setModules} />
+
+          <div className="flex justify-end gap-4">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => router.push('/admin/courses')}
+            >
+              Cancelar
+            </Button>
+            <Button type="submit" disabled={saving}>
+              <Save className="h-4 w-4 mr-2" />
+              {saving ? 'Salvando...' : 'Salvar Curso'}
+            </Button>
+          </div>
+        </form>
       </div>
     </div>
   )

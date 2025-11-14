@@ -1,3 +1,8 @@
+'use client'
+
+import { useEffect } from 'react'
+import { useSearchParams } from 'next/navigation'
+import { toast } from 'sonner'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -22,24 +27,42 @@ import {
 } from 'lucide-react'
 
 export default function HomePage() {
+  const searchParams = useSearchParams()
+
+  useEffect(() => {
+    // Verificar se há mensagem na URL
+    const message = searchParams?.get('message')
+    if (message) {
+      toast.success(message)
+      // Limpar a URL removendo o parâmetro message
+      const url = new URL(window.location.href)
+      url.searchParams.delete('message')
+      window.history.replaceState({}, '', url.toString())
+    }
+  }, [searchParams])
+
   return (
     <div className="min-h-screen">
       {/* Hero Section */}
-      <section className="relative bg-gradient-to-br from-primary/5 via-background to-primary/5 py-20">
-        <div className="container">
+      <section className="relative overflow-hidden bg-gradient-to-br from-primary/5 via-background to-primary/5 py-20 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950">
+        <div className="pointer-events-none absolute inset-0 opacity-60 dark:opacity-80">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.35),transparent_55%)]" />
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_bottom_left,rgba(16,185,129,0.25),transparent_60%)]" />
+        </div>
+        <div className="container relative text-foreground dark:text-slate-100">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
             <div className="space-y-8">
               <div className="space-y-4">
-                <Badge variant="secondary" className="w-fit">
+                <Badge variant="secondary" className="w-fit dark:bg-emerald-500/10 dark:text-emerald-200 dark:border-emerald-400/40">
                   <Stethoscope className="h-3 w-3 mr-1" />
                   Plataforma Exclusiva para Médicos
                 </Badge>
-                <h1 className="text-4xl lg:text-6xl font-bold tracking-tight">
+                <h1 className="text-4xl lg:text-6xl font-bold tracking-tight text-foreground dark:text-white">
                   Transforme sua{' '}
                   <span className="text-primary">prática médica</span>{' '}
                   com conhecimento especializado
                 </h1>
-                <p className="text-xl text-muted-foreground max-w-2xl">
+                <p className="text-xl text-muted-foreground max-w-2xl dark:text-slate-300">
                   A WE Academy oferece cursos e treinamentos exclusivos para médicos clientes da WE Marketing Médico. 
                   Desenvolva suas habilidades clínicas e de gestão com especialistas renomados.
                 </p>
@@ -63,30 +86,30 @@ export default function HomePage() {
               {/* Stats */}
               <div className="grid grid-cols-3 gap-8 pt-8">
                 <div className="text-center">
-                  <div className="text-2xl font-bold text-primary">500+</div>
-                  <div className="text-sm text-muted-foreground">Médicos</div>
+                  <div className="text-2xl font-bold text-primary dark:text-sky-400">500+</div>
+                  <div className="text-sm text-muted-foreground dark:text-slate-400">Médicos</div>
                 </div>
                 <div className="text-center">
-                  <div className="text-2xl font-bold text-primary">50+</div>
-                  <div className="text-sm text-muted-foreground">Cursos</div>
+                  <div className="text-2xl font-bold text-primary dark:text-sky-400">50+</div>
+                  <div className="text-sm text-muted-foreground dark:text-slate-400">Cursos</div>
                 </div>
                 <div className="text-center">
-                  <div className="text-2xl font-bold text-primary">98%</div>
-                  <div className="text-sm text-muted-foreground">Satisfação</div>
+                  <div className="text-2xl font-bold text-primary dark:text-sky-400">98%</div>
+                  <div className="text-sm text-muted-foreground dark:text-slate-400">Satisfação</div>
                 </div>
               </div>
             </div>
 
             <div className="relative">
-              <div className="relative z-10 bg-background rounded-2xl shadow-2xl p-8">
+              <div className="relative z-10 rounded-2xl shadow-2xl p-8 bg-background/95 backdrop-blur-sm dark:bg-slate-900/80 dark:border dark:border-slate-700/60">
                 <div className="space-y-4">
                   <div className="flex items-center space-x-3">
-                    <div className="h-12 w-12 bg-primary/10 rounded-full flex items-center justify-center">
-                      <Stethoscope className="h-6 w-6 text-primary" />
+                    <div className="h-12 w-12 bg-primary/10 rounded-full flex items-center justify-center dark:bg-primary/15">
+                      <Stethoscope className="h-6 w-6 text-primary dark:text-sky-300" />
                     </div>
                     <div>
-                      <h3 className="font-semibold">Marketing Médico Digital</h3>
-                      <p className="text-sm text-muted-foreground">Dr. Maria Santos</p>
+                      <h3 className="font-semibold text-foreground dark:text-white">Marketing Médico Digital</h3>
+                      <p className="text-sm text-muted-foreground dark:text-slate-300">Dr. Maria Santos</p>
                     </div>
                   </div>
                   <div className="flex items-center space-x-2">
@@ -108,7 +131,7 @@ export default function HomePage() {
                     </div>
                   </div>
                   <div className="pt-4">
-                    <Button className="w-full">
+                    <Button className="w-full dark:bg-sky-500 dark:text-slate-950 dark:hover:bg-sky-400">
                       Começar Agora
                     </Button>
                   </div>
@@ -116,8 +139,8 @@ export default function HomePage() {
               </div>
               
               {/* Floating Elements */}
-              <div className="absolute -top-4 -right-4 h-24 w-24 bg-primary/20 rounded-full blur-xl"></div>
-              <div className="absolute -bottom-4 -left-4 h-32 w-32 bg-secondary/20 rounded-full blur-xl"></div>
+              <div className="absolute -top-4 -right-4 h-24 w-24 bg-primary/20 rounded-full blur-xl dark:bg-sky-500/30"></div>
+              <div className="absolute -bottom-4 -left-4 h-32 w-32 bg-secondary/20 rounded-full blur-xl dark:bg-emerald-500/25"></div>
             </div>
           </div>
         </div>

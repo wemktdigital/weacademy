@@ -34,6 +34,16 @@ import {
 } from 'lucide-react'
 import { toast } from '@/hooks/use-toast'
 import { supabase } from '@/lib/supabase'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 
 interface Course {
   id: string
@@ -61,6 +71,10 @@ export default function AdminCoursesPage() {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [levelFilter, setLevelFilter] = useState<string>('all')
+  const [deleteDialog, setDeleteDialog] = useState<{open: boolean, courseId: string | null}>({
+    open: false,
+    courseId: null
+  })
 
   useEffect(() => {
     if (!user || !isAdmin) {
@@ -106,22 +120,42 @@ export default function AdminCoursesPage() {
     }
   }
 
-  const handleDelete = async (courseId: string) => {
-    if (!confirm('Tem certeza que deseja deletar este curso?')) return
+  const handleDelete = (courseId: string) => {
+    setDeleteDialog({ open: true, courseId })
+  }
+
+  const confirmDelete = async () => {
+    if (!deleteDialog.courseId) return
 
     try {
-      const { error } = await supabase
-        .from('courses')
-        .delete()
-        .eq('id', courseId)
+      // Obter sessão
+      const { data: sessionData } = await supabase.auth.getSession()
+      const token = sessionData?.session?.access_token
 
-      if (error) throw error
+      if (!token) {
+        throw new Error('Não autenticado')
+      }
+
+      // Deletar via API
+      const response = await fetch(`/api/courses/${deleteDialog.courseId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Erro ao deletar curso')
+      }
 
       toast({
         title: 'Sucesso',
         description: 'Curso deletado com sucesso',
       })
 
+      setDeleteDialog({ open: false, courseId: null })
       loadCourses()
     } catch (error: any) {
       toast({
@@ -325,6 +359,24 @@ export default function AdminCoursesPage() {
           </TableBody>
         </Table>
       </div>
+
+      {/* Delete Dialog */}
+      <AlertDialog open={deleteDialog.open} onOpenChange={(open) => setDeleteDialog({ ...deleteDialog, open })}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmar Exclusão</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja deletar este curso? Esta ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Deletar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

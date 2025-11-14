@@ -63,8 +63,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const handleSignUp = async (email: string, password: string, fullName?: string) => {
     const result = await signUp(email, password, fullName)
     if (result.data) {
-      const currentUser = await getCurrentUser()
-      setUser(currentUser)
+      // Se a sessão foi criada automaticamente, atualizar o usuário
+      if (result.data.session) {
+        // Aguardar um pouco para o perfil ser criado
+        await new Promise(resolve => setTimeout(resolve, 500))
+        const currentUser = await getCurrentUser()
+        setUser(currentUser)
+      }
     }
     return result
   }

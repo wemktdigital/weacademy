@@ -1,0 +1,146 @@
+{
+  "timestamp": "2025-11-14T20:09:31.494Z",
+  "summary": {
+    "total": 15,
+    "success": 14,
+    "failed": 1,
+    "successRate": 93
+  },
+  "results": [
+    {
+      "provider": "OpenAI",
+      "model": "gpt-5",
+      "displayName": "GPT-5",
+      "status": "success",
+      "latency": 8549,
+      "responsePreview": "OK",
+      "timestamp": "2025-11-14T20:08:34.423Z"
+    },
+    {
+      "provider": "OpenAI",
+      "model": "gpt-5-mini",
+      "displayName": "GPT-5 Mini",
+      "status": "success",
+      "latency": 3756,
+      "responsePreview": "OK",
+      "timestamp": "2025-11-14T20:08:39.191Z"
+    },
+    {
+      "provider": "OpenAI",
+      "model": "gpt-5-nano",
+      "displayName": "GPT-5 Nano",
+      "status": "success",
+      "latency": 4026,
+      "responsePreview": "OK",
+      "timestamp": "2025-11-14T20:08:44.227Z"
+    },
+    {
+      "provider": "Google",
+      "model": "gemini-2.5-flash",
+      "displayName": "Gemini 2.5 Flash",
+      "status": "success",
+      "latency": 2100,
+      "responsePreview": "OK",
+      "timestamp": "2025-11-14T20:08:47.329Z"
+    },
+    {
+      "provider": "Google",
+      "model": "gemini-2.5-pro",
+      "displayName": "Gemini 2.5 Pro",
+      "status": "success",
+      "latency": 2944,
+      "responsePreview": "OK",
+      "timestamp": "2025-11-14T20:08:51.286Z"
+    },
+    {
+      "provider": "Google",
+      "model": "gemini-2.5-flash-lite",
+      "displayName": "Gemini 2.5 Flash Lite",
+      "status": "success",
+      "latency": 1045,
+      "responsePreview": "OK",
+      "timestamp": "2025-11-14T20:08:53.333Z"
+    },
+    {
+      "provider": "Google",
+      "model": "gemini-2.5-flash-image",
+      "displayName": "Gemini 2.5 Flash Image",
+      "status": "error",
+      "error": "Falha ao chamar modelo: Erro ao chamar Gemini: [GoogleGenerativeAI Error]: Error fetching from https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:streamGenerateContent?alt=sse: [429 Too Many Requests] You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/usage?tab=rate-limit. \n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 0, model: gemini-2.5-flash-preview-image\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 0, model: gemini-2.5-flash-preview-image\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_input_token_count, limit: 0, model: gemini-2.5-flash-preview-image\nPlease retry in 4.548229474s. [{\"@type\":\"type.googleapis.com/google.rpc.Help\",\"links\":[{\"description\":\"Learn more about Gemini API quotas\",\"url\":\"https://ai.google.dev/gemini-api/docs/rate-limits\"}]},{\"@type\":\"type.googleapis.com/google.rpc.QuotaFailure\",\"violations\":[{\"quotaMetric\":\"generativelanguage.googleapis.com/generate_content_free_tier_requests\",\"quotaId\":\"GenerateRequestsPerDayPerProjectPerModel-FreeTier\",\"quotaDimensions\":{\"location\":\"global\",\"model\":\"gemini-2.5-flash-preview-image\"}},{\"quotaMetric\":\"generativelanguage.googleapis.com/generate_content_free_tier_requests\",\"quotaId\":\"GenerateRequestsPerMinutePerProjectPerModel-FreeTier\",\"quotaDimensions\":{\"location\":\"global\",\"model\":\"gemini-2.5-flash-preview-image\"}},{\"quotaMetric\":\"generativelanguage.googleapis.com/generate_content_free_tier_input_token_count\",\"quotaId\":\"GenerateContentInputTokensPerModelPerMinute-FreeTier\",\"quotaDimensions\":{\"location\":\"global\",\"model\":\"gemini-2.5-flash-preview-image\"}}]},{\"@type\":\"type.googleapis.com/google.rpc.RetryInfo\",\"retryDelay\":\"4s\"}]",
+      "latency": 1256,
+      "timestamp": "2025-11-14T20:08:55.591Z"
+    },
+    {
+      "provider": "DeepSeek",
+      "model": "deepseek-chat",
+      "displayName": "DeepSeek Chat",
+      "status": "success",
+      "latency": 3628,
+      "responsePreview": "OK",
+      "timestamp": "2025-11-14T20:09:00.345Z"
+    },
+    {
+      "provider": "DeepSeek",
+      "model": "deepseek-reasoner",
+      "displayName": "DeepSeek Reasoner",
+      "status": "success",
+      "latency": 6301,
+      "responsePreview": "OK",
+      "timestamp": "2025-11-14T20:09:07.650Z"
+    },
+    {
+      "provider": "Grok",
+      "model": "grok-4-fast",
+      "displayName": "Grok-4 Fast",
+      "status": "success",
+      "latency": 4012,
+      "responsePreview": "OK",
+      "timestamp": "2025-11-14T20:09:12.702Z"
+    },
+    {
+      "provider": "Grok",
+      "model": "grok-4-fast-reasoning",
+      "displayName": "Grok-4 Fast Reasoning",
+      "status": "success",
+      "latency": 1599,
+      "responsePreview": "OK",
+      "timestamp": "2025-11-14T20:09:15.336Z"
+    },
+    {
+      "provider": "Anthropic",
+      "model": "claude-3-5-sonnet-20241022",
+      "displayName": "Claude Sonnet 4.5",
+      "status": "success",
+      "latency": 2836,
+      "responsePreview": "Sem conteúdo",
+      "timestamp": "2025-11-14T20:09:19.174Z"
+    },
+    {
+      "provider": "Anthropic",
+      "model": "claude-3-5-haiku-20241022",
+      "displayName": "Claude Haiku 4.5",
+      "status": "success",
+      "latency": 915,
+      "responsePreview": "OK",
+      "timestamp": "2025-11-14T20:09:21.092Z"
+    },
+    {
+      "provider": "Anthropic",
+      "model": "claude-3-opus-20240229",
+      "displayName": "Claude Opus 4.1",
+      "status": "success",
+      "latency": 1650,
+      "responsePreview": "OK",
+      "timestamp": "2025-11-14T20:09:23.805Z"
+    },
+    {
+      "provider": "Replicate",
+      "model": "meta/meta-llama-3.1-405b-instruct",
+      "displayName": "Llama 3.1 405B Instruct",
+      "status": "success",
+      "latency": 6687,
+      "responsePreview": "OK{\"event\":\"output\",\"data\":\"\",\"id\":\"1763150970:1\"}{\"event\":\"done\",\"data\":\"{}\",\"id\":\"1763150970:2\"}",
+      "timestamp": "2025-11-14T20:09:31.494Z"
+    }
+  ]
+}

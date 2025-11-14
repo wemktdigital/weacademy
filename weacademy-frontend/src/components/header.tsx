@@ -12,11 +12,11 @@ import {
   DropdownMenuSeparator, 
   DropdownMenuTrigger 
 } from '@/components/ui/dropdown-menu'
-import { 
-  BookOpen, 
-  User, 
-  Settings, 
-  LogOut, 
+import {
+  BookOpen,
+  User,
+  Settings,
+  LogOut,
   Menu,
   Search,
   Heart,
@@ -26,7 +26,8 @@ import {
   BarChart3,
   FileText,
   Plus,
-  Sparkles
+  Sparkles,
+  ClipboardList,
 } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { SimpleThemeToggle } from '@/components/theme-toggle'
@@ -125,9 +126,9 @@ export default function Header() {
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" className="relative h-10 w-10 rounded-full p-0 hover:opacity-80 transition-opacity">
                     <Avatar className="h-10 w-10 border-2 border-primary/20">
-                      <AvatarImage src={user.avatar_url || "/avatars/01.png"} alt={user.full_name || "Usuário"} />
+                      <AvatarImage src={user.avatar_url || undefined} alt={user.full_name || "Usuário"} />
                       <AvatarFallback className="bg-primary text-primary-foreground font-bold">
-                        {user.full_name ? user.full_name.charAt(0).toUpperCase() : user.email.charAt(0).toUpperCase()}
+                        {user.full_name ? user.full_name.charAt(0).toUpperCase() : user.email?.charAt(0).toUpperCase() || 'U'}
                       </AvatarFallback>
                     </Avatar>
                   </Button>
@@ -193,6 +194,12 @@ export default function Header() {
                         Laboratório de IA
                       </DropdownMenuLabel>
                       <DropdownMenuItem asChild>
+                        <Link href="/ai-lab/admin" className="flex items-center">
+                          <BarChart3 className="mr-2 h-4 w-4" />
+                          <span>Dashboard</span>
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem asChild>
                         <Link href="/ai-lab/admin/agents" className="flex items-center">
                           <Sparkles className="mr-2 h-4 w-4" />
                           <span>Gerenciar Agentes</span>
@@ -208,6 +215,12 @@ export default function Header() {
                         <Link href="/ai-lab/admin/pipelines" className="flex items-center">
                           <Sparkles className="mr-2 h-4 w-4" />
                           <span>Pipelines</span>
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem asChild>
+                        <Link href="/ai-lab/admin/workflows/human-tasks" className="flex items-center">
+                          <ClipboardList className="mr-2 h-4 w-4" />
+                          <span>Tarefas Humanas</span>
                         </Link>
                       </DropdownMenuItem>
                     </>

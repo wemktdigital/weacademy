@@ -185,22 +185,55 @@ Validar manualmente todas as funcionalidades da plataforma WE Academy, garantind
 
 ### 8.1 Interface do Chat
 - [x] **Acessar:** Acessar `/ai-lab` e verificar interface ✅
-- [ ] **Sidebar:** Verificar se conversas antigas aparecem na sidebar
-- [ ] **Nova Conversa:** Clicar em "+ Nova Conversa" e criar nova
-- [ ] **Tema:** Alternar entre tema claro/escuro
+- [x] **Sidebar:** Verificar se conversas antigas aparecem na sidebar ✅
+  - **Resultado:** ✅ **PASSOU**
+    - ✅ Sidebar exibe lista de conversas ordenadas (favoritas primeiro)
+    - ✅ Títulos truncados para 30 caracteres para evitar overflow
+    - ✅ Menu de contexto (três pontos) implementado estilo ChatGPT
+    - ✅ Botão de menu aparece no hover e não interfere com scrollbar
+    - ✅ Tooltip com título completo ao passar mouse sobre conversa
+- [x] **Nova Conversa:** Clicar em "+ Nova Conversa" e criar nova ✅
+- [x] **Tema:** Alternar entre tema claro/escuro ✅
 - [x] **Bloqueio Guest:** Verificar que guests veem input desabilitado com mensagem explicativa ✅
 
 ### 8.2 Envio de Mensagens
-- [ ] **Enviar Mensagem:** Digitar mensagem e enviar
-- [ ] **Streaming:** Verificar se resposta aparece em streaming
-- [ ] **Markdown:** Verificar se markdown é renderizado corretamente
-- [ ] **Copiar:** Clicar em "Copiar" e verificar se código é copiado
+- [x] **Enviar Mensagem:** Digitar mensagem e enviar
+- [x] **Streaming:** Verificar se resposta aparece em streaming
+- [x] **Scroll (chat apenas):** Verificar scroll automático somente no container da conversa
+- [x] **Markdown:** Verificar se markdown é renderizado corretamente ✅
+  - **Prompt de teste:** Enviar: "Mostre um exemplo de markdown com título, negrito, itálico, código inline, lista e um bloco de código. Use sua resposta para demonstrar a renderização."
+  - **Resultado:** ✅ **PASSOU**
+    - ✅ Renderização de markdown funciona corretamente na UI
+    - ✅ **Gemini 2.5 Flash:** Retorna markdown completo e renderiza perfeitamente (títulos, listas, code blocks, formatação)
+    - ⚠️ **GPT-5 Nano:** Retorna texto mais simples, mas quando retorna markdown também renderiza corretamente
+    - **Conclusão:** Sistema de renderização markdown está funcionando. Diferença é no formato de resposta dos modelos, não na renderização.
+- [x] **Copiar:** Clicar em "Copiar" e verificar se código é copiado ✅
+  - **Resultado:** ✅ **PASSOU** (com observação)
+    - ✅ Botão "Copiar" funciona corretamente
+    - ✅ Conteúdo é copiado para área de transferência
+    - ⚠️ **Melhoria futura:** Atualmente copia markdown puro (com sintaxe). Ideal seria:
+      - Opção de copiar texto renderizado (sem markdown) OU
+      - Botão duplo: "Copiar texto" e "Copiar markdown"
 
 ### 8.3 Seleção de Modelo
-- [ ] **ModelSelector:** Clicar no seletor de modelo
-- [ ] **Alternar:** Alternar entre GPT-5 Nano e Gemini 2.5 Flash
+- [x] **ModelSelector:** Clicar no seletor de modelo
+- [x] **Alternar:** Alternar entre GPT-5 Nano e Gemini 2.5 Flash
 - [ ] **Toast:** Verificar se toast de mudança aparece
-- [ ] **Persistência:** Recarregar página e verificar modelo selecionado
+  - **Resultado:** ⚠️ **NÃO FUNCIONA** (mas troca de modelo funciona)
+    - ✅ Troca de modelo funciona perfeitamente
+    - ❌ Toast não aparece visualmente quando modelo é alterado
+    - **Nota:** Código do toast existe em `ModelSelector.tsx` e `Toaster` foi adicionado ao layout (`layout.tsx`), mas toast não aparece ao testar. Pode ser necessário investigar mais ou usar alternativa (ex: Sonner).
+- [x] **Persistência:** Recarregar página e verificar modelo selecionado ✅
+  - **Resultado:** ✅ **PASSOU**
+    - ✅ Modelo selecionado é salvo no `localStorage` (chave: `lab-preferred-model`)
+    - ✅ Ao recarregar a página, o modelo anterior é restaurado automaticamente
+    - ✅ Persistência funciona corretamente entre sessões
+- [x] **Histórico ao trocar modelo:** Trocar de modelo no meio da conversa ✅
+  - **Resultado:** ✅ **FUNCIONA PERFEITAMENTE**
+    - ✅ Quando você troca de modelo no meio da conversa, o novo modelo recebe todas as mensagens anteriores
+    - ✅ O histórico completo é enviado na requisição (`messages: [...messages, userMessage]`)
+    - ✅ O novo modelo consegue dar continuidade ao contexto da conversa anterior
+    - **Como funciona:** As mensagens são salvas no banco (`lab_messages`) e carregadas no state `messages`. Ao enviar nova mensagem, todo o array `messages` é enviado para a API, independente do modelo.
 
 ### 8.4 Agentes Especializados
 - [ ] **AgentSelector:** Selecionar agente especializado
@@ -209,9 +242,29 @@ Validar manualmente todas as funcionalidades da plataforma WE Academy, garantind
 - [ ] **Logs:** Verificar se execução é logada em `lab_agent_logs`
 
 ### 8.5 Gerenciamento de Conversas
-- [ ] **Renomear:** Clicar no nome da conversa e renomear
-- [ ] **Excluir:** Excluir conversa e verificar se foi removida
-- [ ] **Favoritar:** Favoritar mensagem e verificar se aparece em "Favoritas"
+- [x] **Renomear:** Clicar no nome da conversa e renomear ✅
+  - **Resultado:** ✅ **PASSOU**
+    - ✅ Menu de contexto (três pontos) implementado estilo ChatGPT
+    - ✅ Opção "Renomear" no menu funciona corretamente
+    - ✅ Ao clicar em "Renomear", o título fica editável inline
+    - ✅ Permite salvar (Enter) ou cancelar (Escape)
+    - ✅ Título atualizado é persistido no banco de dados
+- [x] **Excluir:** Excluir conversa e verificar se foi removida ✅
+  - **Resultado:** ✅ **PASSOU**
+    - ✅ Opção "Excluir" no menu de contexto funciona corretamente
+    - ✅ Aparece em vermelho (variante destructive) para indicar ação destrutiva
+    - ✅ Diálogo de confirmação antes de deletar
+    - ✅ Conversa e todas as mensagens são removidas do banco
+    - ✅ Lista de conversas é atualizada após exclusão
+- [x] **Favoritar:** Favoritar conversa e mensagens ✅
+  - **Resultado:** ✅ **PASSOU**
+    - ✅ Funcionalidade de favoritar conversas implementada
+    - ✅ Opção no menu de contexto para favoritar/desfavoritar
+    - ✅ Estrela amarela quando favoritada (persiste no banco)
+    - ✅ Conversas favoritas aparecem primeiro na lista
+    - ✅ Funcionalidade de favoritar mensagens individuais também implementada
+    - ✅ Botão "Favoritar" nas mensagens do assistente funciona corretamente
+    - ✅ Migration aplicada: campo `is_favorite` adicionado às tabelas `lab_conversations` e `lab_messages`
 - [ ] **Exportar:** Exportar conversa em Markdown
 
 ### 8.6 Admin do Laboratório

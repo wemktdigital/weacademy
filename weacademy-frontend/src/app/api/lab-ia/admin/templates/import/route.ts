@@ -1,32 +1,58 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase'
+import { supabaseServer } from '@/lib/supabaseServer'
+import { createClient } from '@supabase/supabase-js'
 import { agentSchema } from '@/lib/validations/agent.schema'
 
 export async function POST(request: Request) {
   try {
-    const supabase = await createClient()
+    // Tentar autenticar via Authorization header
+    const authHeader = request.headers.get('authorization')
+    const token = authHeader?.replace('Bearer ', '')
     
-    // Verificar autenticação
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
+    let user: any = null
+    let authError: any = null
 
-    if (authError || !user) {
+    if (token) {
+      const supabaseWithToken = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      )
+      const { data, error } = await supabaseWithToken.auth.getUser(token)
+      if (!error && data?.user) {
+        user = data.user
+      } else {
+        authError = error
+      }
+    }
+
+    // Fallback: autenticar via cookies (sessão do usuário)
+    if (!user) {
+      const supabase = await supabaseServer()
+      const { data, error } = await supabase.auth.getUser()
+      user = data?.user || null
+      authError = error
+    }
+
+    if (!user) {
       return NextResponse.json(
-        { error: 'Unauthorized' },
+        { error: 'Unauthorized', details: authError?.message },
         { status: 401 }
       )
     }
 
-    // Verificar se é admin
-    const { data: profile } = await supabase
+    // Verificar role com service role (bypass RLS)
+    const serviceRoleSupabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    )
+    
+    const { data: profile } = await serviceRoleSupabase
       .from('profiles')
       .select('role')
       .eq('id', user.id)
       .single()
 
-    if (!profile || !['admin', 'gestor_we'].includes(profile.role)) {
+    if (!profile || !['admin', 'gestor_we', 'gestor'].includes(profile.role)) {
       return NextResponse.json(
         { error: 'Forbidden' },
         { status: 403 }
@@ -51,10 +77,23 @@ export async function POST(request: Request) {
         // Validar usando schema
         const validatedData = agentSchema.parse(template)
         
-        // Inserir no banco
-        const { data, error } = await supabase
+        // Remover campos que não existem na tabela lab_agent_templates
+        // (active, knowledge_base_files existem apenas em lab_agents)
+        const templateData = {
+          name: validatedData.name,
+          description: validatedData.description,
+          icon: validatedData.icon,
+          category: validatedData.category,
+          provider: validatedData.provider,
+          model: validatedData.model,
+          prompt: validatedData.prompt,
+          type: validatedData.type,
+        }
+        
+        // Inserir no banco usando service role (bypass RLS após validar role)
+        const { data, error } = await serviceRoleSupabase
           .from('lab_agent_templates')
-          .insert(validatedData)
+          .insert(templateData)
           .select()
           .single()
 

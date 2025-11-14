@@ -9,41 +9,9 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useToast } from '@/hooks/use-toast'
+import { AVAILABLE_MODELS } from '@/modules/laboratorio-ia/config/models'
 
-interface Model {
-  provider: string
-  model: string
-  displayName: string
-  icon: string
-}
-
-const MODELS: Model[] = [
-  {
-    provider: 'OpenAI',
-    model: 'gpt-5-nano',
-    displayName: 'GPT-5 Nano',
-    icon: '🤖',
-  },
-  {
-    provider: 'Google',
-    model: 'gemini-2.5-flash',
-    displayName: 'Gemini 2.5 Flash',
-    icon: '✨',
-  },
-  // Modelos futuros - remover comentários quando disponíveis
-  // {
-  //   provider: 'OpenAI',
-  //   model: 'gpt-5-turbo',
-  //   displayName: 'GPT-5 Turbo',
-  //   icon: '🤖',
-  // },
-  // {
-  //   provider: 'Google',
-  //   model: 'gemini-2.5-pro',
-  //   displayName: 'Gemini 2.5 Pro',
-  //   icon: '✨',
-  // },
-]
+const MODELS = AVAILABLE_MODELS
 
 interface ModelSelectorProps {
   value?: string
@@ -63,6 +31,13 @@ export function ModelSelector({ value, onChange }: ModelSelectorProps) {
       onChange(provider, model)
     }
   }, [])
+
+  // Sincronizar quando o valor controlado externo mudar (ex.: ao selecionar um agente)
+  useEffect(() => {
+    if (value && value !== selectedValue) {
+      setSelectedValue(value)
+    }
+  }, [value])
 
   const handleChange = (newValue: string) => {
     setSelectedValue(newValue)

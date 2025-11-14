@@ -1,26 +1,77 @@
-import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase'
+import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
+import { cookies } from 'next/headers'
 import ExcelJS from 'exceljs'
 
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
   try {
-    const supabase = await createClient()
+    // Verificar autenticação via header Authorization
+    const authHeader = request.headers.get('authorization')
+    const token = authHeader?.replace('Bearer ', '')
     
-    // Verificar autenticação
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
+    let user = null
 
-    if (authError || !user) {
+    // Tentar autenticar via token primeiro
+    if (token) {
+      const supabaseWithToken = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        {
+          global: {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          },
+        }
+      )
+
+      const { data: { user: tokenUser }, error: tokenError } = await supabaseWithToken.auth.getUser(token)
+      if (!tokenError && tokenUser) {
+        user = tokenUser
+      }
+    }
+
+    // Fallback para cookies se não autenticou via token
+    if (!user) {
+      const cookieStore = await cookies()
+      const supabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        {
+          auth: {
+            storage: {
+              getItem: async (key: string) => cookieStore.get(key)?.value || null,
+              setItem: async (key: string, value: string) => {
+                // Não implementado - cookies são gerenciados pelo servidor
+              },
+              removeItem: async (key: string) => {
+                // Não implementado - cookies são gerenciados pelo servidor
+              },
+            },
+          },
+        }
+      )
+      
+      const { data: { user: cookieUser }, error: authError } = await supabase.auth.getUser()
+      if (!authError && cookieUser) {
+        user = cookieUser
+      }
+    }
+
+    if (!user) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
       )
     }
 
-    // Verificar se é admin ou gestor
-    const { data: profile } = await supabase
+    // Verificar se é admin ou gestor usando service role para bypass RLS
+    const serviceRoleSupabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    )
+
+    const { data: profile } = await serviceRoleSupabase
       .from('profiles')
       .select('role')
       .eq('id', user.id)
@@ -33,21 +84,32 @@ export async function GET(request: Request) {
       )
     }
 
-    // Buscar dados de agentes executados
-    const { data: agentLogs, error: agentError } = await supabase
+    // Buscar dados de agentes executados usando service role
+    const { data: agentLogs, error: agentError } = await serviceRoleSupabase
       .from('lab_agent_logs')
-      .select(`
-        *,
-        users:user_id (email)
-      `)
+      .select('*')
       .order('created_at', { ascending: false })
 
     if (agentError) {
       throw agentError
     }
 
-    // Buscar dados de mensagens
-    const { data: messages, error: messagesError } = await supabase
+    // Buscar emails dos usuários separadamente
+    const userIds = [...new Set(agentLogs?.map(log => log.user_id).filter(Boolean) || [])]
+    const userEmailsMap = new Map<string, string>()
+    
+    if (userIds.length > 0) {
+      // Buscar emails usando auth.admin.listUsers() e filtrar pelos IDs
+      const { data: allUsers } = await serviceRoleSupabase.auth.admin.listUsers()
+      allUsers.users?.forEach(user => {
+        if (userIds.includes(user.id)) {
+          userEmailsMap.set(user.id, user.email || 'N/A')
+        }
+      })
+    }
+
+    // Buscar dados de mensagens usando service role
+    const { data: messages, error: messagesError } = await serviceRoleSupabase
       .from('lab_messages')
       .select(`
         id,
@@ -87,7 +149,7 @@ export async function GET(request: Request) {
     agentLogs?.forEach((log: any) => {
       agentSheet.addRow({
         id: log.id,
-        email: (log.users as any)?.email || 'N/A',
+        email: userEmailsMap.get(log.user_id) || 'N/A',
         agent_id: log.agent_id || 'N/A',
         provider: log.provider || 'N/A',
         model: log.model || 'N/A',

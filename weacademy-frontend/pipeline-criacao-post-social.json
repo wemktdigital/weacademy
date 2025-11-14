@@ -1,0 +1,20 @@
+{
+  "name": "Criação Completa de Post Social",
+  "description": "Cria post para redes sociais, valida compliance com ANVISA/CFM e otimiza para SEO. Pipeline completo e seguro para publicar.",
+  "steps": [
+    {
+      "order": 1,
+      "agent_id": "UUID_AGENTE_CRIADOR_POSTAGENS"
+    },
+    {
+      "order": 2,
+      "agent_id": "UUID_AGENTE_AUDITOR_COMPLIANCE"
+    },
+    {
+      "order": 3,
+      "agent_id": "UUID_AGENTE_SEO_MEDICO"
+    }
+  ],
+  "active": true
+}
+

@@ -119,6 +119,9 @@ export async function GET(request: NextRequest) {
 // POST /api/courses - Criar curso
 export async function POST(request: NextRequest) {
   try {
+    // IMPORTANTE: Clonar o request e ler o body ANTES de qualquer autenticação
+    const body = await request.json().catch(() => null);
+    
     let user = null;
     
     // Tentar autenticar via header Authorization primeiro
@@ -157,7 +160,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (process.env.LAB_DEBUG_AUTH === "1") {
-      console.log("[LABAUTH][COURSE][POST]", { user: user?.id, hasToken: !!token });
+      console.log("[LABAUTH][COURSE][POST]", { user: user?.id, hasToken: !!token, hasBody: !!body });
     }
 
     if (!user) {
@@ -185,8 +188,27 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Sem permissão' }, { status: 403 });
     }
 
-    const body = await request.json();
-    const validatedData = createCourseSchema.parse(body);
+    // Validar o body que já foi lido no início da função
+    if (!body) {
+      return NextResponse.json({ error: 'Dados do curso não fornecidos' }, { status: 400 });
+    }
+    
+    // Validar dados com mensagens de erro mais amigáveis
+    let validatedData;
+    try {
+      validatedData = createCourseSchema.parse(body);
+    } catch (validationError: any) {
+      const errors = validationError.errors?.map((err: any) => 
+        `${err.path.join('.')}: ${err.message}`
+      ).join(', ') || validationError.message;
+      
+      console.error("[LABAUTH][COURSE][VALIDATION]", errors);
+      
+      return NextResponse.json({ 
+        error: 'Dados inválidos',
+        details: errors 
+      }, { status: 400 });
+    }
 
     // Verificar se slug já existe
     const { data: existingCourse } = await serviceRoleSupabase

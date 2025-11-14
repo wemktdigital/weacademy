@@ -22,6 +22,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 import { toast } from 'sonner'
+import { supabase } from '@/lib/supabase'
 import type { Agent } from '@/lib/validations/agent.schema'
 
 export default function TemplatesPage() {
@@ -33,6 +34,8 @@ export default function TemplatesPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [categoryFilter, setCategoryFilter] = useState<string>('all')
   const [providerFilter, setProviderFilter] = useState<string>('all')
+  const [availableCategories, setAvailableCategories] = useState<string[]>([])
+  const [availableProviders, setAvailableProviders] = useState<string[]>([])
 
   useEffect(() => {
     fetchTemplates()
@@ -41,6 +44,7 @@ export default function TemplatesPage() {
   const fetchTemplates = async () => {
     try {
       const params = new URLSearchParams()
+      params.append('limit', '1000') // Aumentar limite para carregar todos os templates
       if (categoryFilter !== 'all') params.append('category', categoryFilter)
       if (providerFilter !== 'all') params.append('provider', providerFilter)
 
@@ -48,6 +52,12 @@ export default function TemplatesPage() {
       if (!response.ok) throw new Error('Failed to fetch templates')
       const data = await response.json()
       setTemplates(data.templates || [])
+      
+      // Extrair categorias e provedores únicos dos templates
+      const categories = [...new Set(data.templates?.map((t: Agent) => t.category).filter(Boolean) || [])].sort()
+      const providers = [...new Set(data.templates?.map((t: Agent) => t.provider).filter(Boolean) || [])].sort()
+      setAvailableCategories(categories)
+      setAvailableProviders(providers)
     } catch (error) {
       console.error('Error fetching templates:', error)
       toast.error('Erro ao carregar templates')
@@ -122,20 +132,68 @@ export default function TemplatesPage() {
         return
       }
 
+      // Obter token de autenticação
+      const { data: sessionData } = await supabase.auth.getSession()
+      const token = sessionData?.session?.access_token
+
+      const headers: HeadersInit = {
+        'Content-Type': 'application/json',
+      }
+      
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`
+      }
+
       const response = await fetch('/api/lab-ia/admin/templates/import', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
+        credentials: 'include',
         body: JSON.stringify(data),
       })
 
-      if (!response.ok) throw new Error('Failed to import templates')
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Erro desconhecido' }))
+        console.error('Erro ao importar templates:', errorData)
+        throw new Error(errorData.error || 'Failed to import templates')
+      }
       
       const result = await response.json()
-      toast.success(result.message)
+      
+      // Log detalhado no console
+      console.log('[Templates] Resultado da importação:', result)
+      
+      // Mostrar detalhes dos resultados
+      const successCount = result.results?.filter((r: any) => r.success).length || 0
+      const failCount = result.results?.filter((r: any) => !r.success).length || 0
+      const totalCount = result.results?.length || 0
+      
+      console.log(`[Templates] Importação concluída: ${successCount} sucesso, ${failCount} falhas de ${totalCount} total`)
+      
+      if (failCount > 0) {
+        const failedTemplates = result.results
+          .filter((r: any) => !r.success)
+          .map((r: any) => `${r.name}: ${r.error}`)
+          .join(', ')
+        
+        console.warn('[Templates] Templates que falharam:', result.results.filter((r: any) => !r.success))
+        
+        toast.warning(
+          `Importados ${successCount}/${totalCount} templates. ${failCount} falharam. Veja o console para detalhes.`,
+          { duration: 10000 }
+        )
+      } else {
+        console.log('[Templates] ✅ Todos os templates foram importados com sucesso!')
+        const importedNames = result.results
+          ?.filter((r: any) => r.success)
+          .map((r: any) => r.name)
+          .slice(0, 5) // Mostrar primeiros 5 nomes
+        console.log('[Templates] Templates importados:', importedNames, totalCount > 5 ? `... e mais ${totalCount - 5}` : '')
+        toast.success(result.message || `✅ Importados ${successCount} templates com sucesso!`)
+      }
       fetchTemplates()
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error importing templates:', error)
-      toast.error('Erro ao importar templates')
+      toast.error(error.message || 'Erro ao importar templates')
     }
   }
 
@@ -155,8 +213,9 @@ export default function TemplatesPage() {
     )
   }
 
-  const categories = ['Educacional', 'Marketing Médico', 'Gestão Clínica', 'Pesquisa e IA Aplicada', 'Outros']
-  const providers = ['OpenAI', 'Google', 'Other']
+  // Usar categorias e provedores dinâmicos dos templates carregados
+  const categories = availableCategories.length > 0 ? availableCategories : []
+  const providers = availableProviders.length > 0 ? availableProviders : []
 
   return (
     <div className="min-h-screen bg-background p-8">
@@ -166,7 +225,7 @@ export default function TemplatesPage() {
           <div>
             <h1 className="text-3xl font-bold tracking-tight">📚 Biblioteca de Templates</h1>
             <p className="text-muted-foreground mt-1">
-              Templates prontos para criar agentes rapidamente
+              {templates.length} templates disponíveis para criar agentes rapidamente
             </p>
           </div>
           <div className="flex gap-2">

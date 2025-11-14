@@ -36,19 +36,17 @@ Este sprint implementa suporte a múltiplos provedores de LLM, permitindo que us
 | OpenAI | GPT-5 Nano | `OPENAI_API_KEY` |
 | Google | Gemini 2.5 Flash | `GEMINI_API_KEY` |
 
-### Preços (por 1000 tokens)
+### Preços (tabela centralizada)
+
+Mantemos todos os valores de referência no arquivo `src/modules/laboratorio-ia/config/pricing.ts`, em dólar por 1M tokens (ou custo equivalente quando o provedor cobra por execução).
 
 ```typescript
-const PRICING = {
-  'openai:gpt-5-nano': 0.0025,
-  'google:gemini-2.5-flash': 0.002,
-  
-  // Modelos futuros (comentados):
-  // 'openai:gpt-5-turbo': 5.0,
-  // 'openai:gpt-5-vision': 10.0,
-  // 'google:gemini-2.5-pro': 1.25,
-}
+import { MODEL_PRICING } from '@/modules/laboratorio-ia/config/pricing'
+
+const pricing = MODEL_PRICING['openai:gpt-4o-mini'] // { input: 0.15, output: 0.60 }
 ```
+
+> Observação: para modelos que cobram por execução (ex.: geração de vídeo no Replicate) normalizamos para a mesma estrutura `{ input, output }`, registrando comentários adicionais em `notes`.
 
 ## 🔧 Configuração
 

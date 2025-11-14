@@ -15,7 +15,7 @@ export const lessonSchema = z.object({
   description: z.string().optional(),
   type: z.enum(['video', 'text', 'pdf', 'quiz', 'audio']),
   content: z.string().optional(),
-  video_url: z.string().url().optional(),
+  video_url: z.string().url().optional().or(z.literal('')),
   video_provider: z.enum(['youtube', 'vimeo']).optional(),
   attachments: z.array(z.string()).optional(),
   duration_minutes: z.number().int().min(0).default(0),
@@ -27,33 +27,74 @@ export const lessonSchema = z.object({
 // Schema para criar curso completo
 export const createCourseSchema = z.object({
   // Informações básicas
-  title: z.string().min(3, 'Título deve ter no mínimo 3 caracteres'),
-  slug: z.string().regex(/^[a-z0-9-]+$/, 'Slug inválido (use apenas letras minúsculas, números e hífens)'),
-  description: z.string().min(50, 'Descrição deve ter no mínimo 50 caracteres'),
-  short_description: z.string().max(200, 'Descrição curta deve ter no máximo 200 caracteres'),
-  thumbnail_url: z.string().url().optional(),
+  title: z.string()
+    .min(3, 'Título deve ter no mínimo 3 caracteres')
+    .max(200, 'Título deve ter no máximo 200 caracteres'),
+  
+  slug: z.string()
+    .regex(/^[a-z0-9-]+$/, 'Slug inválido. Use apenas letras minúsculas, números e hífens')
+    .min(3, 'Slug deve ter no mínimo 3 caracteres')
+    .max(100, 'Slug deve ter no máximo 100 caracteres'),
+  
+  description: z.string()
+    .optional()
+    .refine((val) => {
+      // Aceitar undefined, string vazia OU string com no mínimo 50 caracteres
+      if (!val) return true
+      if (val === '') return true
+      return val.length >= 50
+    }, 'Descrição deve ter no mínimo 50 caracteres'),
+  
+  short_description: z.string()
+    .optional()
+    .refine((val) => !val || val.length <= 200, 'Descrição curta deve ter no máximo 200 caracteres'),
+  
+  thumbnail_url: z.string()
+    .optional()
+    .refine((val) => !val || val === '' || z.string().url().safeParse(val).success, 'URL da thumbnail inválida'),
   
   // Vídeo
-  video_url: z.string().url().optional(),
+  video_url: z.string()
+    .optional()
+    .refine((val) => !val || val === '' || z.string().url().safeParse(val).success, 'URL do vídeo inválida'),
+  
   video_provider: z.enum(['youtube', 'vimeo', 'custom']).optional(),
   
   // Preço e status
-  price: z.number().min(0, 'Preço não pode ser negativo').default(0),
+  price: z.number()
+    .min(0, 'Preço não pode ser negativo')
+    .max(100000, 'Preço muito alto')
+    .default(0),
+  
   is_free: z.boolean().default(false),
-  status: z.enum(['draft', 'published', 'archived']).default('draft'),
+  
+  status: z.enum(['draft', 'published', 'archived'])
+    .default('draft'),
   
   // Categoria e nível
-  category_id: z.string().uuid().nullable().optional(),
-  level: z.enum(['beginner', 'intermediate', 'advanced']).default('beginner'),
-  duration_hours: z.number().int().min(0).default(0),
+  category_id: z.string().uuid('ID de categoria inválido')
+    .nullable()
+    .optional(),
   
-  // Instrutor (opcional no create, será definido automaticamente)
-  instructor_id: z.string().uuid().optional(),
+  level: z.enum(['beginner', 'intermediate', 'advanced'])
+    .default('beginner'),
+  
+  duration_hours: z.number()
+    .int('Duração deve ser um número inteiro')
+    .min(0, 'Duração não pode ser negativa')
+    .max(1000, 'Duração muito alta')
+    .default(0),
+  
+  // Instrutor
+  instructor_id: z.string().uuid('ID de instrutor inválido')
+    .optional(),
   
   // Módulos e lições
   modules: z.array(moduleSchema.extend({
     lessons: z.array(lessonSchema)
-  })).min(1, 'Curso deve ter pelo menos 1 módulo'),
+  }))
+    .optional()
+    .default([]),
 })
 
 // Schema para atualizar curso

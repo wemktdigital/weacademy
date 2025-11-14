@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase'
+import { supabaseServer } from '@/lib/supabaseServer'
 import { pipelineSchema } from '@/lib/validations/pipeline.schema'
 import { z } from 'zod'
+import { createClient } from '@supabase/supabase-js'
 
 export async function GET(request: Request) {
   try {
-    const supabase = await createClient()
+    const supabase = await supabaseServer()
     
     // Buscar parâmetros
     const { searchParams } = new URL(request.url)
@@ -44,29 +45,72 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const supabase = await createClient()
-    
-    // Verificar autenticação
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
+    // Tentar autenticar via Authorization: Bearer <token>
+    const authHeader = request.headers.get('authorization')
+    const token = authHeader?.replace('Bearer ', '')
 
-    if (authError || !user) {
+    let user: any = null
+    let authError: any = null
+
+    console.log('[API][pipelines] POST - Token no header:', !!token)
+
+    if (token) {
+      const supabaseWithToken = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      )
+      const { data, error } = await supabaseWithToken.auth.getUser(token)
+      if (!error && data?.user) {
+        user = data.user
+        console.log('[API][pipelines] POST - Usuário autenticado via token:', user.id)
+      } else {
+        authError = error
+        console.log('[API][pipelines] POST - Erro ao autenticar via token:', error?.message)
+      }
+    }
+
+    // Fallback: autenticar via cookies (sessão do usuário)
+    if (!user) {
+      try {
+        const supabase = await supabaseServer()
+        const { data, error } = await supabase.auth.getUser()
+        if (!error && data?.user) {
+          user = data.user
+          console.log('[API][pipelines] POST - Usuário autenticado via cookies:', user.id)
+        } else {
+          authError = error
+          console.log('[API][pipelines] POST - Erro ao autenticar via cookies:', error?.message)
+        }
+      } catch (err) {
+        console.error('[API][pipelines] POST - Erro ao usar supabaseServer:', err)
+      }
+    }
+
+    if (!user) {
+      console.error('[API][pipelines] POST - Usuário não autenticado', { 
+        hasToken: !!token,
+        authError: authError?.message,
+        authErrorCode: authError?.code,
+      })
       return NextResponse.json(
-        { error: 'Unauthorized' },
+        { error: 'Unauthorized', details: authError?.message || 'Token inválido ou ausente', code: authError?.code },
         { status: 401 }
       )
     }
 
-    // Verificar se é admin
-    const { data: profile } = await supabase
+    // Verificar role com service role (bypass RLS)
+    const serviceRoleForProfile = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    )
+    const { data: profile } = await serviceRoleForProfile
       .from('profiles')
       .select('role')
       .eq('id', user.id)
       .single()
 
-    if (!profile || !['admin', 'gestor_we'].includes(profile.role)) {
+    // Permitir admin e gestores
+    if (!profile || !['admin', 'gestor_we', 'gestor'].includes(profile.role)) {
       return NextResponse.json(
         { error: 'Forbidden' },
         { status: 403 }
@@ -77,8 +121,13 @@ export async function POST(request: Request) {
     const body = await request.json()
     const validatedData = pipelineSchema.parse(body)
 
-    // Criar pipeline
-    const { data: pipeline, error } = await supabase
+    // Criar pipeline usando service role (bypass RLS após validar a role)
+    const serviceRoleSupabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    )
+
+    const { data: pipeline, error } = await serviceRoleSupabase
       .from('lab_agent_pipelines')
       .insert(validatedData)
       .select()
