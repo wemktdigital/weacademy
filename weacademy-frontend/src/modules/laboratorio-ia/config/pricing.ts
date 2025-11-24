@@ -57,6 +57,9 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
   'openai:o1-mini': { input: 1.10, output: 4.40 },
 
   // Google Gemini
+  // Gemini 3 Pro - Pricing varia baseado no número de tokens: $2/$12 (<200k) ou $4/$18 (>200k) por 1M tokens
+  'google:gemini-3-pro-preview-high': { input: 2.0, output: 12.0, notes: 'Pricing por 1M tokens: $2/$12 (<200k tokens) ou $4/$18 (>200k tokens). High thinking (padrão) - maximiza profundidade de raciocínio' },
+  'google:gemini-3-pro-preview-low': { input: 2.0, output: 12.0, notes: 'Pricing por 1M tokens: $2/$12 (<200k tokens) ou $4/$18 (>200k tokens). Low thinking - minimiza latência e custo para tarefas simples' },
   'google:gemini-2.5-pro': { input: 3.50, output: 10.50 },
   'google:gemini-2.5-flash': { input: 0.40, output: 1.20 },
   'google:gemini-2.5-flash-lite': { input: 0.03, output: 0.12 },
@@ -70,6 +73,7 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
   'google:veo-3.1-generate-preview': { input: 1.00, output: 1.00, notes: 'Cobrança por minuto gerado (aprox.)' },
   'google:veo-3.1-fast-generate-preview': { input: 0.50, output: 0.50, notes: 'Cobrança por minuto gerado (aprox.)' },
   'google:imagenes-2': { input: 1.00, output: 0.00, notes: 'Preço por geração de imagem' },
+  'google:lyria-realtime-exp': { input: 0.10, output: 0.00, notes: 'Cobrança por segundo de música gerada em tempo real. Modelo experimental. Geração de música instrumental via WebSocket streaming' },
 
   // DeepSeek (USD por 1M tokens)
   'deepseek:deepseek-chat': { input: 0.28, output: 1.12 },

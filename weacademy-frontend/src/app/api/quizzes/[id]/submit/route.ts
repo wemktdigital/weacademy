@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { trackQuizComplete } from '@/lib/analytics'
 
 // POST /api/quizzes/[id]/submit - Submeter quiz
 export async function POST(
@@ -118,6 +119,31 @@ export async function POST(
         p_answers: answers
       })
 
+    // Verificar achievements (trigger SQL já adicionou XP se passou)
+    if (passed) {
+      try {
+        await supabase.rpc('check_and_unlock_achievements', {
+          p_user_id: user.id,
+        })
+      } catch (error) {
+        // Ignorar erros de achievements para não bloquear a resposta do quiz
+        console.error('Error checking achievements:', error)
+      }
+    }
+
+    // Rastrear conclusão do quiz
+    try {
+      await trackQuizComplete(
+        params.id,
+        quiz.title || 'Quiz sem título',
+        scorePercentage,
+        passed
+      )
+    } catch (error) {
+      // Ignorar erros de tracking para não bloquear a resposta
+      console.warn('Error tracking quiz completion:', error)
+    }
+
     return NextResponse.json({
       attempt,
       score: scorePercentage,
@@ -125,6 +151,9 @@ export async function POST(
       earnedPoints,
       passed,
       passing_score: quiz.passing_score,
+      message: passed 
+        ? `Parabéns! Você passou no quiz e ganhou ${scorePercentage === 100 ? '75' : '50'} XP! 🎉`
+        : `Quiz finalizado. Tente novamente para passar e ganhar XP!`,
     })
   } catch (error: any) {
     return NextResponse.json(

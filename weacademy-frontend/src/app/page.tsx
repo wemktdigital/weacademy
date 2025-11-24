@@ -131,7 +131,7 @@ export default function HomePage() {
                     </div>
                   </div>
                   <div className="pt-4">
-                    <Button className="w-full dark:bg-sky-500 dark:text-slate-950 dark:hover:bg-sky-400">
+                    <Button className="w-full text-white dark:bg-sky-500 dark:text-white dark:hover:bg-sky-400">
                       Começar Agora
                     </Button>
                   </div>

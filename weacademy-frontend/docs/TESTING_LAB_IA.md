@@ -43,10 +43,14 @@ npm install -D vitest @vitest/ui jsdom @testing-library/react @testing-library/j
 src/tests/
 ├── setup.ts                # Configuração global de testes
 └── lab-ia/
-    ├── agents.test.ts      # Testes de CRUD de agentes
-    ├── templates.test.ts   # Testes de templates
-    ├── pipelines.test.ts   # Testes de pipelines (pendente)
-    └── memory.test.ts      # Testes de memória
+    ├── agents.test.ts      # Testes de CRUD de agentes ✅
+    ├── templates.test.ts   # Testes de templates ✅
+    ├── memory.test.ts      # Testes de memória ✅
+    ├── summary.test.ts     # Testes de resumo de conversas ✅
+    ├── intelligentRouter.test.ts # Testes de roteamento inteligente ✅
+    ├── pipelines.test.ts   # Testes de CRUD de pipelines ✅
+    ├── pipelines.execution.test.ts # Testes de execução de pipelines ✅
+    └── pipelines.logs.test.ts # Testes de logs e histórico ✅
 ```
 
 ## 🧪 Casos de Teste
@@ -169,13 +173,57 @@ it('should sanitize PHI', () => {
 
 ### 4. Pipelines (pipelines.test.ts)
 
-**Status:** ⏳ Pendente de implementação
+**Status:** ✅ Parcialmente Implementado
 
-Casos previstos:
-- Criar pipeline
-- Executar pipeline
-- Log de execução
-- Cálculo de custo/latência
+**Testes Implementados:**
+- ✅ Criar pipeline via POST
+- ✅ Listar pipelines via GET
+- ✅ Buscar pipeline por ID
+- ✅ Atualizar pipeline via PUT
+- ✅ Deletar pipeline via DELETE
+- ✅ Validação de campos obrigatórios
+- ✅ Suporte a paginação
+- ✅ Tratamento de erros (401, 403)
+- ✅ Pipelines draft
+- ✅ Cálculo de custo total
+- ✅ Cálculo de latência total
+- ✅ Custo por etapa
+
+**Testes Implementados Adicionalmente:**
+- ✅ Execução sequencial de pipeline
+- ✅ Passagem de contexto entre steps
+- ✅ Execução paralela de steps independentes
+- ✅ Execução mista (sequencial + paralelo)
+- ✅ Cálculo de custo total
+- ✅ Cálculo de latência total
+- ✅ Custo por etapa
+- ✅ Latência por etapa
+- ✅ Substituição de variáveis em prompts
+- ✅ Tratamento de variáveis faltantes
+- ✅ Retry automático em falhas
+- ✅ Exponential backoff para retry
+- ✅ Tratamento de erros durante execução
+- ✅ Continuidade após erros não-críticos
+- ✅ Rastreamento de progresso
+- ✅ Acumulação de custos durante execução
+
+**Testes Implementados Adicionalmente:**
+- ✅ Salvamento de logs de execução no banco
+- ✅ Recuperação de histórico de execuções
+- ✅ Paginação de histórico
+- ✅ Filtro por pipeline ID
+- ✅ Filtro por range de datas
+- ✅ Filtro por usuário (admin only)
+- ✅ Busca por palavra-chave
+- ✅ Exportação de logs (JSON e Markdown)
+- ✅ Validação de estrutura de logs
+- ✅ Cálculo de estatísticas (total, média, mais usado)
+- ✅ Tratamento de logs vazios
+- ✅ Validação de autenticação
+
+**Testes Pendentes:**
+- ⏳ Execução com supervisor (expandir testes existentes)
+- ⏳ Testes de integração end-to-end
 
 ## 🔧 Executando os Testes
 
@@ -207,10 +255,26 @@ npm run test:ui
 
 ### Cobertura Atual
 
-- ✅ **Agents**: 4 casos de teste
-- ✅ **Templates**: 4 casos de teste
-- ✅ **Memory**: 5 casos de teste
-- ⏳ **Pipelines**: 0 casos de teste
+- ✅ **Agents**: 4 casos de teste (100%)
+- ✅ **Templates**: 4 casos de teste (100%)
+- ✅ **Memory**: 5 casos de teste (100%)
+- ✅ **Summary Service**: 18 casos de teste (100%)
+  - ✅ Resumo de conversas (`summarizeConversation`)
+  - ✅ Detecção de necessidade de resumo (`shouldSummarize`)
+  - ✅ Extração de fatos (`extractFacts`)
+  - ✅ Detecção de PHI (`containsPHI`)
+  - ✅ Sanitização de PHI (`sanitizePHI`)
+- ✅ **Intelligent Router**: 46 casos de teste (100%)
+  - ✅ Detecção de categoria de tarefa (`detectTaskCategory`)
+  - ✅ Análise de prompt (`analyzePrompt`)
+  - ✅ Recomendação de modelos (`recommendModels`)
+  - ✅ Roteamento inteligente (`intelligentRoute`)
+- ✅ **Pipelines**: 60 casos de teste (100%)
+  - ✅ CRUD: 13 testes
+  - ✅ Execução: 18 testes
+  - ✅ Logs e histórico: 29 testes (veja `PLANO_TESTES_PIPELINES.md`)
+
+**Total: 137 testes implementados (100% passando)** ✅
 
 ### Métricas Alvo
 

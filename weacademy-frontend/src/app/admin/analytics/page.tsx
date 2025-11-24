@@ -44,7 +44,8 @@ interface EventsByDate {
 
 interface RecentEvent {
   id: string
-  user_email: string
+  user_id: string | null
+  user_email: string | null
   event_name: string
   created_at: string
 }
@@ -84,9 +85,16 @@ export default function AnalyticsPage() {
           limit_count: 10
         })
 
-      if (statsError) throw statsError
-
-      setEventStats(stats || [])
+      if (statsError) {
+        console.warn('Erro ao buscar estatísticas de eventos:', statsError)
+        // Se for erro de função não encontrada, sugerir aplicar migration
+        if (statsError.message?.includes('does not exist') || statsError.code === '42883') {
+          console.warn('Função SQL não encontrada. Aplique a migration 20241020000007_events.sql')
+        }
+        setEventStats([])
+      } else {
+        setEventStats(stats || [])
+      }
 
       // Buscar eventos por data
       const { data: byDate, error: byDateError } = await supabase
@@ -95,15 +103,18 @@ export default function AnalyticsPage() {
           end_date: null
         })
 
-      if (byDateError) throw byDateError
+      if (byDateError) {
+        console.warn('Erro ao buscar eventos por data:', byDateError)
+        setEventsByDate([])
+      } else {
+        // Formatar datas
+        const formattedByDate = (byDate || []).map(item => ({
+          date: new Date(item.date).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
+          event_count: Number(item.event_count)
+        })).reverse()
 
-      // Formatar datas
-      const formattedByDate = (byDate || []).map(item => ({
-        date: new Date(item.date).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
-        event_count: Number(item.event_count)
-      })).reverse()
-
-      setEventsByDate(formattedByDate)
+        setEventsByDate(formattedByDate)
+      }
 
       // Buscar eventos recentes
       const { data: recent, error: recentError } = await supabase
@@ -111,23 +122,28 @@ export default function AnalyticsPage() {
           limit_count: 20
         })
 
-      if (recentError) throw recentError
-
-      setRecentEvents((recent || []).map(e => ({
-        id: e.id,
-        user_email: e.user_email || 'Usuário Anônimo',
-        event_name: e.event_name,
-        created_at: e.created_at
-      })))
+      if (recentError) {
+        console.warn('Erro ao buscar eventos recentes:', recentError)
+        setRecentEvents([])
+      } else {
+        setRecentEvents((recent || []).map(e => ({
+          id: e.id,
+          user_id: e.user_id || null,
+          user_email: e.user_email || 'Usuário Anônimo',
+          event_name: e.event_name,
+          created_at: e.created_at
+        })))
+      }
 
       // Calcular totais
       const total = (stats || []).reduce((sum, stat) => sum + stat.event_count, 0)
-      const uniqueUsers = new Set((recent || []).map(e => e.user_id)).size
+      const uniqueUsers = new Set((recent || []).filter(e => e.user_id).map(e => e.user_id)).size
       
       setTotalEvents(total)
       setTotalUsers(uniqueUsers)
-    } catch (error) {
-      console.error('Erro ao carregar analytics:', error)
+    } catch (error: any) {
+      // Erros gerais - usar console.warn em vez de console.error
+      console.warn('Erro ao carregar analytics:', error?.message || error)
     } finally {
       setLoading(false)
     }
@@ -190,6 +206,28 @@ export default function AnalyticsPage() {
             </select>
           </div>
         </div>
+
+        {/* Error Message */}
+        {!loading && eventStats.length === 0 && eventsByDate.length === 0 && recentEvents.length === 0 && (
+          <Card className="border-yellow-500 bg-yellow-50 dark:bg-yellow-950">
+            <CardHeader>
+              <CardTitle className="text-yellow-900 dark:text-yellow-100 flex items-center space-x-2">
+                <AlertCircle className="h-5 w-5" />
+                <span>Dados não disponíveis</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-yellow-800 dark:text-yellow-200">
+                Não foi possível carregar os dados de analytics. Verifique se:
+              </p>
+              <ul className="list-disc list-inside mt-2 text-sm text-yellow-700 dark:text-yellow-300">
+                <li>A migration <code className="bg-yellow-100 dark:bg-yellow-900 px-1 rounded">20241020000007_events.sql</code> foi aplicada</li>
+                <li>As funções SQL <code className="bg-yellow-100 dark:bg-yellow-900 px-1 rounded">get_event_stats</code>, <code className="bg-yellow-100 dark:bg-yellow-900 px-1 rounded">get_events_by_date</code> e <code className="bg-yellow-100 dark:bg-yellow-900 px-1 rounded">get_recent_events</code> existem</li>
+                <li>Você tem permissões de admin para visualizar eventos</li>
+              </ul>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">

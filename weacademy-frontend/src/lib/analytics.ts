@@ -27,10 +27,13 @@ export async function trackEvent(
     })
 
     if (error) {
-      console.error('Erro ao rastrear evento:', error)
+      console.warn('Erro ao rastrear evento:', error)
+      return false
     }
+    return true
   } catch (error) {
-    console.error('Erro ao rastrear evento:', error)
+    console.warn('Erro ao rastrear evento:', error)
+    return false
   }
 }
 
@@ -117,5 +120,80 @@ export async function trackDownload(
   await trackEvent('download', {
     file_name: fileName,
     file_type: fileType
+  })
+}
+
+/**
+ * Rastreia início de aula
+ */
+export async function trackLessonStart(
+  courseId: string,
+  lessonId: string,
+  lessonName: string
+): Promise<boolean> {
+  return trackEvent('lesson_started', {
+    course_id: courseId,
+    lesson_id: lessonId,
+    lesson_name: lessonName
+  })
+}
+
+/**
+ * Rastreia conclusão de aula
+ */
+export async function trackLessonComplete(
+  courseId: string,
+  lessonId: string,
+  lessonName: string
+): Promise<boolean> {
+  return trackEvent('lesson_completed', {
+    course_id: courseId,
+    lesson_id: lessonId,
+    lesson_name: lessonName
+  })
+}
+
+/**
+ * Rastreia início de quiz
+ */
+export async function trackQuizStart(
+  quizId: string,
+  quizName: string
+): Promise<boolean> {
+  return trackEvent('quiz_started', {
+    quiz_id: quizId,
+    quiz_name: quizName
+  })
+}
+
+/**
+ * Rastreia conclusão de quiz
+ */
+export async function trackQuizComplete(
+  quizId: string,
+  quizName: string,
+  score: number,
+  passed: boolean
+): Promise<boolean> {
+  return trackEvent('quiz_completed', {
+    quiz_id: quizId,
+    quiz_name: quizName,
+    score,
+    passed
+  })
+}
+
+/**
+ * Rastreia uso do Laboratório de IA
+ */
+export async function trackAILabUsage(
+  action: string,
+  agentId?: string,
+  metadata?: EventMetadata
+): Promise<boolean> {
+  return trackEvent('ai_lab_usage', {
+    action,
+    agent_id: agentId,
+    ...metadata
   })
 }

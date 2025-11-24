@@ -107,7 +107,7 @@ export async function PUT(
       .eq('id', user.id)
       .single()
 
-    if (!['admin', 'gestor_we', 'instructor'].includes(profile?.role)) {
+    if (!['admin', 'instructor'].includes(profile?.role)) {
       return NextResponse.json({ error: 'Sem permissão' }, { status: 403 })
     }
 
@@ -269,7 +269,7 @@ export async function DELETE(
       .eq('id', user.id)
       .single()
 
-    if (!['admin', 'gestor_we'].includes(profile?.role)) {
+    if (profile?.role !== 'admin') {
       return NextResponse.json({ error: 'Somente admin pode deletar cursos' }, { status: 403 })
     }
 

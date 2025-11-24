@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { 
@@ -19,8 +20,6 @@ import {
   LogOut,
   Menu,
   Search,
-  Heart,
-  ShoppingCart,
   Shield,
   LogIn,
   BarChart3,
@@ -28,13 +27,18 @@ import {
   Plus,
   Sparkles,
   ClipboardList,
+  Trophy,
+  Award,
 } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { SimpleThemeToggle } from '@/components/theme-toggle'
 import { Notifications } from '@/components/notifications'
+import { useGamification } from '@/hooks/useGamification'
+import { PointsDisplay, LevelBadge, StreakDisplay } from '@/components/gamification'
 
 export default function Header() {
   const { user, loading, signOut, isAdmin } = useAuth()
+  const { stats } = useGamification()
 
   const handleSignOut = async () => {
     await signOut()
@@ -59,18 +63,9 @@ export default function Header() {
           <Link href="/courses" className="text-sm font-medium hover:text-primary transition-colors">
             Cursos
           </Link>
-          <Link href="/specialties" className="text-sm font-medium hover:text-primary transition-colors">
-            Especialidades
-          </Link>
-          <Link href="/instructors" className="text-sm font-medium hover:text-primary transition-colors">
-            Instrutores
-          </Link>
-          <Link href="/community" className="text-sm font-medium hover:text-primary transition-colors">
-            Comunidade
-          </Link>
           <Link href="/ai-lab" className="text-sm font-medium hover:text-primary transition-colors flex items-center space-x-1">
             <Sparkles className="h-4 w-4" />
-            <span>Laboratório da IA</span>
+            <span>Laboratório de IA</span>
           </Link>
           {/* Mostrar link Admin apenas para admins */}
           {isAdmin && (
@@ -84,11 +79,11 @@ export default function Header() {
         {/* Search Bar */}
         <div className="hidden md:flex items-center space-x-2 flex-1 max-w-md mx-8">
           <div className="relative w-full">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <input
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none z-10" />
+            <Input
               type="text"
               placeholder="Buscar cursos..."
-              className="w-full pl-10 pr-4 py-2 border border-input rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent"
+              className="w-full pl-10"
             />
           </div>
         </div>
@@ -102,24 +97,32 @@ export default function Header() {
             <div className="h-8 w-8 rounded-full bg-muted animate-pulse"></div>
           ) : user ? (
             <>
+              {/* Gamification Indicators */}
+              {stats && (
+                <div className="hidden lg:flex items-center gap-3 px-3 py-1.5 rounded-lg border bg-muted/50">
+                  <Link href="/profile/dashboard" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
+                    <PointsDisplay 
+                      points={stats.total_xp} 
+                      showIcon 
+                      size="sm" 
+                      variant="compact"
+                    />
+                    <LevelBadge 
+                      level={stats.current_level} 
+                      size="sm" 
+                      showIcon
+                    />
+                    <StreakDisplay 
+                      currentStreak={stats.current_streak} 
+                      size="sm" 
+                      variant="compact"
+                    />
+                  </Link>
+                </div>
+              )}
+              
               {/* Notifications */}
               <Notifications />
-
-              {/* Wishlist - apenas para usuários logados */}
-              <Button variant="ghost" size="icon" className="relative">
-                <Heart className="h-5 w-5" />
-                <Badge variant="destructive" className="absolute -top-1 -right-1 h-5 w-5 p-0 text-xs">
-                  3
-                </Badge>
-              </Button>
-
-              {/* Cart - apenas para usuários logados */}
-              <Button variant="ghost" size="icon" className="relative">
-                <ShoppingCart className="h-5 w-5" />
-                <Badge variant="destructive" className="absolute -top-1 -right-1 h-5 w-5 p-0 text-xs">
-                  2
-                </Badge>
-              </Button>
 
               {/* User Menu */}
               <DropdownMenu>
@@ -156,6 +159,24 @@ export default function Header() {
                     <Link href="/settings" className="flex items-center">
                       <User className="mr-2 h-4 w-4" />
                       <span>Perfil & Configurações</span>
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href="/profile/dashboard" className="flex items-center">
+                      <Trophy className="mr-2 h-4 w-4" />
+                      <span>Meu Dashboard</span>
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href="/profile/badges" className="flex items-center">
+                      <Award className="mr-2 h-4 w-4" />
+                      <span>Meus Badges</span>
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href="/leaderboard" className="flex items-center">
+                      <BarChart3 className="mr-2 h-4 w-4" />
+                      <span>Ranking</span>
                     </Link>
                   </DropdownMenuItem>
                   {/* Seção Admin */}

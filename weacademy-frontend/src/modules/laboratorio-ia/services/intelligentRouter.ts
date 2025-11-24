@@ -15,6 +15,7 @@ export type TaskCategory =
   | 'image-editing'      // Edição de imagens
   | 'audio-analysis'     // Análise de áudio
   | 'audio-transcription' // Transcrição de áudio
+  | 'music-generation'   // Geração de música
   | 'video-analysis'     // Análise de vídeo
   | 'video-generation'   // Geração de vídeo
   | 'multi-modal'        // Múltiplas mídias
@@ -62,23 +63,27 @@ const TASK_MODEL_MATRIX: Record<TaskCategory, ModelRecommendation[]> = {
   ],
   'text-generation': [
     { provider: 'OpenAI', model: 'gpt-5.1', score: 98, reason: 'Melhor criatividade e qualidade' },
+    { provider: 'Google', model: 'gemini-3-pro-preview-high', score: 97, reason: 'Melhor modelo Google, raciocínio avançado' },
     { provider: 'OpenAI', model: 'gpt-4o', score: 95, reason: 'Excelente criatividade' },
     { provider: 'Google', model: 'gemini-2.5-pro', score: 90, reason: 'Excelente geração' },
     { provider: 'OpenAI', model: 'gpt-4o-mini', score: 80, reason: 'Boa qualidade, menor custo' },
   ],
   'code-generation': [
     { provider: 'OpenAI', model: 'gpt-5.1', score: 98, reason: 'Melhor para código e raciocínio' },
+    { provider: 'Google', model: 'gemini-3-pro-preview-high', score: 97, reason: 'Melhor modelo Google, excelente para código e raciocínio avançado' },
     { provider: 'OpenAI', model: 'gpt-4o', score: 95, reason: 'Excelente para código' },
     { provider: 'DeepSeek', model: 'deepseek-chat', score: 90, reason: 'Especializado em código' },
     { provider: 'Google', model: 'gemini-2.5-pro', score: 85, reason: 'Boas capacidades de código' },
   ],
   'code-analysis': [
     { provider: 'OpenAI', model: 'gpt-5.1', score: 98, reason: 'Melhor análise de código e raciocínio' },
+    { provider: 'Google', model: 'gemini-3-pro-preview-high', score: 97, reason: 'Melhor modelo Google, raciocínio profundo para análise de código' },
     { provider: 'OpenAI', model: 'gpt-4o', score: 95, reason: 'Excelente análise de código' },
     { provider: 'DeepSeek', model: 'deepseek-reasoner', score: 92, reason: 'Raciocínio profundo' },
     { provider: 'Google', model: 'gemini-2.5-pro', score: 85, reason: 'Análise detalhada' },
   ],
   'image-analysis': [
+    { provider: 'Google', model: 'gemini-3-pro-preview-high', score: 99, reason: 'Melhor modelo Google, análise multimodal avançada' },
     { provider: 'Google', model: 'gemini-2.5-pro', score: 98, reason: 'Melhor análise multimodal' },
     { provider: 'OpenAI', model: 'gpt-5.1', score: 97, reason: 'Excelente visão e análise' },
     { provider: 'OpenAI', model: 'gpt-4o', score: 95, reason: 'Excelente visão' },
@@ -94,6 +99,9 @@ const TASK_MODEL_MATRIX: Record<TaskCategory, ModelRecommendation[]> = {
     { provider: 'OpenAI', model: 'gpt-4o-mini-transcribe', score: 98, reason: 'Especializado em transcrição de áudio' },
     { provider: 'Google', model: 'gemini-2.5-pro', score: 90, reason: 'Boa transcrição multimodal' },
     { provider: 'Google', model: 'gemini-2.5-flash', score: 85, reason: 'Transcrição rápida' },
+  ],
+  'music-generation': [
+    { provider: 'Google', model: 'lyria-realtime-exp', score: 100, reason: 'Modelo especializado em geração de música instrumental em tempo real via WebSocket' },
   ],
   'video-analysis': [
     { provider: 'Google', model: 'gemini-2.5-pro', score: 98, reason: 'Melhor análise de vídeo' },
@@ -135,7 +143,8 @@ const TASK_MODEL_MATRIX: Record<TaskCategory, ModelRecommendation[]> = {
     { provider: 'Anthropic', model: 'claude-3-5-sonnet-20241022', score: 88, reason: 'Análise detalhada' },
   ],
   'reasoning': [
-    { provider: 'OpenAI', model: 'gpt-5.1', score: 97, reason: 'Melhor raciocínio e análise' },
+    { provider: 'OpenAI', model: 'gpt-5.1', score: 100, reason: 'Melhor raciocínio e capacidade de pensamento' },
+    { provider: 'Google', model: 'gemini-3-pro-preview-high', score: 99, reason: 'Melhor modelo Google, raciocínio avançado com thinking_level high' },
     { provider: 'DeepSeek', model: 'deepseek-reasoner', score: 95, reason: 'Especializado em raciocínio' },
     { provider: 'Anthropic', model: 'claude-3-5-sonnet-20241022', score: 92, reason: 'Raciocínio profundo' },
     { provider: 'OpenAI', model: 'gpt-4o', score: 90, reason: 'Boa capacidade de raciocínio' },
@@ -278,6 +287,13 @@ export function analyzePrompt(prompt: string, messages: Array<{ role: string; co
   } else if (allContent.includes('logo') || allContent.includes('design gráfico') || allContent.includes('graphic design') || allContent.includes('tipografia') || allContent.includes('typography') || allContent.includes('marca') || allContent.includes('branding') || allContent.includes('publicidade') || allContent.includes('advertising') || allContent.includes('marketing') || allContent.includes('texto na imagem') || allContent.includes('text in image')) {
     // Casos específicos de design gráfico - Ideogram é ideal
     category = 'image-generation'
+  } else if (allContent.includes('gerar música') || allContent.includes('criar música') || allContent.includes('generate music') || allContent.includes('create music') || 
+             allContent.includes('compor') || allContent.includes('compose') || allContent.includes('música') || allContent.includes('music') ||
+             allContent.includes('lyria') || allContent.includes('realtime') || allContent.includes('bpm') ||
+             allContent.includes('techno') || allContent.includes('jazz') || allContent.includes('rock') || 
+             allContent.includes('instrumental') || allContent.includes('melodia') || allContent.includes('melody') ||
+             allContent.includes('beat') || allContent.includes('ritmo') || allContent.includes('rhythm')) {
+    category = 'music-generation'
   } else if (allContent.includes('gerar vídeo') || allContent.includes('criar vídeo') || allContent.includes('generate video') || allContent.includes('create video') || allContent.includes('sora')) {
     category = 'video-generation'
   } else if (allContent.includes('código') || allContent.includes('code') || allContent.includes('programar')) {

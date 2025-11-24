@@ -27,22 +27,88 @@ interface ChatModelSelectorProps {
   provider: string
   model: string
   onChange: (provider: string, model: string) => void
+  filterCompatibleWith?: { provider: string; model: string }
 }
 
-export function ChatModelSelector({ provider, model, onChange }: ChatModelSelectorProps) {
+// Função para verificar compatibilidade entre modelos
+function areModelsCompatible(
+  modelA: { provider: string; model: string },
+  modelB: { provider: string; model: string }
+): boolean {
+  const modelAData = MODELS.find(
+    m => m.provider === modelA.provider && m.model === modelA.model
+  )
+  const modelBData = MODELS.find(
+    m => m.provider === modelB.provider && m.model === modelB.model
+  )
+
+  // Se algum modelo não for encontrado ou não tiver capacidades definidas, permitir
+  if (!modelAData?.capabilities || !modelBData?.capabilities) {
+    return true
+  }
+
+  const capA = modelAData.capabilities!
+  const capB = modelBData.capabilities!
+
+  // Verificar compatibilidade de input: devem ter pelo menos um tipo de input em comum
+  const compatibleInput = capA.input.some(input => capB.input.includes(input))
+  
+  // Verificar compatibilidade de output: devem ter pelo menos um tipo de output em comum
+  const compatibleOutput = capA.output.some(output => capB.output.includes(output))
+
+  return compatibleInput && compatibleOutput
+}
+
+export function ChatModelSelector({ 
+  provider, 
+  model, 
+  onChange,
+  filterCompatibleWith 
+}: ChatModelSelectorProps) {
   const { toast } = useToast()
   const [open, setOpen] = useState(false)
 
-  // Encontrar o modelo atual
-  const currentModel = MODELS.find(
-    m => m.provider === provider && m.model === model
-  ) || MODELS[0]
+  // Filtrar modelos se filterCompatibleWith for fornecido
+  const availableModels = filterCompatibleWith
+    ? MODELS.filter(m => {
+        // Não filtrar o próprio modelo de referência
+        if (m.provider === filterCompatibleWith.provider && m.model === filterCompatibleWith.model) {
+          return false
+        }
+        return areModelsCompatible(
+          filterCompatibleWith,
+          { provider: m.provider, model: m.model }
+        )
+      })
+    : MODELS
 
-  // Agrupar modelos por provider
+  // Encontrar o modelo atual
+  let currentModel = availableModels.find(
+    m => m.provider === provider && m.model === model
+  )
+  
+  // Se o modelo atual não está na lista filtrada e há filtro ativo, usar o primeiro disponível
+  if (!currentModel && filterCompatibleWith && availableModels.length > 0) {
+    currentModel = availableModels[0]
+    // Notificar mudança se necessário
+    if (currentModel.provider !== provider || currentModel.model !== model) {
+      // Usar setTimeout para evitar atualização durante renderização
+      setTimeout(() => {
+        onChange(currentModel!.provider, currentModel!.model)
+      }, 0)
+    }
+  }
+  
+  // Fallback para o primeiro modelo disponível se ainda não encontrou
+  if (!currentModel) {
+    currentModel = availableModels[0] || MODELS[0]
+  }
+
+  // Agrupar modelos por provider (usando modelos filtrados)
   const modelsByProvider = PROVIDERS.map(providerObj => ({
     provider: providerObj.value,
     providerLabel: providerObj.label,
-    models: MODELS.filter(m => m.provider === providerObj.value)
+    models: availableModels.filter(m => m.provider === providerObj.value)
   })).filter(group => group.models.length > 0)
 
   const handleSelect = (newProvider: string, newModel: string) => {

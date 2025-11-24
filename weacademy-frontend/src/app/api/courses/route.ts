@@ -181,7 +181,7 @@ export async function POST(request: NextRequest) {
 
     const role = profile?.role;
 
-    if (!['admin', 'gestor_we', 'instructor'].includes(role)) {
+    if (!['admin', 'instructor'].includes(role)) {
       if (process.env.LAB_DEBUG_AUTH === "1") {
         console.log("[LABAUTH][COURSE][POST] Forbidden role:", role);
       }

@@ -2,7 +2,8 @@
 
 import { useState, useRef, KeyboardEvent, DragEvent, ClipboardEvent, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
-import { Send, Loader2, Image as ImageIcon, X, File, Video, Mic } from 'lucide-react'
+import { Send, Loader2, Image as ImageIcon, X, File, Video, Mic, FileText, Paperclip } from 'lucide-react'
+import { Progress } from '@/components/ui/progress'
 import { useToast } from '@/hooks/use-toast'
 import { supabase } from '@/lib/supabase'
 import { AVAILABLE_MODELS } from '@/modules/laboratorio-ia/config/models'
@@ -10,10 +11,13 @@ import Image from 'next/image'
 
 export interface Attachment {
   url: string
-  type: 'image' | 'video' | 'audio'
+  type: 'image' | 'video' | 'audio' | 'document'
   name: string
   size: number
+  mimeType?: string // Tipo MIME do arquivo (ex: 'application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')
   previewUrl?: string // URL local para preview antes do upload
+  uploading?: boolean // Indica se o arquivo está sendo enviado
+  uploadProgress?: number // Progresso do upload em percentual (0-100)
 }
 
 interface ChatInputProps {
@@ -23,6 +27,7 @@ interface ChatInputProps {
   provider?: string
   model?: string
   onTextChange?: (text: string) => void  // Callback para quando texto muda (para buscar recomendações)
+  onModelChange?: (provider: string, model: string) => void  // Callback para mudança automática de modelo
 }
 
 export function ChatInput({ 
@@ -32,6 +37,7 @@ export function ChatInput({
   provider = 'OpenAI',
   model = 'gpt-5-nano',
   onTextChange,
+  onModelChange,
 }: ChatInputProps) {
   const { toast } = useToast()
   const [message, setMessage] = useState('')
@@ -48,6 +54,61 @@ export function ChatInput({
   const modelSupportsImage = currentModel?.capabilities?.input.includes('image') ?? false
   const modelSupportsVideo = currentModel?.capabilities?.input.includes('video') ?? false
   const modelSupportsAudio = currentModel?.capabilities?.input.includes('audio') ?? false
+  const modelSupportsText = currentModel?.capabilities?.input.includes('text') ?? true // Texto é suportado por padrão
+
+  // Função para encontrar modelo compatível com o tipo de arquivo
+  const findCompatibleModel = (fileType: 'image' | 'video' | 'audio' | 'document'): { provider: string; model: string } | null => {
+    // Para documentos (PDF, Word, Excel, etc.), usar modelos que suportam texto
+    // Preferir modelos que também suportam imagem (melhor para PDFs)
+    if (fileType === 'document') {
+      // Primeiro tentar encontrar modelo que suporta texto E imagem (melhor para PDFs)
+      let compatibleModel = AVAILABLE_MODELS.find(m => 
+        m.capabilities?.input.includes('text') && m.capabilities?.input.includes('image')
+      )
+      // Se não encontrar, usar qualquer modelo que suporta texto
+      if (!compatibleModel) {
+        compatibleModel = AVAILABLE_MODELS.find(m => 
+          m.capabilities?.input.includes('text')
+        )
+      }
+      return compatibleModel ? { provider: compatibleModel.provider, model: compatibleModel.model } : null
+    }
+    
+    // Para outros tipos, encontrar modelo que suporta o tipo específico
+    // Priorizar modelos mais adequados para cada tipo
+    let compatibleModel = null
+    
+    if (fileType === 'image') {
+      // Para imagens, preferir modelos que suportam texto E imagem (multimodal)
+      compatibleModel = AVAILABLE_MODELS.find(m => 
+        m.capabilities?.input.includes('image') && m.capabilities?.input.includes('text')
+      )
+      // Se não encontrar multimodal, usar qualquer que suporte imagem
+      if (!compatibleModel) {
+        compatibleModel = AVAILABLE_MODELS.find(m => 
+          m.capabilities?.input.includes('image')
+        )
+      }
+    } else if (fileType === 'video') {
+      // Para vídeos, procurar modelos que suportam vídeo
+      compatibleModel = AVAILABLE_MODELS.find(m => 
+        m.capabilities?.input.includes('video')
+      )
+    } else if (fileType === 'audio') {
+      // Para áudio, procurar modelos especializados em transcrição primeiro
+      compatibleModel = AVAILABLE_MODELS.find(m => 
+        m.model.includes('transcribe') || m.model.includes('transcription')
+      )
+      // Se não encontrar especializado, usar qualquer que suporte áudio
+      if (!compatibleModel) {
+        compatibleModel = AVAILABLE_MODELS.find(m => 
+          m.capabilities?.input.includes('audio')
+        )
+      }
+    }
+    
+    return compatibleModel ? { provider: compatibleModel.provider, model: compatibleModel.model } : null
+  }
 
   // Limpar previews locais ao desmontar componente
   useEffect(() => {
@@ -66,43 +127,124 @@ export function ChatInput({
     const fileArray = Array.from(files)
     const validFiles: File[] = []
     const tempAttachments: Attachment[] = []
+    const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50 MB
+
+    // Tipos MIME permitidos
+    const documentMimeTypes = [
+      'application/pdf',
+      'application/msword', // .doc
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx
+      'application/vnd.ms-excel', // .xls
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // .xlsx
+      'application/vnd.ms-powerpoint', // .ppt
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation', // .pptx
+      'text/plain', // .txt
+      'text/csv', // .csv
+      'application/rtf', // .rtf
+    ]
 
     // Validar arquivos e criar previews locais
     for (const file of fileArray) {
-      const fileType = file.type.startsWith('image/') 
-        ? 'image' 
-        : file.type.startsWith('video/')
-        ? 'video'
-        : file.type.startsWith('audio/')
-        ? 'audio'
-        : null
+      // Validar tamanho
+      if (file.size > MAX_FILE_SIZE) {
+        toast({
+          title: 'Arquivo muito grande',
+          description: `${file.name} excede o limite de 50 MB. Tamanho: ${(file.size / (1024 * 1024)).toFixed(2)} MB`,
+          variant: 'destructive',
+        })
+        continue
+      }
+
+      // Determinar tipo de arquivo
+      let fileType: 'image' | 'video' | 'audio' | 'document' | null = null
+      
+      if (file.type.startsWith('image/')) {
+        fileType = 'image'
+      } else if (file.type.startsWith('video/')) {
+        fileType = 'video'
+      } else if (file.type.startsWith('audio/')) {
+        fileType = 'audio'
+      } else if (documentMimeTypes.includes(file.type) || file.name.match(/\.(pdf|doc|docx|xls|xlsx|ppt|pptx|txt|csv|rtf)$/i)) {
+        fileType = 'document'
+      }
 
       if (!fileType) {
         toast({
           title: 'Arquivo não suportado',
-          description: `${file.name} não é uma imagem, vídeo ou áudio válido.`,
+          description: `${file.name} não é um tipo de arquivo suportado. Tipos permitidos: imagens, PDFs, documentos Word/Excel/PowerPoint, áudios e vídeos.`,
           variant: 'destructive',
         })
         continue
       }
 
-      // Verificar se o modelo suporta este tipo
-      if (
-        (fileType === 'image' && !modelSupportsImage) ||
-        (fileType === 'video' && !modelSupportsVideo) ||
-        (fileType === 'audio' && !modelSupportsAudio)
-      ) {
+      // Sempre encontrar o modelo mais adequado para o tipo de arquivo
+      const compatibleModel = findCompatibleModel(fileType)
+      
+      console.log('[ChatInput] Arquivo detectado:', {
+        fileName: file.name,
+        fileType,
+        currentModel: `${provider}:${model}`,
+        compatibleModel: compatibleModel ? `${compatibleModel.provider}:${compatibleModel.model}` : null,
+      })
+      
+      if (!compatibleModel) {
         toast({
-          title: 'Modelo não suporta este tipo',
-          description: `${currentModel?.displayName || 'Este modelo'} não aceita ${fileType === 'image' ? 'imagens' : fileType === 'video' ? 'vídeos' : 'áudio'}.`,
+          title: 'Tipo não suportado',
+          description: `Nenhum modelo disponível suporta ${fileType === 'image' ? 'imagens' : fileType === 'video' ? 'vídeos' : fileType === 'audio' ? 'áudio' : 'documentos'}.`,
           variant: 'destructive',
         })
         continue
+      }
+
+      // Verificar se o modelo atual suporta este tipo
+      const currentModelSupports = 
+        (fileType === 'image' && modelSupportsImage) ||
+        (fileType === 'video' && modelSupportsVideo) ||
+        (fileType === 'audio' && modelSupportsAudio) ||
+        (fileType === 'document' && modelSupportsText)
+
+      // Verificar se precisa mudar (se o modelo atual não suporta OU se encontramos um modelo melhor)
+      const needsModelChange = !currentModelSupports || 
+        (compatibleModel.provider !== provider || compatibleModel.model !== model)
+
+      console.log('[ChatInput] Verificação de mudança de modelo:', {
+        currentModelSupports,
+        needsModelChange,
+        currentProvider: provider,
+        currentModel: model,
+        compatibleProvider: compatibleModel.provider,
+        compatibleModel: compatibleModel.model,
+        onModelChangeAvailable: !!onModelChange,
+      })
+
+      // Se precisa mudar modelo, fazer isso antes de continuar
+      if (needsModelChange && compatibleModel && onModelChange) {
+        const modelDisplayName = AVAILABLE_MODELS.find(
+          m => m.provider === compatibleModel.provider && m.model === compatibleModel.model
+        )?.displayName || compatibleModel.model
+        
+        console.log('[ChatInput] Mudando modelo para:', {
+          provider: compatibleModel.provider,
+          model: compatibleModel.model,
+          displayName: modelDisplayName,
+        })
+        
+        onModelChange(compatibleModel.provider, compatibleModel.model)
+        
+        const fileTypeLabel = fileType === 'image' ? 'imagens' 
+          : fileType === 'video' ? 'vídeos' 
+          : fileType === 'audio' ? 'áudio' 
+          : 'documentos'
+        
+        toast({
+          title: 'Modelo alterado automaticamente',
+          description: `Mudando para ${compatibleModel.provider} - ${modelDisplayName} para processar ${fileTypeLabel}.`,
+        })
       }
 
       validFiles.push(file)
       
-      // Criar preview local imediatamente
+      // Criar preview local imediatamente (apenas para imagens)
       const previewUrl = fileType === 'image' ? URL.createObjectURL(file) : undefined
       
       tempAttachments.push({
@@ -110,7 +252,9 @@ export function ChatInput({
         type: fileType,
         name: file.name,
         size: file.size,
+        mimeType: file.type,
         previewUrl,
+        uploading: true, // Marcar como sendo enviado
       })
     }
 
@@ -138,20 +282,49 @@ export function ChatInput({
         const formDataObj = new FormData()
         formDataObj.append('file', file)
 
-        const response = await fetch('/api/lab-ia/chat/upload', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-          },
-          body: formDataObj,
+        // Atualizar progresso durante upload
+        const xhr = new XMLHttpRequest()
+        
+        // Criar Promise para upload com progresso
+        const uploadPromise = new Promise<{ url: string; name: string; size: number }>((resolve, reject) => {
+          xhr.upload.addEventListener('progress', (e) => {
+            if (e.lengthComputable) {
+              const progress = Math.round((e.loaded / e.total) * 100)
+              // Atualizar progresso do anexo específico
+              setAttachments((prev) => {
+                const newAttachments = [...prev]
+                const attachmentIndex = newAttachments.findIndex(a => a.name === tempAttachment.name && a.uploading)
+                if (attachmentIndex !== -1) {
+                  newAttachments[attachmentIndex] = {
+                    ...newAttachments[attachmentIndex],
+                    uploadProgress: progress,
+                  }
+                }
+                return newAttachments
+              })
+            }
+          })
+
+          xhr.addEventListener('load', () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
+              const result = JSON.parse(xhr.responseText)
+              resolve(result)
+            } else {
+              const error = JSON.parse(xhr.responseText)
+              reject(new Error(error.error || 'Erro ao fazer upload'))
+            }
+          })
+
+          xhr.addEventListener('error', () => {
+            reject(new Error('Erro ao fazer upload'))
+          })
+
+          xhr.open('POST', '/api/lab-ia/chat/upload')
+          xhr.setRequestHeader('Authorization', `Bearer ${token}`)
+          xhr.send(formDataObj)
         })
 
-        if (!response.ok) {
-          const error = await response.json()
-          throw new Error(error.error || 'Erro ao fazer upload')
-        }
-
-        const result = await response.json()
+        const result = await uploadPromise
         
         // Limpar preview local
         if (tempAttachment.previewUrl) {
@@ -163,16 +336,23 @@ export function ChatInput({
           type: tempAttachment.type,
           name: result.name || file.name,
           size: result.size || file.size,
+          mimeType: file.type,
+          uploading: false, // Upload concluído
+          uploadProgress: 100,
         })
       }
 
       // Substituir previews temporários pelas URLs reais
       setAttachments((prev) => {
         const newAttachments = [...prev]
-        // Remover os temporários
-        const withoutTemp = newAttachments.slice(0, -tempAttachments.length)
-        // Adicionar os uploadados
-        return [...withoutTemp, ...uploadedAttachments]
+        // Atualizar os anexos que foram enviados
+        uploadedAttachments.forEach((uploaded, idx) => {
+          const tempIndex = newAttachments.length - tempAttachments.length + idx
+          if (tempIndex >= 0 && tempIndex < newAttachments.length) {
+            newAttachments[tempIndex] = uploaded
+          }
+        })
+        return newAttachments
       })
       
       toast({
@@ -213,12 +393,22 @@ export function ChatInput({
         e.preventDefault()
         
         if (!modelSupportsImage) {
-          toast({
-            title: 'Modelo não suporta imagens',
-            description: `${currentModel?.displayName || 'Este modelo'} não aceita imagens.`,
-            variant: 'destructive',
-          })
-          return
+          // Tentar encontrar modelo compatível
+          const compatibleModel = findCompatibleModel('image')
+          if (compatibleModel && onModelChange) {
+            onModelChange(compatibleModel.provider, compatibleModel.model)
+            toast({
+              title: 'Modelo alterado automaticamente',
+              description: `Mudando para ${compatibleModel.provider} - ${AVAILABLE_MODELS.find(m => m.provider === compatibleModel.provider && m.model === compatibleModel.model)?.displayName || compatibleModel.model} para processar imagens.`,
+            })
+          } else {
+            toast({
+              title: 'Modelo não suporta imagens',
+              description: `${currentModel?.displayName || 'Este modelo'} não aceita imagens.`,
+              variant: 'destructive',
+            })
+            return
+          }
         }
 
         const file = item.getAsFile()
@@ -231,7 +421,9 @@ export function ChatInput({
           type: 'image',
           name: file.name || 'imagem.png',
           size: file.size,
+          mimeType: file.type,
           previewUrl,
+          uploading: true, // Marcar como sendo enviado
         }
 
         // Adicionar preview temporário
@@ -281,6 +473,8 @@ export function ChatInput({
                 type: 'image',
                 name: result.name || file.name,
                 size: result.size || file.size,
+                mimeType: file.type,
+                uploading: false, // Upload concluído
               }
             }
             return newAttachments
@@ -296,7 +490,7 @@ export function ChatInput({
           // Remover preview temporário em caso de erro
           setAttachments((prev) => {
             URL.revokeObjectURL(previewUrl)
-            return prev.filter(a => a.previewUrl !== previewUrl)
+            return prev.filter(a => a.previewUrl !== previewUrl || a.uploading)
           })
           
           toast({
@@ -374,8 +568,29 @@ export function ChatInput({
             {attachments.map((attachment, index) => (
               <div
                 key={index}
-                className="relative group border rounded-lg overflow-hidden bg-muted/50"
+                className={cn(
+                  "relative group border rounded-lg overflow-hidden bg-muted/50 transition-opacity",
+                  attachment.uploading && "opacity-70"
+                )}
               >
+                {/* Overlay de loading com progresso */}
+                {attachment.uploading && (
+                  <div className="absolute inset-0 bg-background/90 flex flex-col items-center justify-center z-10 rounded-lg p-2">
+                    <Loader2 className="h-6 w-6 animate-spin text-primary mb-2" />
+                    <span className="text-xs font-medium text-foreground mb-1">
+                      {attachment.uploadProgress !== undefined 
+                        ? `${attachment.uploadProgress}%` 
+                        : 'Enviando...'}
+                    </span>
+                    {attachment.uploadProgress !== undefined && (
+                      <Progress 
+                        value={attachment.uploadProgress} 
+                        className="w-full h-1.5 max-w-[80px]"
+                      />
+                    )}
+                  </div>
+                )}
+                
                 {attachment.type === 'image' && (
                   <div className="relative w-24 h-24">
                     <Image
@@ -397,9 +612,24 @@ export function ChatInput({
                     <Mic className="h-8 w-8 text-muted-foreground" />
                   </div>
                 )}
+                {attachment.type === 'document' && (
+                  <div className="w-24 h-24 flex flex-col items-center justify-center bg-muted p-2">
+                    <FileText className="h-8 w-8 text-muted-foreground mb-1" />
+                    <span className="text-xs text-muted-foreground truncate w-full text-center">
+                      {attachment.name.length > 15 ? attachment.name.substring(0, 12) + '...' : attachment.name}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {(attachment.size / (1024 * 1024)).toFixed(2)} MB
+                    </span>
+                  </div>
+                )}
                 <button
                   onClick={() => removeAttachment(index)}
-                  className="absolute top-1 right-1 rounded-full bg-destructive text-destructive-foreground p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                  disabled={attachment.uploading}
+                  className={cn(
+                    "absolute top-1 right-1 rounded-full bg-destructive text-destructive-foreground p-1 opacity-0 group-hover:opacity-100 transition-opacity",
+                    attachment.uploading && "opacity-0 cursor-not-allowed"
+                  )}
                 >
                   <X className="h-3 w-3" />
                 </button>
@@ -416,7 +646,7 @@ export function ChatInput({
             ref={fileInputRef}
             type="file"
             multiple
-            accept="image/*,video/*,audio/*"
+            accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.rtf"
             onChange={(e) => handleFileSelect(e.target.files)}
             className="hidden"
           />
@@ -432,7 +662,7 @@ export function ChatInput({
             {uploading ? (
               <Loader2 className="h-5 w-5 animate-spin" />
             ) : (
-              <ImageIcon className="h-5 w-5" />
+              <Paperclip className="h-5 w-5" />
             )}
           </Button>
 
@@ -447,12 +677,15 @@ export function ChatInput({
               onKeyDown={handleKeyDown}
               onPaste={handlePaste}
               placeholder={
-                attachments.length > 0
+                loading
+                  ? "Aguardando resposta..."
+                  : attachments.length > 0
                   ? "Digite sua mensagem... (Enter para enviar, Shift+Enter para nova linha)"
                   : "Digite sua mensagem... (Enter para enviar, Shift+Enter para nova linha)"
               }
               rows={1}
               disabled={loading || disabled || uploading}
+              readOnly={loading}
               className="w-full resize-none rounded-lg border border-input bg-background px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
               style={{
                 minHeight: '52px',
@@ -470,17 +703,20 @@ export function ChatInput({
             type="submit"
             disabled={(!message.trim() && attachments.length === 0) || loading || disabled || uploading}
             size="default"
-            className="h-[52px] px-6"
+            className="h-[52px] px-6 relative"
           >
             {loading ? (
-              <Loader2 className="h-5 w-5 animate-spin" />
+              <>
+                <Loader2 className="h-5 w-5 animate-spin mr-2" />
+                <span className="text-sm">Enviando...</span>
+              </>
             ) : (
               <Send className="h-5 w-5" />
             )}
           </Button>
         </div>
         <p className="text-xs text-center text-muted-foreground mt-2">
-          Enter para enviar | Shift + Enter para nova linha | Cole imagens ou arraste arquivos
+          Enter para enviar | Shift + Enter para nova linha | Cole imagens ou arraste arquivos (máx. 50 MB por arquivo)
         </p>
       </form>
     </div>

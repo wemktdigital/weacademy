@@ -47,39 +47,58 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Nenhum arquivo enviado' }, { status: 400 })
     }
 
-    // Validar tipo de arquivo (imagens, vídeos, áudio)
+    // Validar tipo de arquivo (imagens, vídeos, áudio, documentos)
     const allowedTypes = [
       // Imagens
       'image/jpeg',
       'image/png',
       'image/webp',
       'image/gif',
-      'image/webp',
+      'image/bmp',
+      'image/svg+xml',
       // Vídeos
       'video/mp4',
       'video/mpeg',
       'video/quicktime',
       'video/webm',
+      'video/x-msvideo', // .avi
       // Áudio
       'audio/mpeg',
       'audio/mp3',
       'audio/wav',
       'audio/webm',
       'audio/ogg',
+      'audio/aac',
+      'audio/flac',
+      // Documentos
+      'application/pdf',
+      'application/msword', // .doc
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx
+      'application/vnd.ms-excel', // .xls
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // .xlsx
+      'application/vnd.ms-powerpoint', // .ppt
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation', // .pptx
+      'text/plain', // .txt
+      'text/csv', // .csv
+      'application/rtf', // .rtf
     ]
     
-    if (!allowedTypes.includes(file.type)) {
+    // Verificar por tipo MIME ou extensão de arquivo
+    const isValidType = allowedTypes.includes(file.type) || 
+      file.name.match(/\.(pdf|doc|docx|xls|xlsx|ppt|pptx|txt|csv|rtf|jpg|jpeg|png|gif|webp|bmp|svg|mp4|mpg|mpeg|mov|webm|avi|mp3|wav|ogg|aac|flac)$/i)
+    
+    if (!isValidType) {
       return NextResponse.json(
-        { error: `Tipo de arquivo não permitido: ${file.type}` },
+        { error: `Tipo de arquivo não permitido: ${file.type || file.name}. Tipos permitidos: imagens, PDFs, documentos Word/Excel/PowerPoint, áudios e vídeos.` },
         { status: 400 }
       )
     }
 
-    // Validar tamanho (max 50MB para vídeos, 10MB para outros)
-    const maxSize = file.type.startsWith('video/') ? 50 * 1024 * 1024 : 10 * 1024 * 1024
-    if (file.size > maxSize) {
+    // Validar tamanho (max 50MB para todos os arquivos)
+    const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50 MB
+    if (file.size > MAX_FILE_SIZE) {
       return NextResponse.json(
-        { error: `Arquivo muito grande. Máximo: ${maxSize / (1024 * 1024)}MB` },
+        { error: `Arquivo muito grande. Máximo: 50 MB. Tamanho atual: ${(file.size / (1024 * 1024)).toFixed(2)} MB` },
         { status: 400 }
       )
     }
@@ -95,11 +114,28 @@ export async function POST(request: NextRequest) {
     const fileName = `${timestamp}-${randomStr}.${fileExt}`
 
     // Determinar bucket baseado no tipo
-    const bucket = file.type.startsWith('image/') 
-      ? 'lab-chat-images'
-      : file.type.startsWith('video/')
-      ? 'lab-chat-videos'
-      : 'lab-chat-audio'
+    let bucket = 'lab-chat-documents' // Padrão para documentos
+    
+    if (file.type.startsWith('image/')) {
+      bucket = 'lab-chat-images'
+    } else if (file.type.startsWith('video/')) {
+      bucket = 'lab-chat-videos'
+    } else if (file.type.startsWith('audio/')) {
+      bucket = 'lab-chat-audio'
+    } else if (
+      file.type.includes('pdf') ||
+      file.type.includes('word') ||
+      file.type.includes('excel') ||
+      file.type.includes('powerpoint') ||
+      file.type.includes('spreadsheet') ||
+      file.type.includes('presentation') ||
+      file.type === 'text/plain' ||
+      file.type === 'text/csv' ||
+      file.type === 'application/rtf' ||
+      file.name.match(/\.(pdf|doc|docx|xls|xlsx|ppt|pptx|txt|csv|rtf)$/i)
+    ) {
+      bucket = 'lab-chat-documents'
+    }
 
     // Upload para Supabase Storage
     const serviceRoleSupabase = createClient(
@@ -112,9 +148,21 @@ export async function POST(request: NextRequest) {
     if (!buckets?.find(b => b.name === bucket)) {
       await serviceRoleSupabase.storage.createBucket(bucket, {
         public: true,
-        fileSizeLimit: maxSize,
-        allowedMimeTypes: allowedTypes.filter(t => 
-          t.startsWith(bucket.split('-')[2].slice(0, -1)) // 'images' -> 'image'
+        fileSizeLimit: MAX_FILE_SIZE,
+        allowedMimeTypes: bucket === 'lab-chat-documents' 
+          ? allowedTypes.filter(t => 
+              t.includes('pdf') || 
+              t.includes('word') || 
+              t.includes('excel') || 
+              t.includes('powerpoint') || 
+              t.includes('spreadsheet') || 
+              t.includes('presentation') ||
+              t === 'text/plain' ||
+              t === 'text/csv' ||
+              t === 'application/rtf'
+            )
+          : allowedTypes.filter(t => 
+              t.startsWith(bucket.split('-')[2].slice(0, -1)) // 'images' -> 'image', 'videos' -> 'video', 'audio' -> 'audio'
         ),
       })
     }

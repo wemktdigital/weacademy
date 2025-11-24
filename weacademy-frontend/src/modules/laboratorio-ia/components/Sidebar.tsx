@@ -1,8 +1,9 @@
 'use client'
 
-import { Plus, MessageSquare, Trash2, Edit2, Star, MoreVertical, Compass, MoreHorizontal } from 'lucide-react'
+import { Plus, MessageSquare, Trash2, Edit2, Star, MoreVertical, Compass, MoreHorizontal, Search, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Input } from '@/components/ui/input'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,7 +12,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 
 interface Conversation {
   id: string
@@ -60,6 +61,18 @@ export function Sidebar({
 }: SidebarProps) {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editValue, setEditValue] = useState('')
+  const [searchQuery, setSearchQuery] = useState('')
+  
+  // Filtrar conversas baseado na busca
+  const filteredConversations = useMemo(() => {
+    if (!searchQuery.trim()) {
+      return conversations
+    }
+    const query = searchQuery.toLowerCase()
+    return conversations.filter(conv => 
+      conv.title.toLowerCase().includes(query)
+    )
+  }, [conversations, searchQuery])
 
   const handleStartEdit = (conversation: Conversation) => {
     setEditingId(conversation.id)
@@ -188,14 +201,20 @@ export function Sidebar({
       {/* Conversations List */}
       <ScrollArea className="flex-1 overflow-hidden">
         <div className="p-2 space-y-1 overflow-hidden" style={{ maxWidth: '100%' }}>
-          {conversations.length === 0 ? (
+          {filteredConversations.length === 0 && searchQuery ? (
+            <div className="text-center text-sm text-muted-foreground py-8">
+              <Search className="h-12 w-12 mx-auto mb-2 opacity-50" />
+              <p>Nenhuma conversa encontrada</p>
+              <p className="text-xs">Tente buscar com outras palavras</p>
+            </div>
+          ) : filteredConversations.length === 0 ? (
             <div className="text-center text-sm text-muted-foreground py-8">
               <MessageSquare className="h-12 w-12 mx-auto mb-2 opacity-50" />
               <p>Nenhuma conversa ainda</p>
               <p className="text-xs">Clique em "Nova Conversa" para começar</p>
             </div>
           ) : (
-            conversations.map((conversation) => {
+            filteredConversations.map((conversation) => {
               const isEditing = editingId === conversation.id
               const isActive = currentConversationId === conversation.id
 

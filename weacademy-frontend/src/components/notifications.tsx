@@ -17,9 +17,10 @@ interface Notification {
   id: string
   title: string
   message: string
-  type: 'info' | 'success' | 'warning' | 'error'
+  type: 'info' | 'success' | 'warning' | 'error' | 'achievement' | 'level_up' | 'streak' | 'leaderboard'
   read: boolean
   created_at: string
+  metadata?: Record<string, any>
 }
 
 export function Notifications() {
@@ -44,12 +45,24 @@ export function Notifications() {
         .order('created_at', { ascending: false })
         .limit(10)
 
-      if (error) throw error
+      if (error) {
+        // Se a tabela não existir ou houver erro de permissão, não quebrar a UI
+        // Não logar erro completo se for apenas ausência de permissão ou tabela
+        if (error.code !== 'PGRST116' && error.message && !error.message.includes('permission denied')) {
+          console.warn('Erro ao carregar notificações:', error)
+        }
+        setNotifications([])
+        setUnreadCount(0)
+        return
+      }
 
       setNotifications(data || [])
       setUnreadCount(data?.filter(n => !n.read).length || 0)
-    } catch (error) {
+    } catch (error: any) {
       console.error('Erro ao carregar notificações:', error)
+      // Não quebrar a UI se houver erro
+      setNotifications([])
+      setUnreadCount(0)
     } finally {
       setLoading(false)
     }
@@ -109,8 +122,37 @@ export function Notifications() {
 
   // Carregar notificações ao montar e quando usuário mudar
   useEffect(() => {
-    if (user) {
+    if (!user) return
+
+    // Carregar imediatamente
+    fetchNotifications()
+    
+    // Polling: atualizar notificações a cada 30 segundos
+    const interval = setInterval(() => {
       fetchNotifications()
+    }, 30000)
+    
+    // Escutar mudanças em tempo real usando Supabase Realtime
+    const channel = supabase
+      .channel(`notifications:${user.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'notifications',
+          filter: `user_id=eq.${user.id}`,
+        },
+        () => {
+          // Atualizar notificações quando houver mudanças
+          fetchNotifications()
+        }
+      )
+      .subscribe()
+
+    return () => {
+      clearInterval(interval)
+      supabase.removeChannel(channel)
     }
   }, [user])
 
@@ -229,6 +271,12 @@ function NotificationItem({ notification, onMarkAsRead, isMarkingRead }: Notific
         return 'border-l-yellow-500 bg-yellow-50 dark:bg-yellow-950/20'
       case 'error':
         return 'border-l-red-500 bg-red-50 dark:bg-red-950/20'
+      case 'achievement':
+      case 'level_up':
+        return 'border-l-green-500 bg-green-50 dark:bg-green-950/20'
+      case 'streak':
+      case 'leaderboard':
+        return 'border-l-orange-500 bg-orange-50 dark:bg-orange-950/20'
       default:
         return 'border-l-blue-500 bg-blue-50 dark:bg-blue-950/20'
     }

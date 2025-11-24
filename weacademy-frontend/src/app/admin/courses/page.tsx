@@ -34,16 +34,8 @@ import {
 } from 'lucide-react'
 import { toast } from '@/hooks/use-toast'
 import { supabase } from '@/lib/supabase'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { showActionableError, showSuccessMessage } from '@/lib/feedback'
 
 interface Course {
   id: string
@@ -75,6 +67,7 @@ export default function AdminCoursesPage() {
     open: false,
     courseId: null
   })
+  const [isDeleting, setIsDeleting] = useState(false)
 
   useEffect(() => {
     if (!user || !isAdmin) {
@@ -110,11 +103,7 @@ export default function AdminCoursesPage() {
       if (error) throw error
       setCourses(data || [])
     } catch (error: any) {
-      toast({
-        title: 'Erro',
-        description: error.message,
-        variant: 'destructive',
-      })
+      showActionableError(error, { action: 'carregar cursos', entity: 'cursos' }, toast)
     } finally {
       setLoading(false)
     }
@@ -127,6 +116,7 @@ export default function AdminCoursesPage() {
   const confirmDelete = async () => {
     if (!deleteDialog.courseId) return
 
+    setIsDeleting(true)
     try {
       // Obter sessão
       const { data: sessionData } = await supabase.auth.getSession()
@@ -150,19 +140,14 @@ export default function AdminCoursesPage() {
         throw new Error(result.error || 'Erro ao deletar curso')
       }
 
-      toast({
-        title: 'Sucesso',
-        description: 'Curso deletado com sucesso',
-      })
+      showSuccessMessage({ action: 'curso deletado', entity: 'curso' }, toast)
 
       setDeleteDialog({ open: false, courseId: null })
       loadCourses()
     } catch (error: any) {
-      toast({
-        title: 'Erro',
-        description: error.message,
-        variant: 'destructive',
-      })
+      showActionableError(error, { action: 'deletar curso', entity: 'curso' }, toast)
+    } finally {
+      setIsDeleting(false)
     }
   }
 
@@ -360,23 +345,18 @@ export default function AdminCoursesPage() {
         </Table>
       </div>
 
-      {/* Delete Dialog */}
-      <AlertDialog open={deleteDialog.open} onOpenChange={(open) => setDeleteDialog({ ...deleteDialog, open })}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Confirmar Exclusão</AlertDialogTitle>
-            <AlertDialogDescription>
-              Tem certeza que deseja deletar este curso? Esta ação não pode ser desfeita.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-              Deletar
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {/* Delete Dialog - Melhorado */}
+      <ConfirmDialog
+        open={deleteDialog.open}
+        onOpenChange={(open) => setDeleteDialog({ ...deleteDialog, open })}
+        onConfirm={confirmDelete}
+        title="Confirmar Exclusão"
+        description="Tem certeza que deseja deletar este curso? Esta ação não pode ser desfeita. Todas as aulas, materiais e dados relacionados serão permanentemente removidos."
+        confirmText="Sim, Deletar"
+        cancelText="Cancelar"
+        variant="destructive"
+        isLoading={isDeleting}
+      />
     </div>
   )
 }

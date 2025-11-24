@@ -55,7 +55,7 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const isAdmin = profile?.role === 'admin' || profile?.role === 'gestor_we' || profile?.role === 'gestor'
+    const isAdmin = profile?.role === 'admin'
     
     // Parâmetros de query
     const { searchParams } = new URL(request.url)

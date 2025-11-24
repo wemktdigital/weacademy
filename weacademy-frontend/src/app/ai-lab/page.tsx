@@ -2,20 +2,29 @@
 
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
+import { useGamification } from '@/hooks/useGamification'
 import { Sidebar } from '@/modules/laboratorio-ia/components/Sidebar'
 import { ChatInput, Attachment } from '@/modules/laboratorio-ia/components/ChatInput'
 import { MessageBubble } from '@/modules/laboratorio-ia/components/MessageBubble'
 import { ChatModelSelector } from '@/modules/laboratorio-ia/components/ChatModelSelector'
-import { AgentSelector } from '@/modules/laboratorio-ia/components/AgentSelector'
+import { ModelComparisonToggle } from '@/modules/laboratorio-ia/components/ModelComparisonToggle'
+import { DualModelSelector } from '@/modules/laboratorio-ia/components/DualModelSelector'
+import { ComparisonMessageBubble } from '@/modules/laboratorio-ia/components/ComparisonMessageBubble'
 import { PipelineSelector } from '@/modules/laboratorio-ia/components/PipelineSelector'
 import { PipelineProgress } from '@/modules/laboratorio-ia/components/PipelineProgress'
+import { ThinkingBubble } from '@/modules/laboratorio-ia/components/ThinkingBubble'
+import { TypingIndicator } from '@/modules/laboratorio-ia/components/TypingIndicator'
+import { LongMessageWarning } from '@/modules/laboratorio-ia/components/LongMessageWarning'
 import { CostEstimateCard } from '@/modules/laboratorio-ia/components/CostEstimateCard'
 import { ModelRecommendationCard } from '@/modules/laboratorio-ia/components/ModelRecommendationCard'
 import { RoutingPreferencesDialog } from '@/modules/laboratorio-ia/components/RoutingPreferencesDialog'
+import { MemorySettingsDialog } from '@/modules/laboratorio-ia/components/MemorySettingsDialog'
+import { ModelTipsCard } from '@/modules/laboratorio-ia/components/ModelTipsCard'
+import { EmptyChatState } from '@/modules/laboratorio-ia/components/EmptyChatState'
 import { useChatStore } from '@/modules/laboratorio-ia/hooks/useChatStore'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Sparkles, Loader2, Settings, History, Image, Video, Wand2, Stethoscope, Compass, ArrowRight, X, ClipboardList, Upload, Repeat, Menu } from 'lucide-react'
+import { Sparkles, Loader2, Settings, History, Image, Video, Wand2, Stethoscope, Compass, ArrowRight, X, ClipboardList, Upload, Repeat, Menu, Brain } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useToast } from '@/hooks/use-toast'
 import Link from 'next/link'
@@ -24,6 +33,9 @@ import { Badge } from '@/components/ui/badge'
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet'
 import { useRouter } from 'next/navigation'
 import { getAgentById } from '@/modules/laboratorio-ia/agents'
+import { PointsDisplay, LevelBadge, StreakDisplay } from '@/components/gamification'
+import { TourGuide } from '@/components/onboarding/TourGuide'
+import { aiLabTourSteps } from '@/app/onboarding/ai-lab-tour/steps'
 
 interface Message {
   id: string
@@ -40,6 +52,9 @@ interface Message {
     originalModel?: string
     taskCategory?: string | null
     feedback?: 'positive' | 'negative'
+    isComparison?: boolean
+    comparisonSide?: 'A' | 'B'
+    memoriesUsed?: string[] // Chaves das memórias usadas
   }
 }
 
@@ -88,6 +103,7 @@ const AGENT_SHORTCUTS_STORAGE_KEY = 'lab-agent-shortcuts'
 
 export default function AILabPage() {
   const { user, isAdmin, loading: authLoading } = useAuth()
+  const { stats } = useGamification()
   const { toast } = useToast()
   const router = useRouter()
   const {
@@ -103,7 +119,26 @@ export default function AILabPage() {
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
   const [loading, setLoading] = useState(false)
+  const [loadingStartTime, setLoadingStartTime] = useState<number | null>(null)
+  const [loadingElapsedSeconds, setLoadingElapsedSeconds] = useState(0)
+  
+  // Atualizar tempo decorrido durante loading
+  useEffect(() => {
+    if (loading && loadingStartTime) {
+      const interval = setInterval(() => {
+        const elapsed = Math.floor((Date.now() - loadingStartTime) / 1000)
+        setLoadingElapsedSeconds(elapsed)
+      }, 1000)
+      return () => clearInterval(interval)
+    } else {
+      setLoadingElapsedSeconds(0)
+    }
+  }, [loading, loadingStartTime])
   const [userRole, setUserRole] = useState<string | null>(null)
+  const [comparisonMode, setComparisonMode] = useState(false)
+  const [modelA, setModelA] = useState({ provider: 'OpenAI', model: 'gpt-5-nano' })
+  const [modelB, setModelB] = useState({ provider: 'Google', model: 'gemini-2.5-flash' })
+  const [comparisonVotes, setComparisonVotes] = useState<Record<string, 'A' | 'B'>>({})
   const [selectedPipeline, setSelectedPipeline] = useState<any>(null)
   const [pipelineProgress, setPipelineProgress] = useState<{ current: number; total: number } | null>(null)
   // Map para rastrear steps por ordem e agent_id (suporta paralelização)
@@ -147,6 +182,14 @@ export default function AILabPage() {
   const [allAgents, setAllAgents] = useState<AgentSummary[]>([])
   const [agentShortcuts, setAgentShortcuts] = useState<AgentShortcut[]>([])
   const [agentsLoading, setAgentsLoading] = useState(false)
+  // Estado para operações de vídeo pendentes (mapeado por messageId)
+  const [pendingVideoOperations, setPendingVideoOperations] = useState<Record<string, {
+    id: string
+    status: 'pending' | 'processing'
+    model: string
+    created_at: string
+  }>>({})
+  const [checkingVideoStatus, setCheckingVideoStatus] = useState<string | null>(null) // messageId sendo verificado
    
   const quickTools = useMemo(
     () => [
@@ -403,6 +446,247 @@ export default function AILabPage() {
     }
   }, [user])
 
+  // Polling de operações de vídeo pendentes
+  useEffect(() => {
+    if (!user) return
+
+    // Função para verificar e processar operações pendentes
+    const checkPendingVideoOperations = async () => {
+      try {
+        const { data: sessionData } = await supabase.auth.getSession()
+        const token = sessionData?.session?.access_token
+
+        if (!token) return
+
+        // Buscar operações pendentes do usuário
+        const { data: operations, error } = await supabase
+          .from('lab_video_operations')
+          .select('*')
+          .eq('user_id', user.id)
+          .in('status', ['pending', 'processing'])
+          .order('created_at', { ascending: false })
+          .limit(10)
+
+        if (error || !operations || operations.length === 0) {
+          return
+        }
+
+        // Chamar endpoint de polling para processar operações
+        const pollResponse = await fetch('/api/lab-ia/videos/poll', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+        })
+
+        if (!pollResponse.ok) {
+          console.error('[VIDEO-POLL] Erro ao processar operações:', pollResponse.status)
+          return
+        }
+
+        const pollResult = await pollResponse.json()
+
+        // Verificar se alguma operação foi concluída
+        if (pollResult.completed > 0) {
+          // Buscar operações concluídas
+          const { data: completedOperations, error: fetchError } = await supabase
+            .from('lab_video_operations')
+            .select('*')
+            .eq('user_id', user.id)
+            .eq('status', 'completed')
+            .order('completed_at', { ascending: false })
+            .limit(pollResult.completed)
+
+          if (!fetchError && completedOperations && completedOperations.length > 0) {
+            // Verificar se a conversa atual precisa ser atualizada
+            const currentConversationOperations = completedOperations.filter(
+              op => op.conversation_id === currentConversationId
+            )
+
+            for (const operation of currentConversationOperations) {
+              // Remover operação do estado de pendentes
+              if (operation.message_id) {
+                setPendingVideoOperations(prev => {
+                  const updated = { ...prev }
+                  delete updated[operation.message_id]
+                  return updated
+                })
+              }
+
+              // Recarregar mensagens da conversa se houver vídeo pronto
+              if (operation.message_id && currentConversationId) {
+                await loadConversation(currentConversationId)
+                
+                // Mostrar notificação
+                toast({
+                  title: '🎬 Vídeo pronto!',
+                  description: 'Seu vídeo foi gerado com sucesso. Veja na conversa.',
+                  duration: 5000,
+                })
+              }
+            }
+          }
+
+          // Atualizar estado de operações pendentes com novas operações ainda pendentes
+          if (pollResult.stillPending > 0 && user && currentConversationId) {
+            const { data: stillPendingOps } = await supabase
+              .from('lab_video_operations')
+              .select('id, message_id, status, model, created_at')
+              .eq('conversation_id', currentConversationId)
+              .eq('user_id', user.id)
+              .in('status', ['pending', 'processing'])
+
+            if (stillPendingOps) {
+              const updatedMap: Record<string, {
+                id: string
+                status: 'pending' | 'processing'
+                model: string
+                created_at: string
+              }> = {}
+              
+              stillPendingOps.forEach(op => {
+                if (op.message_id) {
+                  updatedMap[op.message_id] = {
+                    id: op.id,
+                    status: op.status as 'pending' | 'processing',
+                    model: op.model,
+                    created_at: op.created_at,
+                  }
+                }
+              })
+              
+              setPendingVideoOperations(prev => ({ ...prev, ...updatedMap }))
+            }
+          }
+        }
+
+      } catch (error) {
+        console.error('[VIDEO-POLL] Erro ao verificar operações pendentes:', error)
+      }
+    }
+
+    // Verificar imediatamente e depois a cada 30 segundos
+    checkPendingVideoOperations()
+    const interval = setInterval(checkPendingVideoOperations, 30000) // 30 segundos
+
+    return () => {
+      clearInterval(interval)
+    }
+  }, [user, currentConversationId, toast])
+
+  // Função para verificar status de vídeo manualmente
+  const handleCheckVideoStatus = async (messageId: string) => {
+    if (!user || checkingVideoStatus === messageId) return
+
+    setCheckingVideoStatus(messageId)
+
+    try {
+      const { data: sessionData } = await supabase.auth.getSession()
+      const token = sessionData?.session?.access_token
+
+      if (!token) {
+        toast({
+          title: 'Erro',
+          description: 'Não autenticado. Faça login novamente.',
+          variant: 'destructive',
+        })
+        return
+      }
+
+      // Buscar operação relacionada a esta mensagem
+      const { data: operations } = await supabase
+        .from('lab_video_operations')
+        .select('id')
+        .eq('message_id', messageId)
+        .eq('user_id', user.id)
+        .in('status', ['pending', 'processing'])
+        .single()
+
+      if (!operations) {
+        toast({
+          title: 'Nenhuma operação encontrada',
+          description: 'Não há operação pendente para esta mensagem.',
+        })
+        setCheckingVideoStatus(null)
+        return
+      }
+
+      // Chamar endpoint de polling
+      const pollResponse = await fetch('/api/lab-ia/videos/poll', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+      })
+
+      if (!pollResponse.ok) {
+        throw new Error('Erro ao verificar status')
+      }
+
+      const pollResult = await pollResponse.json()
+
+      // Se completou, recarregar conversa
+      if (pollResult.completed > 0 && currentConversationId) {
+        await loadConversation(currentConversationId)
+        toast({
+          title: '🎬 Vídeo pronto!',
+          description: 'Seu vídeo foi gerado com sucesso.',
+        })
+      } else {
+        toast({
+          title: 'Status verificado',
+          description: pollResult.stillPending > 0 
+            ? 'O vídeo ainda está sendo processado. Você será notificado quando estiver pronto.'
+            : 'Nenhuma atualização no momento.',
+        })
+      }
+
+      // Atualizar estado de operações pendentes
+      if (currentConversationId) {
+        const { data: updatedOps } = await supabase
+          .from('lab_video_operations')
+          .select('id, message_id, status, model, created_at')
+          .eq('conversation_id', currentConversationId)
+          .eq('user_id', user.id)
+          .in('status', ['pending', 'processing'])
+
+        if (updatedOps) {
+          const updatedMap: Record<string, {
+            id: string
+            status: 'pending' | 'processing'
+            model: string
+            created_at: string
+          }> = {}
+          
+          updatedOps.forEach(op => {
+            if (op.message_id) {
+              updatedMap[op.message_id] = {
+                id: op.id,
+                status: op.status as 'pending' | 'processing',
+                model: op.model,
+                created_at: op.created_at,
+              }
+            }
+          })
+          
+          setPendingVideoOperations(prev => ({ ...prev, ...updatedMap }))
+        }
+      }
+
+    } catch (error: any) {
+      console.error('[CHECK-VIDEO-STATUS] Erro:', error)
+      toast({
+        title: 'Erro ao verificar status',
+        description: error.message || 'Tente novamente em instantes.',
+        variant: 'destructive',
+      })
+    } finally {
+      setCheckingVideoStatus(null)
+    }
+  }
+
   // Carregar preferências de routing
   const loadRoutingPreferences = async () => {
     try {
@@ -490,14 +774,59 @@ export default function AILabPage() {
 
           if (error) throw error
           
-          // Parse attachments se existirem
-          const messagesWithAttachments = (data || []).map((msg: any) => ({
-            ...msg,
-            attachments: msg.attachments ? JSON.parse(msg.attachments) : undefined,
-          }))
+          // Parse attachments e metadata se existirem
+          const messagesWithAttachments = (data || []).map((msg: any) => {
+            // Garantir que o conteúdo seja uma string limpa
+            let content = msg.content || ''
+            if (typeof content === 'string') {
+              // Remover escapes duplos se houver (pode acontecer ao salvar no banco)
+              if (content.includes('\\n') || content.includes('\\*') || content.includes('\\#')) {
+                content = content.replace(/\\n/g, '\n').replace(/\\\*/g, '*').replace(/\\#/g, '#')
+              }
+            }
+            
+            return {
+              ...msg,
+              content,
+              attachments: msg.attachments ? (typeof msg.attachments === 'string' ? JSON.parse(msg.attachments) : msg.attachments) : undefined,
+              metadata: msg.metadata ? (typeof msg.metadata === 'string' ? JSON.parse(msg.metadata) : msg.metadata) : undefined,
+            }
+          })
           
           setMessages(messagesWithAttachments)
           setCurrentConversationId(conversationId)
+
+          // Buscar operações de vídeo pendentes para esta conversa
+          if (user) {
+            const { data: operations, error: opsError } = await supabase
+              .from('lab_video_operations')
+              .select('id, message_id, status, model, created_at')
+              .eq('conversation_id', conversationId)
+              .eq('user_id', user.id)
+              .in('status', ['pending', 'processing'])
+
+            if (!opsError && operations) {
+              const operationsMap: Record<string, {
+                id: string
+                status: 'pending' | 'processing'
+                model: string
+                created_at: string
+              }> = {}
+              
+              operations.forEach(op => {
+                if (op.message_id) {
+                  operationsMap[op.message_id] = {
+                    id: op.id,
+                    status: op.status as 'pending' | 'processing',
+                    model: op.model,
+                    created_at: op.created_at,
+                  }
+                }
+              })
+              
+              setPendingVideoOperations(prev => ({ ...prev, ...operationsMap }))
+            }
+          }
         } catch (error) {
           console.error('Erro ao carregar mensagens:', error)
         }
@@ -749,6 +1078,472 @@ export default function AILabPage() {
     }
   }
 
+  const handleComparisonMessage = async (content: string, attachments?: Attachment[]) => {
+    if (!user) return
+
+    console.log('[LAB-IA][COMPARISON] Iniciando comparação de modelos')
+    console.log('[LAB-IA][COMPARISON] Modelo A:', modelA.provider, modelA.model)
+    console.log('[LAB-IA][COMPARISON] Modelo B:', modelB.provider, modelB.model)
+    
+    setLoading(true)
+
+    // Criar ou obter conversation_id
+    let conversationId = currentConversationId
+
+    if (!conversationId) {
+      const { data: newConversation, error: convError } = await supabase
+        .from('lab_conversations')
+        .insert({
+          user_id: user.id,
+          title: content.substring(0, 50) || 'Nova conversa',
+        })
+        .select()
+        .single()
+
+      if (convError) {
+        console.error('Erro ao criar conversa:', convError)
+        setLoading(false)
+        return
+      }
+
+      conversationId = newConversation.id
+      setCurrentConversationId(conversationId)
+      await loadConversations()
+    }
+
+    // Adicionar mensagem do usuário
+    const userMessage: Message = {
+      id: crypto.randomUUID(),
+      role: 'user',
+      content: attachments && attachments.length > 0 && !content.trim() 
+        ? '[Arquivo anexado]' 
+        : content,
+      created_at: new Date().toISOString(),
+      attachments,
+    }
+
+    setMessages((prev) => [...prev, userMessage])
+
+    // Salvar mensagem do usuário no banco
+    try {
+      await supabase.from('lab_messages').insert({
+        conversation_id: conversationId,
+        role: 'user',
+        content: userMessage.content,
+        ...(attachments && attachments.length > 0 && { attachments: JSON.stringify(attachments) }),
+      })
+    } catch (error: any) {
+      if (error?.code === '42703' || error?.message?.includes('attachments')) {
+        await supabase.from('lab_messages').insert({
+          conversation_id: conversationId,
+          role: 'user',
+          content: userMessage.content,
+        })
+      } else {
+        console.error('Erro ao salvar mensagem:', error)
+      }
+    }
+
+    // Criar placeholders para as respostas
+    const comparisonId = `comparison-${Date.now()}`
+    const responseAId = `response-a-${comparisonId}`
+    const responseBId = `response-b-${comparisonId}`
+
+    const placeholderA: Message = {
+      id: responseAId,
+      role: 'assistant',
+      content: '',
+      created_at: new Date().toISOString(),
+      metadata: {
+        provider: modelA.provider,
+        model: modelA.model,
+        isComparison: true,
+        comparisonSide: 'A',
+        comparisonId, // ID único para agrupar o par
+      },
+    }
+
+    const placeholderB: Message = {
+      id: responseBId,
+      role: 'assistant',
+      content: '',
+      created_at: new Date().toISOString(),
+      metadata: {
+        provider: modelB.provider,
+        model: modelB.model,
+        isComparison: true,
+        comparisonSide: 'B',
+        comparisonId, // Mesmo ID para agrupar o par
+      },
+    }
+
+    setMessages((prev) => [...prev, placeholderA, placeholderB])
+
+    // Scroll para mostrar placeholders
+    setTimeout(() => {
+      if (chatContainerRef.current) {
+        chatContainerRef.current.scrollTo({
+          top: chatContainerRef.current.scrollHeight,
+          behavior: 'smooth',
+        })
+      }
+    }, 100)
+
+    // Obter token de autenticação
+    const { data: sessionData } = await supabase.auth.getSession()
+    const token = sessionData?.session?.access_token
+
+    if (!token) {
+      toast({
+        title: 'Erro',
+        description: 'Não autenticado. Por favor, faça login novamente.',
+        variant: 'destructive',
+      })
+      setLoading(false)
+      return
+    }
+
+    // Executar ambos modelos em paralelo
+    try {
+      console.log('[LAB-IA][COMPARISON] Chamando modelos em paralelo...')
+      const [responseA, responseB] = await Promise.allSettled([
+        callLLMForComparison(modelA.provider, modelA.model, content, attachments, token),
+        callLLMForComparison(modelB.provider, modelB.model, content, attachments, token),
+      ])
+      
+      console.log('[LAB-IA][COMPARISON] Resposta A:', responseA.status === 'fulfilled' ? 'OK' : 'ERRO', responseA.status === 'fulfilled' ? responseA.value : responseA.reason)
+      console.log('[LAB-IA][COMPARISON] Resposta B:', responseB.status === 'fulfilled' ? 'OK' : 'ERRO', responseB.status === 'fulfilled' ? responseB.value : responseB.reason)
+
+      // Atualizar mensagens com as respostas
+      let updatedMessageA: Message | null = null
+      let updatedMessageB: Message | null = null
+
+      setMessages((prev) => {
+        console.log('[LAB-IA][COMPARISON] Atualizando mensagens. Total antes:', prev.length)
+        const updated = prev.map(msg => {
+          if (msg.id === responseAId) {
+            if (responseA.status === 'fulfilled') {
+              const contentA = responseA.value.content || 'Erro ao obter resposta'
+              console.log('[LAB-IA][COMPARISON] Atualizando mensagem A com conteúdo:', contentA.substring(0, 100))
+              updatedMessageA = { 
+                ...msg, 
+                content: contentA,
+                metadata: {
+                  ...msg.metadata,
+                  provider: modelA.provider,
+                  model: modelA.model,
+                  isComparison: true,
+                  comparisonSide: 'A',
+                  comparisonId: (msg.metadata as any)?.comparisonId, // Preservar comparisonId
+                  latency: responseA.value.latency,
+                  cost: responseA.value.cost,
+                },
+              }
+              return updatedMessageA
+            } else {
+              updatedMessageA = { 
+                ...msg, 
+                content: `Erro: ${responseA.reason?.message || 'Falha ao chamar modelo A'}`,
+                metadata: {
+                  ...msg.metadata,
+                  provider: modelA.provider,
+                  model: modelA.model,
+                  isComparison: true,
+                  comparisonSide: 'A',
+                  comparisonId: (msg.metadata as any)?.comparisonId, // Preservar comparisonId
+                },
+              }
+              return updatedMessageA
+            }
+          }
+          if (msg.id === responseBId) {
+            if (responseB.status === 'fulfilled') {
+              const contentB = responseB.value.content || 'Erro ao obter resposta'
+              console.log('[LAB-IA][COMPARISON] Atualizando mensagem B com conteúdo:', contentB.substring(0, 100))
+              updatedMessageB = { 
+                ...msg, 
+                content: contentB,
+                metadata: {
+                  ...msg.metadata,
+                  provider: modelB.provider,
+                  model: modelB.model,
+                  isComparison: true,
+                  comparisonSide: 'B',
+                  comparisonId: (msg.metadata as any)?.comparisonId, // Preservar comparisonId
+                  latency: responseB.value.latency,
+                  cost: responseB.value.cost,
+                },
+              }
+              return updatedMessageB
+            } else {
+              updatedMessageB = { 
+                ...msg, 
+                content: `Erro: ${responseB.reason?.message || 'Falha ao chamar modelo B'}`,
+                metadata: {
+                  ...msg.metadata,
+                  provider: modelB.provider,
+                  model: modelB.model,
+                  isComparison: true,
+                  comparisonSide: 'B',
+                  comparisonId: (msg.metadata as any)?.comparisonId, // Preservar comparisonId
+                },
+              }
+              return updatedMessageB
+            }
+          }
+          return msg
+        })
+        console.log('[LAB-IA][COMPARISON] Total após atualização:', updated.length)
+        return updated
+      })
+
+      // Salvar respostas no banco (opcional - pode falhar silenciosamente)
+      if (updatedMessageA) {
+        try {
+          const { error } = await supabase.from('lab_messages').insert({
+            conversation_id: conversationId,
+            role: 'assistant',
+            content: updatedMessageA.content,
+            metadata: updatedMessageA.metadata ? JSON.stringify(updatedMessageA.metadata) : null,
+          })
+          if (error) {
+            console.warn('[LAB-IA][COMPARISON] Erro ao salvar resposta A (não crítico):', error)
+          }
+        } catch (error) {
+          console.warn('[LAB-IA][COMPARISON] Erro ao salvar resposta A (não crítico):', error)
+        }
+      }
+      if (updatedMessageB) {
+        try {
+          const { error } = await supabase.from('lab_messages').insert({
+            conversation_id: conversationId,
+            role: 'assistant',
+            content: updatedMessageB.content,
+            metadata: updatedMessageB.metadata ? JSON.stringify(updatedMessageB.metadata) : null,
+          })
+          if (error) {
+            console.warn('[LAB-IA][COMPARISON] Erro ao salvar resposta B (não crítico):', error)
+          }
+        } catch (error) {
+          console.warn('[LAB-IA][COMPARISON] Erro ao salvar resposta B (não crítico):', error)
+        }
+      }
+
+      // Scroll para mostrar respostas completas
+      setTimeout(() => {
+        if (chatContainerRef.current) {
+          chatContainerRef.current.scrollTo({
+            top: chatContainerRef.current.scrollHeight,
+            behavior: 'smooth',
+          })
+        }
+      }, 100)
+
+    } catch (error: any) {
+      console.error('Erro na comparação:', error)
+      toast({
+        title: 'Erro',
+        description: error.message || 'Erro ao comparar modelos',
+        variant: 'destructive',
+      })
+    } finally {
+      setLoading(false)
+      setLoadingStartTime(null)
+      setLoadingElapsedSeconds(0)
+    }
+  }
+
+  const callLLMForComparison = async (
+    provider: string,
+    model: string,
+    content: string,
+    attachments: Attachment[] | undefined,
+    token: string
+  ) => {
+    // Incluir histórico de mensagens anteriores (exceto mensagens de comparação duplicadas)
+    const processedComparisonIds = new Set<string>()
+    const historyMessages = messages
+      .filter(msg => {
+        // Incluir mensagens do usuário
+        if (msg.role === 'user') return true
+        // Incluir mensagens do assistente que não são de comparação
+        if (msg.role === 'assistant' && !msg.metadata?.isComparison) return true
+        // Se for mensagem de comparação, incluir apenas uma (a primeira encontrada de cada par)
+        if (msg.metadata?.isComparison) {
+          const comparisonId = (msg.metadata as any).comparisonId || msg.id
+          // Se já processamos este par, pular
+          if (processedComparisonIds.has(comparisonId)) {
+            return false
+          }
+          // Marcar como processado e incluir
+          processedComparisonIds.add(comparisonId)
+          return true
+        }
+        return false
+      })
+      .map(msg => ({
+        role: msg.role,
+        content: msg.content,
+      }))
+    
+    const messagesForAPI = [...historyMessages, { role: 'user' as const, content }]
+    
+    // Se houver attachments, adicionar ao conteúdo
+    if (attachments && attachments.length > 0) {
+      // Por enquanto, apenas texto - attachments precisariam ser processados
+      messagesForAPI[messagesForAPI.length - 1].content += '\n\n[Arquivos anexados: ' + attachments.map(a => a.name).join(', ') + ']'
+    }
+
+    const response = await fetch('/api/lab-ia/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        messages: messagesForAPI,
+        provider,
+        model,
+        stream: false, // Não usar streaming em comparação
+        enableIntelligentRouting: false,
+        enableCache: false,
+      }),
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      throw new Error(errorData.error || `Erro ao chamar ${provider}:${model}`)
+    }
+
+    const data = await response.json()
+    console.log('[LAB-IA][COMPARISON] Resposta da API para', provider, model, ':', {
+      hasContent: !!data.content,
+      hasText: !!data.text,
+      contentLength: (data.content || data.text || '').length,
+      latency: data.latency,
+      cost: data.cost,
+    })
+    return {
+      content: data.content || data.text || '',
+      latency: data.latency || 0,
+      cost: data.cost || 0,
+    }
+  }
+
+  const handleVote = async (
+    messageId: string, 
+    winner: 'A' | 'B',
+    modelA?: { provider: string; model: string },
+    modelB?: { provider: string; model: string }
+  ) => {
+    setComparisonVotes(prev => ({ ...prev, [messageId]: winner }))
+    
+    // Atualizar o modelo selecionado para continuar o chat com o modelo escolhido
+    if (winner === 'A' && modelA) {
+      setProvider(modelA.provider)
+      setModel(modelA.model)
+      toast({
+        title: 'Modelo selecionado',
+        description: `Continuando o chat com ${modelA.provider} - ${modelA.model}`,
+      })
+    } else if (winner === 'B' && modelB) {
+      setProvider(modelB.provider)
+      setModel(modelB.model)
+      toast({
+        title: 'Modelo selecionado',
+        description: `Continuando o chat com ${modelB.provider} - ${modelB.model}`,
+      })
+    }
+    
+    // Desativar modo comparação e voltar para chat único
+    setComparisonMode(false)
+    
+    // Limpar estados de comparação
+    // Manter apenas as mensagens normais (remover mensagens de comparação duplicadas)
+    setMessages((prev) => {
+      // Filtrar mensagens de comparação, mantendo apenas a do modelo escolhido
+      const filtered: Message[] = []
+      const processedComparisonIds = new Set<string>()
+      
+      for (let i = 0; i < prev.length; i++) {
+        const msg = prev[i]
+        
+        // Se é mensagem de comparação
+        if (msg.metadata?.isComparison) {
+          const comparisonId = (msg.metadata as any).comparisonId || messageId
+          
+          // Se já processamos este par de comparação, pular
+          if (processedComparisonIds.has(comparisonId)) {
+            continue
+          }
+          
+          // Encontrar ambas as mensagens do par
+          const messageA = prev.find(m => 
+            m.metadata?.isComparison && 
+            m.metadata?.comparisonSide === 'A' &&
+            ((m.metadata as any).comparisonId || m.id) === comparisonId
+          )
+          const messageB = prev.find(m => 
+            m.metadata?.isComparison && 
+            m.metadata?.comparisonSide === 'B' &&
+            ((m.metadata as any).comparisonId || m.id) === comparisonId
+          )
+          
+          if (messageA && messageB) {
+            // Manter apenas a mensagem do modelo escolhido, convertendo para mensagem normal
+            const chosenMessage = winner === 'A' ? messageA : messageB
+            // Criar novo objeto de metadata sem isComparison e comparisonSide
+            const { isComparison, comparisonSide, ...restMetadata } = chosenMessage.metadata || {}
+            // Garantir que o conteúdo seja uma string limpa (sem escape duplo)
+            let cleanContent = typeof chosenMessage.content === 'string' 
+              ? chosenMessage.content 
+              : String(chosenMessage.content || '')
+            
+            // Debug: verificar se o conteúdo está sendo escapado
+            console.log('[LAB-IA][VOTE] Conteúdo original:', cleanContent.substring(0, 200))
+            console.log('[LAB-IA][VOTE] Tipo:', typeof cleanContent)
+            console.log('[LAB-IA][VOTE] Contém markdown cru?', cleanContent.includes('\\n') || cleanContent.includes('\\*'))
+            
+            // Remover escapes duplos se houver
+            if (cleanContent.includes('\\n') || cleanContent.includes('\\*') || cleanContent.includes('\\#')) {
+              try {
+                // Tentar fazer unescape se necessário
+                cleanContent = cleanContent.replace(/\\n/g, '\n').replace(/\\\*/g, '*').replace(/\\#/g, '#')
+              } catch (e) {
+                console.warn('[LAB-IA][VOTE] Erro ao fazer unescape:', e)
+              }
+            }
+            
+            filtered.push({
+              ...chosenMessage,
+              content: cleanContent,
+              metadata: restMetadata,
+            })
+            processedComparisonIds.add(comparisonId)
+          }
+        } else {
+          // Mensagem normal, manter
+          filtered.push(msg)
+        }
+      }
+      
+      return filtered
+    })
+    
+    // Opcional: salvar voto no backend para analytics
+    try {
+      const { data: sessionData } = await supabase.auth.getSession()
+      const token = sessionData?.session?.access_token
+      
+      if (token) {
+        // Aqui você pode criar uma API para salvar votos
+        // await fetch('/api/lab-ia/comparison/vote', { ... })
+      }
+    } catch (error) {
+      console.error('Erro ao salvar voto:', error)
+    }
+  }
+
   const handleNewMessage = async (content: string, attachments?: Attachment[]) => {
     if (!user) {
       toast({
@@ -756,6 +1551,15 @@ export default function AILabPage() {
         description: 'Você precisa estar logado para usar o Laboratório de IA',
         variant: 'destructive',
       })
+      return
+    }
+
+    // Se modo comparação ativado e não há pipeline/agente selecionado
+    if (comparisonMode && !selectedPipeline && !selectedAgent) {
+      console.log('[LAB-IA] Modo: Comparação de Modelos')
+      console.log('[LAB-IA] Modelo A:', modelA.provider, modelA.model)
+      console.log('[LAB-IA] Modelo B:', modelB.provider, modelB.model)
+      await handleComparisonMessage(content, attachments)
       return
     }
 
@@ -893,6 +1697,67 @@ export default function AILabPage() {
         }, 100)
       }
 
+      // Criar mensagem placeholder para o assistente ANTES de chamar a API (para obter messageId)
+      // Isso é necessário para operações assíncronas como VEO 3.1
+      let assistantMessageId: string | undefined = undefined
+      const isVeoModel = !selectedPipeline && !selectedAgent && provider === 'Google' && (model.includes('veo') || model.includes('Veo'))
+      
+      if (isVeoModel) {
+        // Para modelos VEO, criar mensagem placeholder no banco ANTES de chamar a API
+        const placeholderContent = '🎬 **Vídeo em processamento**\n\nSeu vídeo está sendo gerado...'
+        const { data: assistantMessageData, error: assistantMessageError } = await supabase
+          .from('lab_messages')
+          .insert({
+            conversation_id: conversationId,
+            role: 'assistant',
+            content: placeholderContent,
+          })
+          .select()
+          .single()
+        
+        if (!assistantMessageError && assistantMessageData) {
+          assistantMessageId = assistantMessageData.id
+          // Adicionar mensagem placeholder ao estado local
+          const placeholderMessage: Message = {
+            id: assistantMessageId,
+            role: 'assistant',
+            content: placeholderContent,
+            created_at: assistantMessageData.created_at,
+            metadata: {
+              provider,
+              model,
+            },
+          }
+          setMessages((prev) => [...prev, placeholderMessage])
+
+          // Buscar operação pendente relacionada a esta mensagem após um breve delay
+          // (para dar tempo da API salvar a operação no banco)
+          setTimeout(async () => {
+            if (assistantMessageId && user) {
+              const { data: operation } = await supabase
+                .from('lab_video_operations')
+                .select('id, message_id, status, model, created_at')
+                .eq('message_id', assistantMessageId)
+                .eq('user_id', user.id)
+                .in('status', ['pending', 'processing'])
+                .single()
+
+              if (operation && operation.message_id) {
+                setPendingVideoOperations(prev => ({
+                  ...prev,
+                  [operation.message_id]: {
+                    id: operation.id,
+                    status: operation.status as 'pending' | 'processing',
+                    model: operation.model,
+                    created_at: operation.created_at,
+                  },
+                }))
+              }
+            }
+          }, 1000) // Delay de 1 segundo para garantir que a operação foi salva
+        }
+      }
+
       const requestBody = selectedPipeline
         ? {
             pipelineId: selectedPipeline.id,
@@ -900,6 +1765,7 @@ export default function AILabPage() {
           }
         : {
             conversationId,
+            messageId: assistantMessageId, // Passar messageId para operações assíncronas
             messages: [...messages, userMessage],
             provider,
             model,
@@ -911,7 +1777,7 @@ export default function AILabPage() {
           }
 
       let assistantContent = ''
-      const tempAssistantId = `temp-assistant-${Date.now()}`
+      const tempAssistantId = assistantMessageId || `temp-assistant-${Date.now()}`
       let firstProgressEvent = true // Flag para scrollar apenas no primeiro evento de progresso
 
       // Pipelines agora retornam SSE (Server-Sent Events)
@@ -1127,10 +1993,134 @@ export default function AILabPage() {
         let messageMetadata: Message['metadata'] | undefined = undefined
         let buffer = ''
         let metadataProcessed = false
+        let isAccumulatingBase64 = false // Flag para indicar que estamos acumulando URL base64
+        let isAccumulatingHttpUrl = false // Flag para indicar que estamos acumulando URL HTTP (Replicate)
 
         while (true) {
           const { done, value } = await reader!.read()
-          if (done) break
+          if (done) {
+            // Processar buffer final se houver
+            if (buffer.trim() || isAccumulatingBase64 || isAccumulatingHttpUrl) {
+              // Se estávamos acumulando base64, adicionar buffer final
+              if (isAccumulatingBase64) {
+                const cleanBuffer = buffer.replace(/\s+/g, '')
+                assistantContent += cleanBuffer
+                isAccumulatingBase64 = false
+                console.log('[LAB-IA][STREAM] Finalizando acumulação base64, tamanho final:', assistantContent.length)
+              } else if (isAccumulatingHttpUrl) {
+                // Se estávamos acumulando HTTP, adicionar buffer final (sem remover espaços, mas remover quebras de linha dentro da URL)
+                const cleanBuffer = buffer.replace(/\n/g, '').replace(/\r/g, '')
+                assistantContent += cleanBuffer
+                isAccumulatingHttpUrl = false
+                console.log('[LAB-IA][STREAM] Finalizando acumulação HTTP, tamanho final:', assistantContent.length)
+              } else if (buffer.trim()) {
+                // Processar qualquer conteúdo restante
+                if (buffer.startsWith('data: ')) {
+                  try {
+                    const data = JSON.parse(buffer.slice(6))
+                    if (data.type === 'metadata' && data.data && !metadataProcessed) {
+                      messageMetadata = {
+                        provider: data.data.provider,
+                        model: data.data.model,
+                        autoSelected: data.data.autoSelected,
+                        originalProvider: data.data.originalProvider,
+                        originalModel: data.data.originalModel,
+                        taskCategory: data.data.taskCategory ?? null,
+                        memoriesUsed: data.data.memoriesUsed || undefined,
+                      }
+                      metadataProcessed = true
+                    } else if (data.type === 'memory_created' && data.data) {
+                      // Notificação de nova memória criada
+                      toast({
+                        title: '🧠 Nova memória salva',
+                        description: data.data.message || `${data.data.count} nova${data.data.count > 1 ? 's' : ''} memória${data.data.count > 1 ? 's' : ''} criada${data.data.count > 1 ? 's' : ''}`,
+                        duration: 5000,
+                      })
+                    }
+                  } catch (e) {
+                    // Não é JSON, usar como conteúdo
+                    const content = buffer.slice(6) // Remover 'data: '
+                    // Verificar se estamos no meio de uma URL base64 (dentro de markdown image ou video)
+                    const isInBase64Url = (
+                                      (assistantContent.includes('![Imagem gerada](data:') || 
+                                       assistantContent.includes('![Imagemgerada](data:') ||
+                                       assistantContent.includes('![Vídeo gerado](data:') ||
+                                       assistantContent.includes('![Vídeogerado](data:')) &&
+                                      !assistantContent.includes(')') &&
+                                      (assistantContent.includes('base64,') || content.match(/^[A-Za-z0-9+/=]/))
+                    )
+                    // Verificar se estamos no meio de uma URL HTTP (dentro de markdown image ou video)
+                    const isInHttpUrl = (
+                                      (assistantContent.includes('![Imagem gerada](https://') || 
+                                       assistantContent.includes('![Imagemgerada](https://') ||
+                                       assistantContent.includes('![Imagem gerada](http://') ||
+                                       assistantContent.includes('![Imagemgerada](http://') ||
+                                       (assistantContent.includes('![Imagem') && (assistantContent.includes('https://') || assistantContent.includes('http://'))) ||
+                                       assistantContent.includes('![Vídeo gerado](https://') ||
+                                       assistantContent.includes('![Vídeogerado](https://') ||
+                                       assistantContent.includes('![Vídeo gerado](http://') ||
+                                       assistantContent.includes('![Vídeogerado](http://') ||
+                                       (assistantContent.includes('![Vídeo') && (assistantContent.includes('https://') || assistantContent.includes('http://')))) &&
+                                      !assistantContent.match(/!\[Imagem\s?gerada\]\(https?:\/\/[^)]+\)/) &&
+                                      !assistantContent.match(/!\[Imagem\s?\d+\]\(https?:\/\/[^)]+\)/) &&
+                                      !assistantContent.match(/!\[Vídeo\s?gerado\]\(https?:\/\/[^)]+\)/) &&
+                                      !assistantContent.match(/!\[Vídeo\s?\d+\]\(https?:\/\/[^)]+\)/) &&
+                                      !assistantContent.match(/!\[Vídeo\s?gerado\]\(data:video\/[^)]+\)/) &&
+                                      !assistantContent.match(/!\[Vídeogerado\]\(data:video\/[^)]+\)/)
+                    )
+                    
+                    if (isInBase64Url) {
+                      assistantContent += content.replace(/\s+/g, '')
+                    } else if (isInHttpUrl) {
+                      assistantContent += content.replace(/\n/g, '').replace(/\r/g, '')
+                    } else {
+                      assistantContent += content
+                    }
+                    console.log('[LAB-IA][STREAM] Conteúdo final recebido:', content.substring(0, 200))
+                  }
+                } else {
+                  // Verificar se estamos no meio de uma URL base64 (dentro de markdown image ou video)
+                  const isInBase64Url = (
+                                        (assistantContent.includes('![Imagem gerada](data:') || 
+                                         assistantContent.includes('![Imagemgerada](data:') ||
+                                         assistantContent.includes('![Vídeo gerado](data:') ||
+                                         assistantContent.includes('![Vídeogerado](data:')) &&
+                                        !assistantContent.includes(')') &&
+                                        (assistantContent.includes('base64,') || buffer.trim().match(/^[A-Za-z0-9+/=]/))
+                  )
+                  // Verificar se estamos no meio de uma URL HTTP (dentro de markdown image ou video)
+                  const isInHttpUrl = (
+                                      (assistantContent.includes('![Imagem gerada](https://') || 
+                                       assistantContent.includes('![Imagemgerada](https://') ||
+                                       assistantContent.includes('![Imagem gerada](http://') ||
+                                       assistantContent.includes('![Imagemgerada](http://') ||
+                                       (assistantContent.includes('![Imagem') && (assistantContent.includes('https://') || assistantContent.includes('http://'))) ||
+                                       assistantContent.includes('![Vídeo gerado](https://') ||
+                                       assistantContent.includes('![Vídeogerado](https://') ||
+                                       assistantContent.includes('![Vídeo gerado](http://') ||
+                                       assistantContent.includes('![Vídeogerado](http://') ||
+                                       (assistantContent.includes('![Vídeo') && (assistantContent.includes('https://') || assistantContent.includes('http://')))) &&
+                                      !assistantContent.match(/!\[Imagem\s?gerada\]\(https?:\/\/[^)]+\)/) &&
+                                      !assistantContent.match(/!\[Imagem\s?\d+\]\(https?:\/\/[^)]+\)/) &&
+                                      !assistantContent.match(/!\[Vídeo\s?gerado\]\(https?:\/\/[^)]+\)/) &&
+                                      !assistantContent.match(/!\[Vídeo\s?\d+\]\(https?:\/\/[^)]+\)/) &&
+                                      !assistantContent.match(/!\[Vídeo\s?gerado\]\(data:video\/[^)]+\)/) &&
+                                      !assistantContent.match(/!\[Vídeogerado\]\(data:video\/[^)]+\)/)
+                  )
+                  
+                  if (isInBase64Url) {
+                    assistantContent += buffer.trim().replace(/\s+/g, '')
+                  } else if (isInHttpUrl) {
+                    assistantContent += buffer.replace(/\n/g, '').replace(/\r/g, '')
+                  } else {
+                    assistantContent += buffer
+                  }
+                  console.log('[LAB-IA][STREAM] Conteúdo final direto:', buffer.substring(0, 200))
+                }
+              }
+            }
+            break
+          }
 
           buffer += decoder.decode(value, { stream: true })
           
@@ -1150,8 +2140,18 @@ export default function AILabPage() {
                     originalProvider: data.data.originalProvider,
                     originalModel: data.data.originalModel,
                     taskCategory: data.data.taskCategory ?? null,
+                    memoriesUsed: data.data.memoriesUsed || undefined,
                   }
                   metadataProcessed = true
+                  buffer = parts[1] || '' // Continuar com o resto do buffer
+                  continue
+                } else if (data.type === 'memory_created' && data.data) {
+                  // Notificação de nova memória criada
+                  toast({
+                    title: '🧠 Nova memória salva',
+                    description: data.data.message || `${data.data.count} nova${data.data.count > 1 ? 's' : ''} memória${data.data.count > 1 ? 's' : ''} criada${data.data.count > 1 ? 's' : ''}`,
+                    duration: 5000,
+                  })
                   buffer = parts[1] || '' // Continuar com o resto do buffer
                   continue
                 }
@@ -1162,26 +2162,300 @@ export default function AILabPage() {
             metadataProcessed = true // Marcar como processado mesmo se não encontrou metadados
           }
           
+          // Se estamos acumulando base64, não processar linha por linha - acumular tudo até encontrar o fechamento
+          if (isAccumulatingBase64) {
+            // Verificar se o buffer contém o fechamento da URL base64
+            const imageEndMatch = buffer.match(/!\[Imagem gerada\]\(data:[^)]+\)/)
+            if (imageEndMatch) {
+              // Encontramos o fechamento, processar normalmente
+              isAccumulatingBase64 = false
+            } else {
+              // Ainda acumulando, adicionar tudo ao conteúdo sem quebras
+              const cleanBuffer = buffer.replace(/\s+/g, '')
+              assistantContent += cleanBuffer
+              buffer = '' // Limpar buffer já que adicionamos tudo
+              console.log('[LAB-IA][STREAM] Acumulando base64, tamanho atual:', assistantContent.length)
+              continue // Pular processamento de linhas
+            }
+          }
+          
+          // Se estamos acumulando HTTP, não processar linha por linha - acumular tudo até encontrar o fechamento
+          if (isAccumulatingHttpUrl) {
+            // Verificar se o buffer contém o fechamento da URL HTTP (imagem ou vídeo)
+            const imageEndMatchHttp = buffer.match(/!\[Imagem\s?gerada\]\(https?:\/\/[^)]+\)/) ||
+                                     buffer.match(/!\[Imagem\s?\d+\]\(https?:\/\/[^)]+\)/)
+            const videoEndMatchHttp = buffer.match(/!\[Vídeo\s?gerado\]\(https?:\/\/[^)]+\)/) ||
+                                     buffer.match(/!\[Vídeo\s?\d+\]\(https?:\/\/[^)]+\)/)
+            if (imageEndMatchHttp || videoEndMatchHttp) {
+              // Encontramos o fechamento, processar normalmente
+              isAccumulatingHttpUrl = false
+            } else {
+              // Ainda acumulando, adicionar tudo ao conteúdo (remover apenas quebras de linha dentro da URL)
+              const cleanBuffer = buffer.replace(/\n/g, '').replace(/\r/g, '')
+              assistantContent += cleanBuffer
+              buffer = '' // Limpar buffer já que adicionamos tudo
+              console.log('[LAB-IA][STREAM] Acumulando HTTP, tamanho atual:', assistantContent.length)
+              continue // Pular processamento de linhas
+            }
+          }
+          
           // Processar linhas SSE ou texto puro
           const lines = buffer.split('\n')
           buffer = lines.pop() || '' // Manter última linha incompleta
 
           for (const line of lines) {
             if (line.startsWith('data: ')) {
-              // Tentar parsear como JSON (metadados) ou usar como texto
+              // Tentar parsear como JSON (metadados) ou usar como conteúdo
               try {
                 const data = JSON.parse(line.slice(6))
                 if (data.type === 'metadata') continue // Já processado
+                if (data.type === 'memory_created' && data.data) {
+                  // Notificação de nova memória criada
+                  toast({
+                    title: '🧠 Nova memória salva',
+                    description: data.data.message || `${data.data.count} nova${data.data.count > 1 ? 's' : ''} memória${data.data.count > 1 ? 's' : ''} criada${data.data.count > 1 ? 's' : ''}`,
+                    duration: 5000,
+                  })
+                  continue
+                }
               } catch (e) {
                 // Não é JSON, usar como conteúdo
-                assistantContent += line.slice(6) // Remover 'data: '
+                const content = line.slice(6) // Remover 'data: '
+                
+                // Verificar se estamos no meio de uma URL base64 (dentro de markdown image)
+                const hasImageStartBase64 = assistantContent.includes('![Imagem gerada](data:')
+                const hasImageEndBase64 = assistantContent.match(/!\[Imagem gerada\]\(data:[^)]+\)/)
+                const isBase64Content = content.match(/^[A-Za-z0-9+/=\s]+$/) && content.length > 50
+                
+                const isInBase64Url = hasImageStartBase64 && !hasImageEndBase64 && 
+                                      (assistantContent.includes('base64,') || isBase64Content)
+                
+                // Verificar se estamos no meio de uma URL HTTP (dentro de markdown image ou video)
+                const hasImageStartHttp = (assistantContent.includes('![Imagem gerada](https://') || 
+                                         assistantContent.includes('![Imagemgerada](https://') ||
+                                         assistantContent.includes('![Imagem gerada](http://') ||
+                                         assistantContent.includes('![Imagemgerada](http://') ||
+                                         (assistantContent.includes('![Imagem') && (assistantContent.includes('https://') || assistantContent.includes('http://'))))
+                const hasImageEndHttp = assistantContent.match(/!\[Imagem\s?gerada\]\(https?:\/\/[^)]+\)/) ||
+                                       assistantContent.match(/!\[Imagem\s?\d+\]\(https?:\/\/[^)]+\)/)
+                
+                const hasVideoStartHttp = (assistantContent.includes('![Vídeo gerado](https://') || 
+                                         assistantContent.includes('![Vídeogerado](https://') ||
+                                         assistantContent.includes('![Vídeo gerado](http://') ||
+                                         assistantContent.includes('![Vídeogerado](http://') ||
+                                         (assistantContent.includes('![Vídeo') && (assistantContent.includes('https://') || assistantContent.includes('http://'))))
+                const hasVideoEndHttp = assistantContent.match(/!\[Vídeo\s?gerado\]\(https?:\/\/[^)]+\)/) ||
+                                       assistantContent.match(/!\[Vídeo\s?\d+\]\(https?:\/\/[^)]+\)/)
+                
+                const isInHttpUrl = (hasImageStartHttp && !hasImageEndHttp) || (hasVideoStartHttp && !hasVideoEndHttp)
+                
+                if (isInBase64Url) {
+                  // Estamos no meio de uma URL base64, adicionar sem quebra e sem espaços
+                  assistantContent += content.replace(/\s+/g, '')
+                  console.log('[LAB-IA][STREAM] Conteúdo base64 recebido (primeiros 50 chars):', content.substring(0, 50))
+                } else if (isInHttpUrl) {
+                  // Estamos no meio de uma URL HTTP, adicionar sem quebras de linha
+                  assistantContent += content.replace(/\n/g, '').replace(/\r/g, '')
+                  console.log('[LAB-IA][STREAM] Conteúdo HTTP recebido (primeiros 100 chars):', content.substring(0, 100))
+                } else {
+                  assistantContent += content
+                  console.log('[LAB-IA][STREAM] Conteúdo recebido:', content.substring(0, 100))
+                }
               }
             } else if (line.trim() && !line.startsWith(':')) {
-              // Conteúdo normal
-              assistantContent += line
+              // Conteúdo normal (não SSE)
+              
+              // Verificar se esta linha começa com markdown image e data URL
+              // Aceitar tanto "Imagem gerada" quanto "Imagemgerada" (sem espaço)
+              const startsWithImageMarkdownBase64 = line.trim().match(/^!\[Imagem\s?gerada\]\(data:/)
+              
+              // Verificar se esta linha começa com markdown image/video e URL HTTP
+              const startsWithImageMarkdownHttp = line.trim().match(/^!\[Imagem\s?gerada\]\(https?:\/\//) ||
+                                                      line.trim().match(/^!\[Imagem\s?\d+\]\(https?:\/\//) ||
+                                                      (line.trim().includes('![Imagem') && (line.trim().includes('https://') || line.trim().includes('http://')))
+              const startsWithVideoMarkdownHttp = line.trim().match(/^!\[Vídeo\s?gerado\]\(https?:\/\//) ||
+                                                      line.trim().match(/^!\[Vídeo\s?\d+\]\(https?:\/\//) ||
+                                                      (line.trim().includes('![Vídeo') && (line.trim().includes('https://') || line.trim().includes('http://')))
+              
+              // Verificar se estamos no meio de uma URL base64 (dentro de markdown image)
+              const hasImageStartBase64 = assistantContent.match(/!\[Imagem\s?gerada\]\(data:/)
+              const hasImageEndBase64 = assistantContent.match(/!\[Imagem\s?gerada\]\(data:[^)]+\)/)
+              
+              // Verificar se estamos no meio de uma URL HTTP (dentro de markdown image ou video)
+              const hasImageStartHttp = assistantContent.match(/!\[Imagem\s?gerada\]\(https?:\/\//) ||
+                                       assistantContent.match(/!\[Imagem\s?\d+\]\(https?:\/\//) ||
+                                       (assistantContent.includes('![Imagem') && (assistantContent.includes('https://') || assistantContent.includes('http://')))
+              const hasImageEndHttp = assistantContent.match(/!\[Imagem\s?gerada\]\(https?:\/\/[^)]+\)/) ||
+                                     assistantContent.match(/!\[Imagem\s?\d+\]\(https?:\/\/[^)]+\)/)
+              
+              const hasVideoStartHttp = assistantContent.match(/!\[Vídeo\s?gerado\]\(https?:\/\//) ||
+                                       assistantContent.match(/!\[Vídeo\s?\d+\]\(https?:\/\//) ||
+                                       (assistantContent.includes('![Vídeo') && (assistantContent.includes('https://') || assistantContent.includes('http://')))
+              const hasVideoEndHttp = assistantContent.match(/!\[Vídeo\s?gerado\]\(https?:\/\/[^)]+\)/) ||
+                                     assistantContent.match(/!\[Vídeo\s?\d+\]\(https?:\/\/[^)]+\)/)
+              
+              // Verificar se já passamos do prefixo "data:image/...;base64," e estamos no conteúdo base64
+              const base64StartIndex = assistantContent.indexOf('base64,')
+              const isInBase64Content = base64StartIndex !== -1 && !hasImageEndBase64
+              
+              // Verificar se a linha contém apenas caracteres base64 válidos (após base64,)
+              // Base64 válido: A-Z, a-z, 0-9, +, /, = e espaços/quebras de linha
+              const isBase64Line = line.trim().match(/^[A-Za-z0-9+/=\s]+$/) && 
+                                    line.trim().length > 50 &&
+                                    !line.trim().match(/[^A-Za-z0-9+/=\s]/)
+              
+              // Verificar se a linha continua uma URL base64 que já começou
+              // Só continuar se estivermos realmente dentro do conteúdo base64 (após base64,)
+              const continuesBase64Url = isInBase64Content && isBase64Line
+              
+              if (startsWithImageMarkdownBase64) {
+                // Começou uma URL base64, marcar flag e adicionar
+                isAccumulatingBase64 = true
+                isAccumulatingHttpUrl = false
+                const cleanLine = line.trim().replace(/\s+/g, '')
+                assistantContent += cleanLine
+                console.log('[LAB-IA][STREAM] Iniciando acumulação base64:', cleanLine.substring(0, 50))
+              } else if ((startsWithImageMarkdownHttp && !hasImageEndHttp) || (startsWithVideoMarkdownHttp && !hasVideoEndHttp)) {
+                // Começou uma URL HTTP (imagem ou vídeo), marcar flag e adicionar
+                isAccumulatingHttpUrl = true
+                isAccumulatingBase64 = false
+                const cleanLine = line.trim().replace(/\n/g, '').replace(/\r/g, '')
+                assistantContent += cleanLine
+                console.log('[LAB-IA][STREAM] Iniciando acumulação HTTP:', cleanLine.substring(0, 100))
+              } else if (isAccumulatingBase64) {
+                // Estamos acumulando base64
+                // Verificar se encontramos o fechamento nesta linha
+                if (line.includes(')')) {
+                  // Encontramos o fechamento, adicionar até o fechamento e parar
+                  const closingIndex = line.indexOf(')')
+                  const beforeClose = line.substring(0, closingIndex + 1).trim().replace(/\s+/g, '')
+                  assistantContent += beforeClose
+                  isAccumulatingBase64 = false
+                  console.log('[LAB-IA][STREAM] Fechamento de URL base64 encontrado')
+                  
+                  // Adicionar o resto da linha como conteúdo normal (se houver)
+                  if (line.length > closingIndex + 1) {
+                    assistantContent += line.substring(closingIndex + 1)
+                    console.log('[LAB-IA][STREAM] Conteúdo após URL base64:', line.substring(closingIndex + 1).substring(0, 100))
+                  }
+                } else if (continuesBase64Url) {
+                  // Ainda estamos no conteúdo base64 válido, adicionar sem quebra e sem espaços
+                  const cleanLine = line.trim().replace(/\s+/g, '')
+                  assistantContent += cleanLine
+                  console.log('[LAB-IA][STREAM] Continuando base64:', cleanLine.substring(0, 50))
+                } else {
+                  // Não é mais base64 válido, mas ainda não encontramos o fechamento
+                  // Isso pode acontecer se a URL foi quebrada incorretamente
+                  // Tentar encontrar o fechamento no buffer acumulado
+                  const currentContent = assistantContent
+                  const lastBase64Index = currentContent.lastIndexOf('base64,')
+                  if (lastBase64Index !== -1) {
+                    // Procurar por fechamento após base64,
+                    const afterBase64 = currentContent.substring(lastBase64Index + 7)
+                    const closeIndex = afterBase64.indexOf(')')
+                    if (closeIndex !== -1) {
+                      // Fechamento encontrado no conteúdo acumulado, parar acumulação
+                      isAccumulatingBase64 = false
+                      console.log('[LAB-IA][STREAM] Fechamento encontrado no conteúdo acumulado')
+                    }
+                  }
+                  
+                  // Se ainda estamos acumulando, adicionar como texto normal
+                  if (!isAccumulatingBase64) {
+                    assistantContent += line
+                    console.log('[LAB-IA][STREAM] Conteúdo após URL base64:', line.substring(0, 100))
+                  } else {
+                    // Ainda acumulando, adicionar como base64 (pode estar quebrado)
+                    const cleanLine = line.trim().replace(/\s+/g, '')
+                    assistantContent += cleanLine
+                    console.log('[LAB-IA][STREAM] Continuando base64 (possível quebra):', cleanLine.substring(0, 50))
+                  }
+                }
+              } else if (isAccumulatingHttpUrl) {
+                // Estamos acumulando HTTP
+                // Verificar se encontramos o fechamento nesta linha
+                if (line.includes(')')) {
+                  // Encontramos o fechamento, adicionar até o fechamento e parar
+                  const closingIndex = line.indexOf(')')
+                  const beforeClose = line.substring(0, closingIndex + 1).replace(/\n/g, '').replace(/\r/g, '')
+                  assistantContent += beforeClose
+                  isAccumulatingHttpUrl = false
+                  console.log('[LAB-IA][STREAM] Fechamento de URL HTTP encontrado')
+                  
+                  // Adicionar o resto da linha como conteúdo normal (se houver)
+                  if (line.length > closingIndex + 1) {
+                    assistantContent += line.substring(closingIndex + 1)
+                    console.log('[LAB-IA][STREAM] Conteúdo após URL HTTP:', line.substring(closingIndex + 1).substring(0, 100))
+                  }
+                } else {
+                  // Ainda estamos acumulando HTTP, adicionar sem quebras de linha
+                  const cleanLine = line.replace(/\n/g, '').replace(/\r/g, '')
+                  assistantContent += cleanLine
+                  console.log('[LAB-IA][STREAM] Continuando HTTP:', cleanLine.substring(0, 100))
+                }
+              } else {
+                assistantContent += line
+                console.log('[LAB-IA][STREAM] Conteúdo direto:', line.substring(0, 100))
+              }
             }
           }
 
+          // Verificar se há URL base64 completa antes de atualizar
+          const hasImageMarkdownBase64 = assistantContent.match(/!\[Imagem\s?gerada\]\(data:/)
+          if (hasImageMarkdownBase64) {
+            // Tentar encontrar URL completa (pode ter espaço ou não no texto)
+            const imageMatch = assistantContent.match(/!\[Imagem\s?gerada\]\(data:[^)]+\)/)
+            if (imageMatch) {
+              console.log('[LAB-IA][STREAM] URL base64 completa encontrada! Tamanho:', imageMatch[0].length)
+              console.log('[LAB-IA][STREAM] Primeiros 100 chars da URL:', imageMatch[0].substring(0, 100))
+              console.log('[LAB-IA][STREAM] Últimos 50 chars da URL:', imageMatch[0].substring(Math.max(0, imageMatch[0].length - 50)))
+            } else {
+              // Verificar se temos o início mas não o fechamento
+              const base64Start = assistantContent.indexOf('base64,')
+              if (base64Start !== -1) {
+                const afterBase64 = assistantContent.substring(base64Start + 7)
+                const closeIndex = afterBase64.indexOf(')')
+                if (closeIndex === -1) {
+                  console.warn('[LAB-IA][STREAM] URL base64 incompleta! Não encontrou fechamento após base64,')
+                  console.warn('[LAB-IA][STREAM] Conteúdo após base64, (primeiros 200 chars):', afterBase64.substring(0, 200))
+                }
+              } else {
+                console.warn('[LAB-IA][STREAM] URL base64 incompleta! Não encontrou base64,')
+                console.warn('[LAB-IA][STREAM] Conteúdo atual:', assistantContent.substring(0, 500))
+              }
+            }
+          }
+          
+          // Verificar se há URL HTTP completa antes de atualizar (imagens ou vídeos)
+          const hasImageMarkdownHttp = assistantContent.match(/!\[Imagem\s?gerada\]\(https?:\/\//) ||
+                                   assistantContent.match(/!\[Imagem\s?\d+\]\(https?:\/\//)
+          const hasVideoMarkdownHttp = assistantContent.match(/!\[Vídeo\s?gerado\]\(https?:\/\//) ||
+                                   assistantContent.match(/!\[Vídeo\s?\d+\]\(https?:\/\//)
+          if (hasImageMarkdownHttp) {
+            // Tentar encontrar URL completa (pode ter espaço ou não no texto)
+            const imageMatchHttp = assistantContent.match(/!\[Imagem\s?gerada\]\(https?:\/\/[^)]+\)/) ||
+                                  assistantContent.match(/!\[Imagem\s?\d+\]\(https?:\/\/[^)]+\)/)
+            if (imageMatchHttp) {
+              console.log('[LAB-IA][STREAM] URL HTTP completa encontrada! Tamanho:', imageMatchHttp[0].length)
+              console.log('[LAB-IA][STREAM] URL completa:', imageMatchHttp[0])
+            } else {
+              console.warn('[LAB-IA][STREAM] URL HTTP incompleta! Não encontrou fechamento')
+              console.warn('[LAB-IA][STREAM] Conteúdo atual:', assistantContent.substring(0, 500))
+            }
+          }
+          if (hasVideoMarkdownHttp) {
+            // Tentar encontrar URL completa de vídeo (pode ter espaço ou não no texto)
+            const videoMatchHttp = assistantContent.match(/!\[Vídeo\s?gerado\]\(https?:\/\/[^)]+\)/) ||
+                                  assistantContent.match(/!\[Vídeo\s?\d+\]\(https?:\/\/[^)]+\)/)
+            if (videoMatchHttp) {
+              console.log('[LAB-IA][STREAM] URL HTTP de vídeo completa encontrada! Tamanho:', videoMatchHttp[0].length)
+              console.log('[LAB-IA][STREAM] URL completa:', videoMatchHttp[0])
+            } else {
+              console.warn('[LAB-IA][STREAM] URL HTTP de vídeo incompleta! Não encontrou fechamento')
+              console.warn('[LAB-IA][STREAM] Conteúdo atual:', assistantContent.substring(0, 500))
+            }
+          }
+          
           // Atualizar mensagem em tempo real
           setMessages((prev) => {
             const existingIndex = prev.findIndex((m) => m.id === tempAssistantId)
@@ -1266,14 +2540,24 @@ export default function AILabPage() {
         }
       }, 200)
 
-      // Salvar mensagem completa do assistente
-      const { error: msgError } = await supabase.from('lab_messages').insert({
-        conversation_id: conversationId,
-        role: 'assistant',
-        content: assistantContent,
-      })
+      // Salvar mensagem completa do assistente (apenas se não foi criada como placeholder)
+      if (!assistantMessageId) {
+        const { error: msgError } = await supabase.from('lab_messages').insert({
+          conversation_id: conversationId,
+          role: 'assistant',
+          content: assistantContent,
+        })
 
-      if (msgError) console.error('Erro ao salvar mensagem:', msgError)
+        if (msgError) console.error('Erro ao salvar mensagem:', msgError)
+      } else {
+        // Se já existe a mensagem (placeholder), apenas atualizar o conteúdo
+        const { error: updateError } = await supabase
+          .from('lab_messages')
+          .update({ content: assistantContent })
+          .eq('id', assistantMessageId)
+
+        if (updateError) console.error('Erro ao atualizar mensagem:', updateError)
+      }
 
       // Atualizar conversas
       await loadConversations()
@@ -1321,6 +2605,8 @@ export default function AILabPage() {
       ])
     } finally {
       setLoading(false)
+      setLoadingStartTime(null)
+      setLoadingElapsedSeconds(0)
       setIsCanceling(false)
       // Aguardar um pouco antes de limpar progresso para mostrar resultado final
       // Usar ref para poder cancelar se uma nova execução começar
@@ -1598,82 +2884,127 @@ export default function AILabPage() {
               </div>
             </div>
             <div className="flex items-center gap-1 flex-shrink-0">
-              <ChatModelSelector
-                provider={provider}
-                model={model}
-                onChange={(newProvider, newModel) => {
-                  setProvider(newProvider)
-                  setModel(newModel)
+              {comparisonMode ? (
+                <DualModelSelector
+                  modelA={modelA}
+                  modelB={modelB}
+                  onModelAChange={(p, m) => setModelA({ provider: p, model: m })}
+                  onModelBChange={(p, m) => setModelB({ provider: p, model: m })}
+                />
+              ) : (
+                <ChatModelSelector
+                  provider={provider}
+                  model={model}
+                  onChange={(newProvider, newModel) => {
+                    setProvider(newProvider)
+                    setModel(newModel)
+                  }}
+                />
+              )}
+              <ModelComparisonToggle
+                enabled={comparisonMode}
+                onToggle={(enabled) => {
+                  setComparisonMode(enabled)
+                  if (!enabled) {
+                    // Limpar votos ao desativar modo comparação
+                    setComparisonVotes({})
+                  }
                 }}
               />
             </div>
           </div>
 
           {/* Desktop Header */}
-          <div className="hidden md:flex items-center justify-between mb-3">
-            <div className="flex items-center gap-3 flex-1 min-w-0">
-              <Sparkles className="h-6 w-6 text-primary flex-shrink-0" />
-              <h1 className="text-2xl font-bold">Laboratório da IA</h1>
-              {/* Seletor de modelo no estilo ChatGPT */}
-              <ChatModelSelector
-                provider={provider}
-                model={model}
-                onChange={(newProvider, newModel) => {
-                  setProvider(newProvider)
-                  setModel(newModel)
-                }}
-              />
-              {selectedAgent && (
-                <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 text-primary text-sm font-medium">
-                  <span>{selectedAgent.icon}</span>
-                  <span>{selectedAgent.name}</span>
-                </div>
-              )}
-              {selectedPipeline && (
-                <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 text-primary text-sm font-medium">
+          <div className="hidden md:block mb-3">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-3 flex-1 min-w-0">
+                <Sparkles className="h-6 w-6 text-primary flex-shrink-0" />
+                <h1 className="text-2xl font-bold">Laboratório da IA</h1>
+                {selectedAgent && (
+                  <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 text-primary text-sm font-medium">
+                    <span>{selectedAgent.icon}</span>
+                    <span>{selectedAgent.name}</span>
+                  </div>
+                )}
+                {selectedPipeline && (
+                  <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 text-primary text-sm font-medium">
                   <span>🔗</span>
                   <span>{selectedPipeline.name}</span>
                 </div>
               )}
+                {/* Gamification Indicators */}
+                {stats && (
+                  <Link 
+                    href="/profile/dashboard" 
+                    className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-lg border bg-muted/50 hover:bg-muted transition-colors"
+                  >
+                    <PointsDisplay 
+                      points={stats.total_xp} 
+                      showIcon 
+                      size="sm" 
+                      variant="compact"
+                    />
+                    <LevelBadge 
+                      level={stats.current_level} 
+                      size="sm" 
+                      showIcon
+                    />
+                    <StreakDisplay 
+                      currentStreak={stats.current_streak} 
+                      size="sm" 
+                      variant="compact"
+                    />
+                  </Link>
+                )}
+              </div>
             </div>
-            <div className="flex items-center gap-2 flex-shrink-0">
-              <PipelineSelector
-                selectedPipelineId={selectedPipeline?.id}
-                onSelect={(pipeline) => {
-                  setSelectedPipeline(pipeline)
-                  // Se pipeline selecionado, remover agente único (mutuamente exclusivo)
-                  if (pipeline) {
-                    setSelectedAgent(null)
+            {/* Linha de controles: Modelos > Comparar > Pipelines > Preferências > Histórico > Dashboard */}
+            <div className="flex items-center gap-2 flex-wrap mt-2">
+              {/* 1. Seleção de modelos */}
+              {comparisonMode ? (
+                <DualModelSelector
+                  modelA={modelA}
+                  modelB={modelB}
+                  onModelAChange={(p, m) => setModelA({ provider: p, model: m })}
+                  onModelBChange={(p, m) => setModelB({ provider: p, model: m })}
+                />
+              ) : (
+                <ChatModelSelector
+                  provider={provider}
+                  model={model}
+                  onChange={(newProvider, newModel) => {
+                    setProvider(newProvider)
+                    setModel(newModel)
+                  }}
+                />
+              )}
+              
+              {/* 2. Toggle Comparar Modelos */}
+              <ModelComparisonToggle
+                enabled={comparisonMode}
+                onToggle={(enabled) => {
+                  setComparisonMode(enabled)
+                  if (!enabled) {
+                    setComparisonVotes({})
                   }
                 }}
               />
-              <AgentSelector
-                selectedAgentId={selectedAgent?.id}
-                onSelect={(agent) => {
-                  setSelectedAgent(agent)
-                  // Se agente selecionado, remover pipeline (mutuamente exclusivo)
-                  if (agent) {
-                    setSelectedPipeline(null)
-                    // Pré-selecionar provider/model do agente se definidos
-                    if (agent.provider) {
-                      setProvider(agent.provider)
+              
+              {/* 3. Pipelines (apenas para admin) */}
+              {isAdmin && (
+                <PipelineSelector
+                  selectedPipelineId={selectedPipeline?.id}
+                  onSelect={(pipeline) => {
+                    setSelectedPipeline(pipeline)
+                    // Se pipeline selecionado, remover agente único (mutuamente exclusivo)
+                    if (pipeline) {
+                      setSelectedAgent(null)
                     }
-                    if (agent.model) {
-                      setModel(agent.model)
-                    }
-                    registerAgentUsage({
-                      id: agent.id!,
-                      name: agent.name,
-                      description: agent.description,
-                      icon: agent.icon,
-                      category: agent.category,
-                      provider: agent.provider,
-                      model: agent.model,
-                      type: agent.type,
-                    })
-                  }
-                }}
-              />
+                  }}
+                />
+              )}
+              
+              {/* 4. Preferências */}
               <RoutingPreferencesDialog
                 preferences={routingPreferences}
                 onPreferencesChange={(prefs) => {
@@ -1681,12 +3012,19 @@ export default function AILabPage() {
                   setIntelligentRoutingEnabled(prefs.intelligentRoutingEnabled)
                 }}
               />
+              
+              {/* 4.5. Configurações de Memória */}
+              <MemorySettingsDialog />
+              
+              {/* 5. Histórico */}
               <Link href="/ai-lab/pipelines/history">
                 <Button variant="outline" size="sm">
                   <History className="h-4 w-4 mr-2" />
                   Histórico
                 </Button>
               </Link>
+              
+              {/* 6. Dashboard (apenas para admin) */}
               {isAdmin && (
                 <Link href="/ai-lab/admin">
                   <Button variant="outline" size="sm">
@@ -1929,6 +3267,17 @@ export default function AILabPage() {
             </div>
           ) : (
             <div className="px-2 md:px-4 pb-4">
+              {/* Instruções iniciais quando o chat está vazio */}
+              {messages.length === 0 && !loading && !selectedPipeline && !selectedAgent && (
+                <EmptyChatState 
+                  provider={provider} 
+                  model={model}
+                  comparisonMode={comparisonMode}
+                  modelA={comparisonMode ? modelA : undefined}
+                  modelB={comparisonMode ? modelB : undefined}
+                />
+              )}
+              
               {/* Estimativa de custo antes de executar pipeline */}
               {selectedPipeline && !loading && messages.length === 0 && (
                 <div className="py-4">
@@ -1951,32 +3300,152 @@ export default function AILabPage() {
                   />
                 </div>
               )}
-              {messages.map((message) => (
-                <MessageBubble
-                  key={message.id}
-                  id={message.id}
-                  role={message.role}
-                  content={message.content}
-                  timestamp={message.created_at}
-                  isFavorite={message.is_favorite || false}
-                  onToggleFavorite={handleToggleMessageFavorite}
-                  attachments={message.attachments}
-                  metadata={message.metadata}
-                  onProvideFeedback={message.metadata?.autoSelected ? (feedback) => handleModelFeedback(message.id, feedback) : undefined}
-                  isFeedbackSubmitting={feedbackSubmittingId === message.id}
-                />
-              ))}
+              {messages.map((message, index) => {
+                // Verificar se é uma mensagem de comparação (lado A)
+                if (message.metadata?.isComparison && message.metadata?.comparisonSide === 'A') {
+                  // Procurar a mensagem correspondente (lado B) usando comparisonId
+                  const comparisonId = (message.metadata as any)?.comparisonId
+                  let messageB: Message | undefined
+                  
+                  if (comparisonId) {
+                    // Procurar usando comparisonId (mais preciso)
+                    messageB = messages.find(
+                      m => m.metadata?.isComparison && 
+                      m.metadata?.comparisonSide === 'B' &&
+                      (m.metadata as any)?.comparisonId === comparisonId
+                    )
+                  } else {
+                    // Fallback: procurar nas próximas mensagens
+                    for (let i = index + 1; i < Math.min(index + 4, messages.length); i++) {
+                      const candidate = messages[i]
+                      if (
+                        candidate.metadata?.isComparison && 
+                        candidate.metadata?.comparisonSide === 'B'
+                      ) {
+                        messageB = candidate
+                        break
+                      }
+                    }
+                    
+                    // Se não encontrou nas próximas, procurar em qualquer lugar após esta mensagem
+                    if (!messageB) {
+                      messageB = messages.slice(index + 1).find(
+                        m => m.metadata?.isComparison && m.metadata?.comparisonSide === 'B'
+                      )
+                    }
+                  }
+                  
+                  if (messageB) {
+                    console.log('[LAB-IA][RENDER] Passando dados para ComparisonMessageBubble:', {
+                      responseA: {
+                        provider: message.metadata!.provider!,
+                        model: message.metadata!.model!,
+                        content: message.content?.substring(0, 100),
+                        contentLength: message.content?.length,
+                        id: message.id,
+                      },
+                      responseB: {
+                        provider: messageB.metadata!.provider!,
+                        model: messageB.metadata!.model!,
+                        content: messageB.content?.substring(0, 100),
+                        contentLength: messageB.content?.length,
+                        id: messageB.id,
+                      },
+                    })
+                    return (
+                      <ComparisonMessageBubble
+                        key={message.id}
+                        responseA={{
+                          provider: message.metadata!.provider!,
+                          model: message.metadata!.model!,
+                          content: message.content || '',
+                          id: message.id,
+                          latency: (message.metadata as any)?.latency,
+                          cost: (message.metadata as any)?.cost,
+                        }}
+                        responseB={{
+                          provider: messageB.metadata!.provider!,
+                          model: messageB.metadata!.model!,
+                          content: messageB.content || '',
+                          id: messageB.id,
+                          latency: (messageB.metadata as any)?.latency,
+                          cost: (messageB.metadata as any)?.cost,
+                        }}
+                        onVote={(winner) => handleVote(
+                          message.id, 
+                          winner,
+                          {
+                            provider: message.metadata!.provider!,
+                            model: message.metadata!.model!,
+                          },
+                          {
+                            provider: messageB.metadata!.provider!,
+                            model: messageB.metadata!.model!,
+                          }
+                        )}
+                        votedFor={comparisonVotes[message.id]}
+                      />
+                    )
+                  }
+                  
+                  // Se não encontrou o par, renderizar apenas A (pode estar carregando ainda)
+                  return (
+                    <div key={message.id} className="my-4">
+                      <div className="text-xs text-muted-foreground mb-2">
+                        {message.metadata?.provider} - {message.metadata?.model} (Aguardando resposta B...)
+                      </div>
+                      <MessageBubble
+                        id={message.id}
+                        role={message.role}
+                        content={message.content || 'Aguardando resposta...'}
+                        timestamp={message.created_at}
+                        isFavorite={message.is_favorite || false}
+                        onToggleFavorite={handleToggleMessageFavorite}
+                        attachments={message.attachments}
+                        metadata={message.metadata}
+                        pendingVideoOperation={pendingVideoOperations[message.id]}
+                        onCheckVideoStatus={() => handleCheckVideoStatus(message.id)}
+                        isCheckingVideoStatus={checkingVideoStatus === message.id}
+                      />
+                    </div>
+                  )
+                }
+                
+                // Não renderizar se for parte de comparação lado B (já renderizado acima)
+                if (message.metadata?.isComparison && message.metadata?.comparisonSide === 'B') {
+                  return null
+                }
+                
+                // Renderizar normalmente
+                return (
+                  <MessageBubble
+                    key={message.id}
+                    id={message.id}
+                    role={message.role}
+                    content={message.content}
+                    timestamp={message.created_at}
+                    isFavorite={message.is_favorite || false}
+                    onToggleFavorite={handleToggleMessageFavorite}
+                    attachments={message.attachments}
+                    metadata={message.metadata}
+                    onProvideFeedback={message.metadata?.autoSelected ? (feedback) => handleModelFeedback(message.id, feedback) : undefined}
+                    isFeedbackSubmitting={feedbackSubmittingId === message.id}
+                    pendingVideoOperation={pendingVideoOperations[message.id]}
+                    onCheckVideoStatus={() => handleCheckVideoStatus(message.id)}
+                    isCheckingVideoStatus={checkingVideoStatus === message.id}
+                  />
+                )
+              })}
               {loading && !pipelineProgress && (
-                <div className="flex items-center justify-center gap-2 py-4 text-muted-foreground">
-                  <Loader2 className="h-5 w-5 animate-spin" />
-                  <span className="text-sm">
-                    {selectedPipeline 
-                      ? `Executando pipeline ${selectedPipeline.name}...` 
-                      : selectedAgent 
-                        ? `Executando agente ${selectedAgent.icon}...` 
-                        : 'Pensando...'}
-                  </span>
-                </div>
+                <>
+                  <TypingIndicator className="my-4" />
+                  {loadingElapsedSeconds > 10 && (
+                    <LongMessageWarning 
+                      elapsedSeconds={loadingElapsedSeconds} 
+                      className="mx-4 my-2"
+                    />
+                  )}
+                </>
               )}
               <div ref={messagesEndRef} />
             </div>
@@ -2047,6 +3516,10 @@ export default function AILabPage() {
                 />
               </div>
             )}
+            
+            {/* Dicas contextuais para modelos específicos */}
+            <ModelTipsCard provider={provider} model={model} />
+            
             <ChatInput 
               onSend={handleNewMessage} 
               loading={loading} 
@@ -2054,6 +3527,10 @@ export default function AILabPage() {
               provider={provider}
               model={model}
               onTextChange={handleTextChange}
+              onModelChange={(newProvider, newModel) => {
+                setProvider(newProvider)
+                setModel(newModel)
+              }}
             />
           </div>
         )}

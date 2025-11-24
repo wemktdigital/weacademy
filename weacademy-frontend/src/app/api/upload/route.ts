@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
       .eq('id', user.id)
       .single()
 
-    if (!['admin', 'gestor_we', 'instructor'].includes(profile?.role)) {
+    if (!['admin', 'instructor'].includes(profile?.role)) {
       return NextResponse.json({ error: 'Sem permissão' }, { status: 403 })
     }
 

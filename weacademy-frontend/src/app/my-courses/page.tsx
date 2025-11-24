@@ -4,11 +4,13 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/contexts/AuthContext'
+import { useGamification } from '@/hooks/useGamification'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import { toast } from '@/hooks/use-toast'
+import { GamificationStats, LevelProgress } from '@/components/gamification'
 import { BookOpen, Clock, TrendingUp, Play, Award, CheckCircle } from 'lucide-react'
 import Link from 'next/link'
 
@@ -30,6 +32,7 @@ interface Enrollment {
 export default function MyCoursesPage() {
   const router = useRouter()
   const { user, loading: authLoading } = useAuth()
+  const { stats } = useGamification()
   const [enrollments, setEnrollments] = useState<Enrollment[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -102,7 +105,51 @@ export default function MyCoursesPage() {
         </div>
       </div>
 
-      <div className="container mx-auto px-4 py-8">
+      <div className="container mx-auto px-4 py-8 space-y-8">
+        {/* Gamification Stats */}
+        {stats && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Meu Progresso</CardTitle>
+              <CardDescription>
+                Acompanhe seu desempenho e conquistas
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-4">
+                  <GamificationStats
+                    totalXP={stats.total_xp}
+                    currentLevel={stats.current_level}
+                    achievementsUnlocked={stats.achievements_unlocked}
+                    totalAchievements={stats.achievements_total}
+                    currentStreak={stats.current_streak}
+                    longestStreak={stats.longest_streak}
+                  />
+                </div>
+                <div className="space-y-4">
+                  <LevelProgress
+                    currentLevel={stats.current_level}
+                    currentXP={stats.level_xp}
+                    nextLevelXP={stats.next_level_xp}
+                    showLabel
+                    showPercentage
+                    showXPValues
+                    size="md"
+                  />
+                  <div className="pt-4 border-t">
+                    <Link href="/profile/dashboard">
+                      <Button variant="outline" className="w-full">
+                        Ver Dashboard Completo
+                      </Button>
+                    </Link>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {enrollments.length === 0 ? (
           <Card>
             <CardContent className="py-12 text-center">

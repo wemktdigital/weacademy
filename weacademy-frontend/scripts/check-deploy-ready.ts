@@ -123,6 +123,84 @@ async function main() {
     message: `${tsFilesCount} arquivo(s) TypeScript encontrado(s)`,
   })
 
+  // 7. Verificar se há testes
+  const testsPath = join(process.cwd(), 'src', 'tests')
+  if (existsSync(testsPath)) {
+    const testFiles = countTsFiles(testsPath)
+    checks.push({
+      name: 'Arquivos de teste encontrados',
+      passed: testFiles > 0,
+      message: `${testFiles} arquivo(s) de teste encontrado(s)`,
+    })
+  } else {
+    checks.push({
+      name: 'Arquivos de teste encontrados',
+      passed: false,
+      message: 'Pasta src/tests não encontrada',
+    })
+  }
+
+  // 8. Verificar componentes críticos recentes
+  const criticalComponents = [
+    'src/components/ui/floating-input.tsx',
+    'src/components/ui/stepper.tsx',
+    'src/components/ui/confirm-dialog.tsx',
+    'src/components/gamification/XPProgressChart.tsx',
+    'src/components/gamification/PersonalizedInsights.tsx',
+    'src/hooks/use-auto-draft.ts',
+    'src/hooks/use-keyboard-shortcut.ts',
+  ]
+
+  let missingTests = 0
+  const testFilesMap: Record<string, boolean> = {}
+  
+  // Mapeamento específico (nome do arquivo de teste pode ser diferente do componente)
+  const componentTestMap: Record<string, string> = {
+    'src/components/ui/floating-input.tsx': 'src/tests/ui/FloatingInput.test.tsx',
+    'src/components/ui/stepper.tsx': 'src/tests/ui/Stepper.test.tsx',
+    'src/components/ui/confirm-dialog.tsx': 'src/tests/ui/ConfirmDialog.test.tsx',
+    'src/components/gamification/XPProgressChart.tsx': 'src/tests/gamification/XPProgressChart.test.tsx',
+    'src/components/gamification/PersonalizedInsights.tsx': 'src/tests/gamification/PersonalizedInsights.test.tsx',
+    'src/hooks/use-auto-draft.ts': 'src/tests/hooks/use-auto-draft.test.ts',
+    'src/hooks/use-keyboard-shortcut.ts': 'src/tests/hooks/use-keyboard-shortcut.test.ts',
+  }
+
+  criticalComponents.forEach((component) => {
+    const componentPath = join(process.cwd(), component)
+    if (existsSync(componentPath)) {
+      // Tentar caminho mapeado primeiro
+      const mappedTestPath = componentTestMap[component]
+      let hasTest = false
+      
+      if (mappedTestPath) {
+        hasTest = existsSync(join(process.cwd(), mappedTestPath))
+      }
+      
+      // Se não encontrou, tentar caminhos padrão
+      if (!hasTest) {
+        const possibleTestPaths = [
+          componentPath.replace('src/components/ui/', 'src/tests/ui/').replace('.tsx', '.test.tsx').replace('.ts', '.test.ts'),
+          componentPath.replace('src/components/gamification/', 'src/tests/gamification/').replace('.tsx', '.test.tsx').replace('.ts', '.test.ts'),
+          componentPath.replace('src/hooks/', 'src/tests/hooks/').replace('.tsx', '.test.tsx').replace('.ts', '.test.ts'),
+          componentPath.replace('src/app/api/', 'src/tests/api/').replace('route.ts', 'route.test.ts'),
+          componentPath.replace('src/', 'src/tests/').replace('.tsx', '.test.tsx').replace('.ts', '.test.ts'),
+        ]
+        hasTest = possibleTestPaths.some(path => existsSync(path))
+      }
+      
+      testFilesMap[component] = hasTest
+      if (!hasTest) missingTests++
+    }
+  })
+
+  checks.push({
+    name: 'Testes para componentes críticos',
+    passed: missingTests === 0,
+    message: missingTests === 0 
+      ? 'Todos os componentes críticos têm testes'
+      : `${missingTests} componente(s) crítico(s) sem testes`,
+  })
+
   // Exibir resultados
   console.log('\n📋 Resultados da Verificação:\n')
   
@@ -136,18 +214,32 @@ async function main() {
     if (!check.passed) allPassed = false
   })
 
+  // Mostrar componentes sem testes
+  if (missingTests > 0) {
+    console.log('\n⚠️  Componentes sem testes:')
+    Object.entries(testFilesMap).forEach(([component, hasTest]) => {
+      if (!hasTest) {
+        log(`     ${cross()} ${component}`, 'red')
+      }
+    })
+  }
+
   console.log('\n')
 
   if (allPassed) {
     log('✅ Todas as verificações passaram! O projeto parece estar pronto para deploy.', 'green')
     log('\n📝 Próximos passos:', 'blue')
-    log('  1. Crie um projeto no Supabase Cloud')
-    log('  2. Execute: supabase link --project-ref seu-project-ref')
-    log('  3. Execute: supabase db push')
-    log('  4. Configure as variáveis de ambiente na Vercel')
-    log('  5. Faça o deploy!')
+    log('  1. Execute: npm run test (verificar se todos passam)')
+    log('  2. Execute: npm run build (verificar se build funciona)')
+    log('  3. Execute: npm run lint (verificar se não há erros)')
+    log('  4. Crie um projeto no Supabase Cloud')
+    log('  5. Execute: supabase link --project-ref seu-project-ref')
+    log('  6. Execute: supabase db push')
+    log('  7. Configure as variáveis de ambiente na Vercel')
+    log('  8. Faça o deploy!')
   } else {
     log('⚠️  Algumas verificações falharam. Corrija os problemas antes de fazer deploy.', 'yellow')
+    log('\n💡 Dica: Consulte docs/DEPLOY_CHECKLIST.md para lista completa de verificações.', 'blue')
   }
 
   console.log('\n')

@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { toast } from '@/hooks/use-toast'
+import { trackCourseAction } from '@/lib/analytics'
 import { BookOpen, CheckCircle2, Clock, Play, Lock } from 'lucide-react'
 import Link from 'next/link'
 
@@ -125,6 +126,9 @@ export default function CoursePlayerPage() {
 
       setCourse(data)
       setProgress(enrollment.progress_percentage)
+
+      // Rastrear visualização do curso
+      trackCourseAction('view', data.id, data.title)
     } catch (error: any) {
       console.error('Error fetching course:', error)
       toast({

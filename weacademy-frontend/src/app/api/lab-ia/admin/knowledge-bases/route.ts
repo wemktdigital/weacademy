@@ -54,7 +54,7 @@ export async function GET(request: NextRequest) {
       .order('created_at', { ascending: false })
 
     // Filtrar por usuário se não for admin
-    if (!profile || !['admin', 'gestor_we', 'gestor'].includes(profile.role)) {
+    if (!profile || profile.role !== 'admin') {
       query = query.eq('user_id', user.id)
     }
 

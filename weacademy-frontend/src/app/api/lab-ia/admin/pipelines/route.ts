@@ -109,8 +109,8 @@ export async function POST(request: Request) {
       .eq('id', user.id)
       .single()
 
-    // Permitir admin e gestores
-    if (!profile || !['admin', 'gestor_we', 'gestor'].includes(profile.role)) {
+    // Permitir apenas admin
+    if (!profile || profile.role !== 'admin') {
       return NextResponse.json(
         { error: 'Forbidden' },
         { status: 403 }

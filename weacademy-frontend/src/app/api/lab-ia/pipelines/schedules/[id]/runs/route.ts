@@ -60,7 +60,7 @@ export async function GET(
 
     // Verificar se tem acesso (owner ou admin)
     const hasAccess = user.id === schedule.user_id || 
-      (profile && ['admin', 'gestor_we', 'gestor'].includes(profile.role))
+      (profile && profile.role === 'admin')
 
     if (!hasAccess) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })

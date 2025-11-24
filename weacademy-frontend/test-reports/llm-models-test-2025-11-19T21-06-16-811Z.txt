@@ -1,0 +1,117 @@
+RELATÓRIO DE TESTE - MODELOS LLM
+======================================================================
+
+Data: 19/11/2025, 17:06:16
+Total: 21 modelos
+Sucesso: 17 (81%)
+Falhas: 4 (19%)
+
+RESULTADOS DETALHADOS:
+----------------------------------------------------------------------
+
+GPT-5 (OpenAI/gpt-5)
+  Status: ✅ Sucesso
+  Latência: 6023ms
+  Preview: OK
+
+GPT-5 Mini (OpenAI/gpt-5-mini)
+  Status: ✅ Sucesso
+  Latência: 3356ms
+  Preview: OK
+
+GPT-5 Nano (OpenAI/gpt-5-nano)
+  Status: ✅ Sucesso
+  Latência: 5180ms
+  Preview: OK
+
+PubMed Search (PubMed/pubmed-search)
+  Status: ✅ Sucesso
+  Latência: 1542ms
+  Preview: 🔬 **Busca no PubMed concluída**
+
+**Query:** "Responda apenas com "OK" se você está funcionando corr
+
+GPT-5.1 (OpenAI/gpt-5.1)
+  Status: ✅ Sucesso
+  Latência: 2387ms
+  Preview: OK
+
+GPT-4o Mini Transcribe (OpenAI/gpt-4o-mini-transcribe)
+  Status: ❌ Erro
+  Latência: 316ms
+  Erro: Falha ao chamar modelo: Erro ao processar arquivo de áudio: Nenhum arquivo de áudio encontrado para transcrição. Por favor, anexe um arquivo de áudio.
+
+GPT-4o Transcribe (OpenAI/gpt-4o-transcribe)
+  Status: ❌ Erro
+  Latência: 326ms
+  Erro: Falha ao chamar modelo: Erro ao processar arquivo de áudio: Nenhum arquivo de áudio encontrado para transcrição. Por favor, anexe um arquivo de áudio.
+
+GPT-4o Transcribe Diarize (OpenAI/gpt-4o-transcribe-diarize)
+  Status: ❌ Erro
+  Latência: 329ms
+  Erro: Falha ao chamar modelo: Erro ao processar arquivo de áudio: Nenhum arquivo de áudio encontrado para transcrição. Por favor, anexe um arquivo de áudio.
+
+Gemini 2.5 Flash (Google/gemini-2.5-flash)
+  Status: ✅ Sucesso
+  Latência: 1915ms
+  Preview: OK
+
+Gemini 3 Pro (High Thinking) (Google/gemini-3-pro-preview-high)
+  Status: ✅ Sucesso
+  Latência: 3758ms
+  Preview: OK
+
+Gemini 3 Pro (Low Thinking) (Google/gemini-3-pro-preview-low)
+  Status: ✅ Sucesso
+  Latência: 2744ms
+  Preview: OK
+
+Gemini 2.5 Pro (Google/gemini-2.5-pro)
+  Status: ✅ Sucesso
+  Latência: 4884ms
+  Preview: OK
+
+Gemini 2.5 Flash Lite (Google/gemini-2.5-flash-lite)
+  Status: ✅ Sucesso
+  Latência: 793ms
+  Preview: OK
+
+DeepSeek Chat (DeepSeek/deepseek-chat)
+  Status: ✅ Sucesso
+  Latência: 1778ms
+  Preview: OK
+
+DeepSeek Reasoner (DeepSeek/deepseek-reasoner)
+  Status: ✅ Sucesso
+  Latência: 12306ms
+  Preview: OK
+
+Grok-4 Fast (Grok/grok-4-fast)
+  Status: ✅ Sucesso
+  Latência: 1488ms
+  Preview: OK
+
+Grok-4 Fast Reasoning (Grok/grok-4-fast-reasoning)
+  Status: ✅ Sucesso
+  Latência: 1891ms
+  Preview: OK
+
+Claude Sonnet 4.5 (Anthropic/claude-3-5-sonnet-20241022)
+  Status: ❌ Erro
+  Latência: 791ms
+  Erro: Falha ao chamar modelo: 404 {"type":"error","error":{"type":"not_found_error","message":"model: claude-3-5-sonnet-20241022"},"request_id":"req_011CVHvpkZq1eyHBSPHsXyak"}
+
+Claude Haiku 4.5 (Anthropic/claude-3-5-haiku-20241022)
+  Status: ✅ Sucesso
+  Latência: 850ms
+  Preview: OK
+
+Claude Opus 4.1 (Anthropic/claude-3-opus-20240229)
+  Status: ✅ Sucesso
+  Latência: 1252ms
+  Preview: OK
+
+Llama 3.1 405B Instruct (Replicate/meta/meta-llama-3.1-405b-instruct)
+  Status: ✅ Sucesso
+  Latência: 2792ms
+  Preview: OK

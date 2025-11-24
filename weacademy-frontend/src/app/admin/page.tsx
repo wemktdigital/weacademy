@@ -33,6 +33,7 @@ import {
   AlertCircle,
   BarChart3,
   FileText,
+  Bell,
 } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { getAllUsers, updateUserRole, getAdminLogs, UserRole } from '@/lib/auth'
@@ -170,10 +171,18 @@ export default function AdminDashboard() {
                 Gerencie usuários e monitore atividades do sistema
               </p>
             </div>
-            <Button onClick={loadData} disabled={loading}>
-              <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-              Atualizar
-            </Button>
+            <div className="flex items-center space-x-3">
+              <Button asChild variant="default" className="bg-primary text-white hover:bg-primary/90 shadow-md">
+                <Link href="/admin/notifications" className="flex items-center">
+                  <span className="mr-2">🔔</span>
+                  <span>Notificações</span>
+                </Link>
+              </Button>
+              <Button onClick={loadData} disabled={loading} variant="outline">
+                <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+                Atualizar
+              </Button>
+            </div>
           </div>
         </div>
       </div>
@@ -222,7 +231,7 @@ export default function AdminDashboard() {
         </div>
 
         {/* Quick Access */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-4 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
           <Link href="/admin/analytics">
             <Card className="cursor-pointer hover:shadow-lg transition-shadow">
               <CardContent className="p-6">
@@ -249,6 +258,22 @@ export default function AdminDashboard() {
                   <div>
                     <h3 className="font-semibold">Audit Logs</h3>
                     <p className="text-sm text-muted-foreground">Ver logs</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </Link>
+
+          <Link href="/admin/notifications">
+            <Card className="cursor-pointer hover:shadow-lg transition-shadow">
+              <CardContent className="p-6">
+                <div className="flex items-center space-x-4">
+                  <div className="p-3 rounded-lg bg-primary/10">
+                    <Bell className="h-6 w-6 text-primary" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold">Notificações</h3>
+                    <p className="text-sm text-muted-foreground">Enviar notificações</p>
                   </div>
                 </div>
               </CardContent>

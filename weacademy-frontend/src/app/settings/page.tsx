@@ -91,35 +91,39 @@ export default function SettingsPage() {
     setUploading(true)
 
     try {
-      // Upload para Supabase Storage
-      const fileExt = file.name.split('.').pop()
-      const fileName = `${user.id}-${Date.now()}.${fileExt}`
-      const filePath = `avatars/${fileName}`
+      // Obter token de autenticação
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+      
+      if (sessionError || !sessionData?.session) {
+        throw new Error('Não autenticado')
+      }
 
-      const { error: uploadError } = await supabase.storage
-        .from('avatars')
-        .upload(filePath, file)
+      const token = sessionData.session.access_token
 
-      if (uploadError) throw uploadError
+      // Criar FormData
+      const formData = new FormData()
+      formData.append('file', file)
 
-      // Obter URL pública
-      const { data } = supabase.storage
-        .from('avatars')
-        .getPublicUrl(filePath)
+      // Upload via API route (contorna RLS)
+      const response = await fetch('/api/profile/avatar', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+      })
 
-      // Atualizar perfil
-      const { error: updateError } = await supabase
-        .from('profiles')
-        .update({ avatar_url: data.publicUrl })
-        .eq('id', user.id)
+      const result = await response.json()
 
-      if (updateError) throw updateError
+      if (!response.ok) {
+        throw new Error(result.error || 'Erro ao fazer upload da imagem')
+      }
 
-      setAvatarUrl(data.publicUrl)
+      setAvatarUrl(result.url)
       showMessage('success', 'Foto de perfil atualizada com sucesso!')
-    } catch (error) {
+    } catch (error: any) {
       console.error('Erro no upload:', error)
-      showMessage('error', 'Erro ao fazer upload da imagem')
+      showMessage('error', error.message || 'Erro ao fazer upload da imagem')
     } finally {
       setUploading(false)
     }
@@ -130,17 +134,34 @@ export default function SettingsPage() {
     if (!user || !avatarUrl) return
 
     try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({ avatar_url: null })
-        .eq('id', user.id)
+      // Obter token de autenticação
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+      
+      if (sessionError || !sessionData?.session) {
+        throw new Error('Não autenticado')
+      }
 
-      if (error) throw error
+      const token = sessionData.session.access_token
+
+      // Remover via API route (contorna RLS)
+      const response = await fetch('/api/profile/avatar', {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Erro ao remover foto')
+      }
 
       setAvatarUrl('')
       showMessage('success', 'Foto de perfil removida')
-    } catch (error) {
-      showMessage('error', 'Erro ao remover foto')
+    } catch (error: any) {
+      console.error('Erro ao remover:', error)
+      showMessage('error', error.message || 'Erro ao remover foto')
     }
   }
 

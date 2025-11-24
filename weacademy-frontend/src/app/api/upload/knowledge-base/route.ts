@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Não autenticado" }, { status: 401 })
     }
 
-    // Verificar role (admin ou gestor_we podem fazer upload)
+    // Verificar role (apenas admin pode fazer upload)
     const serviceRoleSupabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
       .eq('id', user.id)
       .single()
 
-    if (!['admin', 'gestor_we'].includes(profile?.role)) {
+    if (profile?.role !== 'admin') {
       return NextResponse.json({ error: 'Sem permissão' }, { status: 403 })
     }
 

@@ -123,7 +123,7 @@ function formatDateLabel(value: string) {
   return date.toLocaleDateString('pt-BR')
 }
 
-const REQUIRED_ROLES = ['admin', 'gestor_we']
+const REQUIRED_ROLES = ['admin']
 
 export default function WorkflowMetricsPage() {
   const router = useRouter()

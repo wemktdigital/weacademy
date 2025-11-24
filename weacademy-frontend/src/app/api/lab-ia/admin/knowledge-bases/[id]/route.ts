@@ -63,7 +63,7 @@ export async function PUT(
       .eq('id', user.id)
       .single()
 
-    const isAdmin = profile && ['admin', 'gestor_we', 'gestor'].includes(profile.role)
+    const isAdmin = profile && profile.role === 'admin'
     if (knowledgeBase.user_id !== user.id && !isAdmin) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
@@ -186,7 +186,7 @@ export async function DELETE(
       .eq('id', user.id)
       .single()
 
-    const isAdmin = profile && ['admin', 'gestor_we', 'gestor'].includes(profile.role)
+    const isAdmin = profile && profile.role === 'admin'
     if (knowledgeBase.user_id !== user.id && !isAdmin) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }

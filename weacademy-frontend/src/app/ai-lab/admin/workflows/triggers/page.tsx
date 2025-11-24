@@ -115,7 +115,7 @@ export default function WorkflowTriggersAdminPage() {
 
       if (error) throw error
 
-      if (!profile || !['admin', 'gestor_we'].includes(profile.role)) {
+      if (!profile || profile.role !== 'admin') {
         toast.error('Acesso negado. Apenas administradores podem acessar esta página.')
         router.push('/ai-lab')
         return

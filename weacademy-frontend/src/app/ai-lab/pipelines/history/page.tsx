@@ -78,7 +78,7 @@ export default function PipelineHistoryPage() {
         const { data: usersData } = await supabase
           .from('profiles')
           .select('id, email, full_name')
-          .in('role', ['admin', 'gestor_we', 'gestor', 'user'])
+          .in('role', ['admin', 'user'])
           .order('full_name')
         
         setUsers(usersData || [])

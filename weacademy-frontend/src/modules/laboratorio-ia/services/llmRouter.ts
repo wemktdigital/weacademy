@@ -2,6 +2,7 @@ import OpenAI from 'openai'
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import Anthropic from '@anthropic-ai/sdk'
 import Replicate from 'replicate'
+import { createClient } from '@supabase/supabase-js'
 import { generateVideo } from '@/modules/laboratorio-ia/services/imageProcessing'
 import { getCachedResponse, cacheResponse } from './responseCache'
 import { intelligentRoute, RoutingResult, TaskCategory } from './intelligentRouter'
@@ -24,6 +25,8 @@ interface LLMCallOptions {
   }  // Preferências do usuário para routing
   userId?: string  // ID do usuário para otimização e tracking
   enableOptimization?: boolean  // Ativar otimização baseada em histórico (Fase 2)
+  conversationId?: string  // ID da conversa (para operações assíncronas)
+  messageId?: string  // ID da mensagem (para operações assíncronas)
 }
 
 interface LLMResponse {
@@ -52,6 +55,371 @@ function formatTime(seconds: number): string {
   return `${mins}:${secs.toString().padStart(2, '0')}`
 }
 
+/**
+ * Helper function para extrair URL de um FileOutput object do Replicate
+ * Processa o resultado do Replicate e extrai URLs de imagens
+ * Lida com diferentes formatos de resposta: arrays, strings, objetos, iteradores assíncronos, FileOutput objects
+ */
+async function extractUrlFromFileOutput(item: any): Promise<string | null> {
+  // Verificar se é FileOutput com método url() (JavaScript SDK)
+  if (item && typeof item === 'object') {
+    // Verificar se tem método url() (FileOutput do Replicate JavaScript SDK)
+    if (typeof item.url === 'function') {
+      try {
+        const urlResult = await item.url()
+        console.log(`[extractUrlFromFileOutput] Resultado de url():`, { type: typeof urlResult, constructor: urlResult?.constructor?.name })
+        
+        // O Replicate pode retornar um objeto URL (com propriedade href) ou uma string
+        let urlString: string | null = null
+        
+        if (typeof urlResult === 'string' && (urlResult.startsWith('http://') || urlResult.startsWith('https://'))) {
+          urlString = urlResult
+          console.log(`[extractUrlFromFileOutput] URL string extraída:`, urlString)
+        } else if (urlResult && typeof urlResult === 'object') {
+          // Pode ser um objeto URL com propriedade href
+          if (urlResult.href && typeof urlResult.href === 'string') {
+            urlString = urlResult.href
+            console.log(`[extractUrlFromFileOutput] URL extraída de objeto URL (href):`, urlString)
+          } else if (urlResult.toString && typeof urlResult.toString === 'function') {
+            // Tentar toString() como fallback
+            const str = urlResult.toString()
+            if (typeof str === 'string' && (str.startsWith('http://') || str.startsWith('https://'))) {
+              urlString = str
+              console.log(`[extractUrlFromFileOutput] URL extraída via toString():`, urlString)
+            }
+          }
+        }
+        
+        if (urlString) {
+          return urlString
+        } else {
+          console.warn(`[extractUrlFromFileOutput] Não foi possível extrair URL válida de:`, { type: typeof urlResult, value: urlResult })
+        }
+      } catch (error) {
+        console.warn(`[extractUrlFromFileOutput] Erro ao chamar item.url():`, error)
+      }
+    }
+    
+    // Verificar se é Response-like object (tem propriedade url como string)
+    if (item.url && typeof item.url === 'string' && (item.url.startsWith('http://') || item.url.startsWith('https://'))) {
+      console.log(`[extractUrlFromFileOutput] URL encontrada em propriedade url:`, item.url)
+      return item.url
+    }
+    
+    // Verificar se é um objeto com propriedade toString que retorna URL
+    if (item.toString && typeof item.toString === 'function') {
+      try {
+        const str = item.toString()
+        if (typeof str === 'string' && (str.startsWith('http://') || str.startsWith('https://'))) {
+          console.log(`[extractUrlFromFileOutput] URL encontrada via toString():`, str)
+          return str
+        }
+      } catch (error) {
+        // Ignorar erros de toString
+      }
+    }
+    
+    // Verificar outras propriedades comuns
+    const possibleProps = ['image', 'image_url', 'output', 'src', 'href', 'data', 'file', 'file_url']
+    for (const prop of possibleProps) {
+      const value = item[prop]
+      if (typeof value === 'string' && (value.startsWith('http://') || value.startsWith('https://'))) {
+        console.log(`[extractUrlFromFileOutput] URL encontrada em propriedade ${prop}:`, value)
+        return value
+      }
+      // Se a propriedade é um objeto, tentar extrair URL dele recursivamente
+      if (value && typeof value === 'object' && typeof value.url === 'function') {
+        try {
+          const nestedUrlResult = await value.url()
+          let nestedUrlString: string | null = null
+          
+          if (typeof nestedUrlResult === 'string' && (nestedUrlResult.startsWith('http://') || nestedUrlResult.startsWith('https://'))) {
+            nestedUrlString = nestedUrlResult
+          } else if (nestedUrlResult && typeof nestedUrlResult === 'object' && nestedUrlResult.href) {
+            nestedUrlString = nestedUrlResult.href
+          }
+          
+          if (nestedUrlString) {
+            console.log(`[extractUrlFromFileOutput] URL encontrada em propriedade ${prop} (nested FileOutput):`, nestedUrlString)
+            return nestedUrlString
+          }
+        } catch (error) {
+          // Ignorar erros
+        }
+      }
+    }
+    
+    // Última tentativa: verificar todas as propriedades string do objeto
+    for (const key in item) {
+      const value = item[key]
+      if (typeof value === 'string' && (value.startsWith('http://') || value.startsWith('https://'))) {
+        console.log(`[extractUrlFromFileOutput] URL encontrada em propriedade genérica '${key}':`, value)
+        return value
+      }
+    }
+  }
+  
+  return null
+}
+
+async function extractImageUrlsFromReplicate(result: any, modelName: string): Promise<string[]> {
+  console.log(`[extractImageUrls] Processando resultado do Replicate para ${modelName}:`, {
+    type: typeof result,
+    isArray: Array.isArray(result),
+    isAsyncIterator: result && typeof result === 'object' && typeof (result as any)[Symbol.asyncIterator] === 'function',
+    hasUrlMethod: result && typeof result === 'object' && typeof (result as any).url === 'function',
+    result: result,
+  })
+  
+  let output: any = result
+  
+  // IMPORTANTE: Se é um FileOutput (tem método url()), chamar url() diretamente ANTES de tentar iterar
+  // O FileOutput é um iterador assíncrono, mas iterar sobre ele retorna chunks de dados, não URLs
+  if (result && typeof result === 'object' && typeof (result as any).url === 'function') {
+    console.log(`[extractImageUrls] Detectado FileOutput com método url(), chamando diretamente...`)
+    try {
+      const urlResult = await (result as any).url()
+      console.log(`[extractImageUrls] Resultado de url() do FileOutput:`, { type: typeof urlResult, constructor: urlResult?.constructor?.name })
+      
+      let urlString: string | null = null
+      if (typeof urlResult === 'string' && (urlResult.startsWith('http://') || urlResult.startsWith('https://'))) {
+        urlString = urlResult
+      } else if (urlResult && typeof urlResult === 'object' && urlResult.href) {
+        urlString = urlResult.href
+      } else if (urlResult && typeof urlResult === 'object' && urlResult.toString) {
+        const str = urlResult.toString()
+        if (typeof str === 'string' && (str.startsWith('http://') || str.startsWith('https://'))) {
+          urlString = str
+        }
+      }
+      
+      if (urlString) {
+        console.log(`[extractImageUrls] ✅ URL extraída diretamente do FileOutput:`, urlString)
+        return [urlString]
+      }
+    } catch (error: any) {
+      console.warn(`[extractImageUrls] Erro ao chamar url() do FileOutput:`, error.message)
+      // Continuar com processamento normal se falhar
+    }
+  }
+  
+  // Se é um iterador assíncrono (mas não FileOutput com url()), coletar valores
+  // Isso pode acontecer se o resultado for um array de FileOutput objects
+  if (result && typeof result === 'object' && typeof (result as any)[Symbol.asyncIterator] === 'function') {
+    console.log(`[extractImageUrls] Processando iterador assíncrono para ${modelName}...`)
+    const values: any[] = []
+    const urls: string[] = []
+    
+    for await (const value of result as any) {
+      console.log(`[extractImageUrls] Valor recebido do iterador:`, { 
+        type: typeof value, 
+        isArray: Array.isArray(value),
+        hasUrlMethod: value && typeof value === 'object' && typeof value.url === 'function',
+        value: value 
+      })
+      
+      // Se o valor é um FileOutput, extrair URL imediatamente
+      if (value && typeof value === 'object') {
+        const extractedUrl = await extractUrlFromFileOutput(value)
+        if (extractedUrl) {
+          urls.push(extractedUrl)
+          console.log(`[extractImageUrls] URL extraída do FileOutput no iterador:`, extractedUrl)
+        } else {
+          values.push(value)
+        }
+      } else if (typeof value === 'string' && (value.startsWith('http://') || value.startsWith('https://'))) {
+        urls.push(value)
+        console.log(`[extractImageUrls] URL string encontrada no iterador:`, value)
+      } else {
+        values.push(value)
+      }
+    }
+    
+    console.log(`[extractImageUrls] URLs coletadas do iterador:`, urls)
+    console.log(`[extractImageUrls] Valores coletados do iterador:`, values)
+    
+    // Se encontramos URLs diretamente no iterador, retornar
+    if (urls.length > 0) {
+      console.log(`[extractImageUrls] Retornando URLs extraídas do iterador:`, urls)
+      return urls
+    }
+    
+    // Caso contrário, usar o último valor ou todos os valores
+    output = values.length > 0 ? values[values.length - 1] : values[0]
+    console.log(`[extractImageUrls] Output final do iterador:`, output)
+  }
+  
+  console.log(`[extractImageUrls] Iniciando extração de URLs. Output:`, {
+    type: typeof output,
+    isArray: Array.isArray(output),
+    output: output,
+    keys: output && typeof output === 'object' ? Object.keys(output) : null,
+  })
+  
+  let imageUrls: string[] = []
+  
+  if (Array.isArray(output)) {
+    console.log(`[extractImageUrls] Output é array, processando ${output.length} itens...`)
+    
+    // Filtrar valores null/undefined
+    const validItems = output.filter(item => item !== null && item !== undefined)
+    console.log(`[extractImageUrls] Itens válidos após filtro: ${validItems.length} de ${output.length}`)
+    
+    if (validItems.length === 0) {
+      console.warn(`[extractImageUrls] Array vazio ou contém apenas null/undefined`)
+      return []
+    }
+    
+    // Processar cada item do array de forma assíncrona
+    const urlPromises = validItems.map(async (item: any, i: number) => {
+      console.log(`[extractImageUrls] Processando item ${i}:`, { 
+        type: typeof item, 
+        isObject: typeof item === 'object',
+        isNull: item === null,
+        isUndefined: item === undefined,
+        hasUrlMethod: item && typeof item === 'object' && typeof item.url === 'function',
+        hasUrlProperty: item && typeof item === 'object' && typeof item.url === 'string',
+        constructor: item?.constructor?.name,
+        keys: item && typeof item === 'object' ? Object.keys(item) : null,
+        item: item 
+      })
+      
+      if (typeof item === 'string' && (item.startsWith('http://') || item.startsWith('https://'))) {
+        console.log(`[extractImageUrls] URL string encontrada no item ${i}:`, item)
+        return item
+      } else if (item && typeof item === 'object') {
+        // Tentar extrair URL de FileOutput object
+        const extractedUrl = await extractUrlFromFileOutput(item)
+        if (extractedUrl) {
+          console.log(`[extractImageUrls] URL extraída do FileOutput no item ${i}:`, extractedUrl)
+          return extractedUrl
+        } else {
+          // Fallback: procurar propriedades diretas
+          const url = item.url || item.image || item.image_url || item.output || item.src || item.href
+          if (typeof url === 'string' && (url.startsWith('http://') || url.startsWith('https://'))) {
+            console.log(`[extractImageUrls] URL encontrada em propriedade do item ${i}:`, url)
+            return url
+          }
+          // Se ainda não encontrou, tentar converter para string e verificar
+          if (item.toString && typeof item.toString === 'function') {
+            const str = item.toString()
+            if (str && typeof str === 'string' && (str.startsWith('http://') || str.startsWith('https://'))) {
+              console.log(`[extractImageUrls] URL encontrada via toString() no item ${i}:`, str)
+              return str
+            }
+          }
+        }
+      }
+      return null
+    })
+    
+    const extractedUrls = await Promise.all(urlPromises)
+    imageUrls = extractedUrls.filter((url): url is string => url !== null && typeof url === 'string')
+    
+    console.log(`[extractImageUrls] URLs extraídas do array:`, imageUrls)
+  } else if (typeof output === 'string' && (output.startsWith('http://') || output.startsWith('https://'))) {
+    console.log(`[extractImageUrls] Output é string URL direta`)
+    imageUrls = [output]
+  } else if (output && typeof output === 'object') {
+    console.log(`[extractImageUrls] Output é objeto, verificando propriedades...`)
+    console.log(`[extractImageUrls] Constructor:`, output.constructor?.name)
+    console.log(`[extractImageUrls] Tem método url:`, typeof (output as any).url === 'function')
+    console.log(`[extractImageUrls] É async iterator:`, typeof (output as any)[Symbol.asyncIterator] === 'function')
+    
+    // Tentar extrair como FileOutput usando função auxiliar (já verificamos no início se é FileOutput direto)
+    const extractedUrl = await extractUrlFromFileOutput(output)
+    if (extractedUrl) {
+      imageUrls = [extractedUrl]
+      console.log(`[extractImageUrls] URL extraída do FileOutput via função auxiliar:`, extractedUrl)
+    } else {
+      // Fallback: procurar em propriedades comuns
+      console.log(`[extractImageUrls] Não é FileOutput, procurando URLs em propriedades...`)
+      const possibleUrlProperties = ['output', 'urls', 'images', 'url', 'image', 'image_url', 'data', 'result']
+      
+      for (const prop of possibleUrlProperties) {
+        const value = (output as any)[prop]
+        console.log(`[extractImageUrls] Verificando propriedade '${prop}':`, { 
+          type: typeof value,
+          isArray: Array.isArray(value),
+          hasUrlMethod: value && typeof value === 'object' && typeof value.url === 'function',
+          value: value 
+        })
+        
+        if (Array.isArray(value)) {
+          // Processar array de FileOutput objects
+          const found: string[] = []
+          for (const item of value) {
+            if (typeof item === 'string' && (item.startsWith('http://') || item.startsWith('https://'))) {
+              found.push(item)
+            } else if (item && typeof item === 'object') {
+              const itemUrl = await extractUrlFromFileOutput(item)
+              if (itemUrl) {
+                found.push(itemUrl)
+              } else {
+                const fallbackUrl = item.url || item.image || item.image_url || item.output
+                if (typeof fallbackUrl === 'string' && (fallbackUrl.startsWith('http://') || fallbackUrl.startsWith('https://'))) {
+                  found.push(fallbackUrl)
+                }
+              }
+            }
+          }
+          if (found.length > 0) {
+            imageUrls = found
+            console.log(`[extractImageUrls] URLs encontradas em '${prop}':`, imageUrls)
+            break
+          }
+        } else if (value && typeof value === 'object' && typeof value.url === 'function') {
+          // É um FileOutput object
+          const url = await extractUrlFromFileOutput(value)
+          if (url) {
+            imageUrls = [url]
+            console.log(`[extractImageUrls] URL encontrada em FileOutput da propriedade '${prop}':`, url)
+            break
+          }
+        } else if (typeof value === 'string' && (value.startsWith('http://') || value.startsWith('https://'))) {
+          imageUrls = [value]
+          console.log(`[extractImageUrls] URL encontrada em '${prop}':`, value)
+          break
+        }
+      }
+      
+      // Se ainda não encontrou, tentar extrair URLs de qualquer propriedade string
+      if (imageUrls.length === 0) {
+        console.log(`[extractImageUrls] Tentando extrair URLs de todas as propriedades string...`)
+        for (const key in output) {
+          const value = (output as any)[key]
+          if (typeof value === 'string' && (value.startsWith('http://') || value.startsWith('https://'))) {
+            imageUrls.push(value)
+            console.log(`[extractImageUrls] URL encontrada em propriedade '${key}':`, value)
+          }
+        }
+      }
+    }
+  }
+  
+  console.log(`[extractImageUrls] URLs finais extraídas para ${modelName}:`, imageUrls)
+  
+  if (imageUrls.length === 0) {
+    console.error(`[extractImageUrls] NENHUMA URL encontrada para ${modelName}!`)
+    console.error(`[extractImageUrls] Tipo do output:`, typeof output)
+    console.error(`[extractImageUrls] É array:`, Array.isArray(output))
+    console.error(`[extractImageUrls] Chaves do objeto:`, output && typeof output === 'object' ? Object.keys(output) : 'N/A')
+    console.error(`[extractImageUrls] Resposta completa do Replicate:`, JSON.stringify(output, null, 2))
+    
+    // Tentar logar estrutura completa do objeto (incluindo métodos)
+    if (output && typeof output === 'object') {
+      console.error(`[extractImageUrls] Estrutura completa do objeto:`, {
+        constructor: output.constructor?.name,
+        prototype: Object.getPrototypeOf(output),
+        methods: Object.getOwnPropertyNames(output).filter(name => typeof (output as any)[name] === 'function'),
+        properties: Object.keys(output),
+      })
+    }
+  }
+  
+  return imageUrls
+}
+
 export async function callLLM({
   provider,
   model,
@@ -64,6 +432,8 @@ export async function callLLM({
   preferences,
   userId,
   enableOptimization = true,
+  conversationId,
+  messageId,
 }: LLMCallOptions): Promise<LLMResponse> {
   const startTime = Date.now()
 
@@ -152,7 +522,7 @@ export async function callLLM({
   for (let i = 0; i < modelsToTry.length; i++) {
     const modelToTry = modelsToTry[i]
     try {
-      const result = await callModel(modelToTry.provider, modelToTry.model, sanitizedMessages, stream, startTime)
+      const result = await callModel(modelToTry.provider, modelToTry.model, sanitizedMessages, stream, startTime, userId, conversationId, messageId)
       
       // Armazenar no cache se não for streaming
       if (enableCache && !stream && result.content) {
@@ -225,13 +595,28 @@ async function callModel(
   model: string,
   messages: Array<{ role: string; content: string }>,
   stream: boolean,
-  startTime: number
+  startTime: number,
+  userId?: string,
+  conversationId?: string,
+  messageId?: string
 ): Promise<LLMResponse> {
   switch (provider.toLowerCase()) {
     case 'openai':
       return await callOpenAI(model, messages, stream, startTime)
     
     case 'google':
+      // VEO 3.1 é um modelo de geração de vídeo, precisa de tratamento especial
+      if (model.includes('veo')) {
+        return await callVeo(model, messages, stream, startTime, userId, conversationId, messageId)
+      }
+      // Nano Banana (gemini-2.5-flash-image) é um modelo de geração de imagens
+      if (model === 'gemini-2.5-flash-image') {
+        return await callGeminiImage(model, messages, stream, startTime)
+      }
+      // Lyria RealTime é um modelo de geração de música em tempo real
+      if (model === 'lyria-realtime-exp') {
+        return await callLyria(model, messages, stream, startTime)
+      }
       return await callGemini(model, messages, stream, startTime)
     
     case 'deepseek':
@@ -379,7 +764,24 @@ async function callGemini(
 
   try {
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
-    const geminiModel = genAI.getGenerativeModel({ model })
+    
+    // Detectar se é Gemini 3 Pro e configurar thinking_level
+    const isGemini3High = model === 'gemini-3-pro-preview-high'
+    const isGemini3Low = model === 'gemini-3-pro-preview-low'
+    const isGemini3 = isGemini3High || isGemini3Low
+    
+    // Mapear nome interno para nome real da API
+    const apiModelName = isGemini3 ? 'gemini-3-pro-preview' : model
+    
+    // Configurar thinking_level para Gemini 3
+    // thinking_level deve ser passado no generationConfig quando chamar generateContent/startChat
+    const thinkingLevel = isGemini3High ? 'high' : isGemini3Low ? 'low' : undefined
+    
+    if (isGemini3) {
+      console.log('[callGemini] Gemini 3 detectado, usando thinking_level:', thinkingLevel)
+    }
+    
+    const geminiModel = genAI.getGenerativeModel({ model: apiModelName })
 
     // Filtrar mensagens do sistema
     const filteredMessages = messages.filter(msg => msg.role !== 'system')
@@ -401,7 +803,9 @@ async function callGemini(
       console.log('[callGemini] Usando generateContent (sem histórico)')
       
       if (stream) {
-        const result = await geminiModel.generateContentStream(currentMessage)
+        // Passar thinking_level para Gemini 3 se necessário
+        const streamOptions = thinkingLevel ? { generationConfig: { thinkingLevel } } : undefined
+        const result = await geminiModel.generateContentStream(currentMessage, streamOptions as any)
         const encoder = new TextEncoder()
         const readable = new ReadableStream({
           async start(controller) {
@@ -430,7 +834,9 @@ async function callGemini(
           stream: readable,
         }
       } else {
-        const result = await geminiModel.generateContent(currentMessage)
+        // Passar thinking_level para Gemini 3 se necessário
+        const contentOptions = thinkingLevel ? { generationConfig: { thinkingLevel } } : undefined
+        const result = await geminiModel.generateContent(currentMessage, contentOptions as any)
         const response = await result.response
         const content = response.text()
 
@@ -438,7 +844,18 @@ async function callGemini(
         const inputTokens = response.usageMetadata?.promptTokenCount || estimateTokens(currentMessage)
         const outputTokens = response.usageMetadata?.candidatesTokenCount || estimateTokens(content)
         
-        const pricing = MODEL_PRICING[`google:${model}`] || MODEL_PRICING['google:gemini-2.5-flash'] || DEFAULT_PRICING
+        // Gemini 3 tem pricing variável baseado no número total de tokens
+        let pricing = MODEL_PRICING[`google:${model}`] || MODEL_PRICING['google:gemini-2.5-flash'] || DEFAULT_PRICING
+        if (isGemini3) {
+          const totalTokens = inputTokens + outputTokens
+          // Pricing: $2/$12 (<200k tokens) ou $4/$18 (>200k tokens)
+          if (totalTokens >= 200_000) {
+            pricing = { input: 4.0, output: 18.0 }
+          } else {
+            pricing = { input: 2.0, output: 12.0 }
+          }
+        }
+        
         const cost = (inputTokens / 1_000_000) * pricing.input + (outputTokens / 1_000_000) * pricing.output
 
         return {
@@ -480,7 +897,9 @@ async function callGemini(
       console.log('[callGemini] Histórico inválido, usando apenas mensagem atual')
       
       if (stream) {
-        const result = await geminiModel.generateContentStream(currentMessage)
+        // Passar thinking_level para Gemini 3 se necessário
+        const streamOptions = thinkingLevel ? { generationConfig: { thinkingLevel } } : undefined
+        const result = await geminiModel.generateContentStream(currentMessage, streamOptions as any)
         const encoder = new TextEncoder()
         const readable = new ReadableStream({
           async start(controller) {
@@ -509,7 +928,9 @@ async function callGemini(
           stream: readable,
         }
       } else {
-        const result = await geminiModel.generateContent(currentMessage)
+        // Passar thinking_level para Gemini 3 se necessário
+        const contentOptions = thinkingLevel ? { generationConfig: { thinkingLevel } } : undefined
+        const result = await geminiModel.generateContent(currentMessage, contentOptions as any)
         const response = await result.response
         const content = response.text()
 
@@ -517,7 +938,18 @@ async function callGemini(
         const inputTokens = response.usageMetadata?.promptTokenCount || estimateTokens(currentMessage)
         const outputTokens = response.usageMetadata?.candidatesTokenCount || estimateTokens(content)
         
-        const pricing = MODEL_PRICING[`google:${model}`] || MODEL_PRICING['google:gemini-2.5-flash'] || DEFAULT_PRICING
+        // Gemini 3 tem pricing variável baseado no número total de tokens
+        let pricing = MODEL_PRICING[`google:${model}`] || MODEL_PRICING['google:gemini-2.5-flash'] || DEFAULT_PRICING
+        if (isGemini3) {
+          const totalTokens = inputTokens + outputTokens
+          // Pricing: $2/$12 (<200k tokens) ou $4/$18 (>200k tokens)
+          if (totalTokens >= 200_000) {
+            pricing = { input: 4.0, output: 18.0 }
+          } else {
+            pricing = { input: 2.0, output: 12.0 }
+          }
+        }
+        
         const cost = (inputTokens / 1_000_000) * pricing.input + (outputTokens / 1_000_000) * pricing.output
 
         return {
@@ -536,7 +968,13 @@ async function callGemini(
 
     // Usar startChat com histórico válido
     if (stream) {
-      const chat = geminiModel.startChat({ history: history as any })
+      // Configurar startChat com thinking_level para Gemini 3 se necessário
+      const chatOptions: any = { history: history as any }
+      if (thinkingLevel) {
+        chatOptions.generationConfig = { thinkingLevel }
+      }
+      
+      const chat = geminiModel.startChat(chatOptions)
       const result = await chat.sendMessageStream(currentMessage)
 
       const encoder = new TextEncoder()
@@ -567,7 +1005,13 @@ async function callGemini(
         stream: readable,
       }
     } else {
-      const chat = geminiModel.startChat({ history: history as any })
+      // Configurar startChat com thinking_level para Gemini 3 se necessário
+      const chatOptions: any = { history: history as any }
+      if (thinkingLevel) {
+        chatOptions.generationConfig = { thinkingLevel }
+      }
+      
+      const chat = geminiModel.startChat(chatOptions)
       const result = await chat.sendMessage(currentMessage)
       const response = await result.response
       const content = response.text()
@@ -576,7 +1020,18 @@ async function callGemini(
       const inputTokens = response.usageMetadata?.promptTokenCount || estimateTokens(filteredMessages.map(m => m.content).join(' '))
       const outputTokens = response.usageMetadata?.candidatesTokenCount || estimateTokens(content)
       
-      const pricing = MODEL_PRICING[`google:${model}`] || MODEL_PRICING['google:gemini-2.5-flash'] || DEFAULT_PRICING
+      // Gemini 3 tem pricing variável baseado no número total de tokens
+      let pricing = MODEL_PRICING[`google:${model}`] || MODEL_PRICING['google:gemini-2.5-flash'] || DEFAULT_PRICING
+      if (isGemini3) {
+        const totalTokens = inputTokens + outputTokens
+        // Pricing: $2/$12 (<200k tokens) ou $4/$18 (>200k tokens)
+        if (totalTokens >= 200_000) {
+          pricing = { input: 4.0, output: 18.0 }
+        } else {
+          pricing = { input: 2.0, output: 12.0 }
+        }
+      }
+      
       const cost = (inputTokens / 1_000_000) * pricing.input + (outputTokens / 1_000_000) * pricing.output
 
       return {
@@ -592,6 +1047,380 @@ async function callGemini(
   } catch (error: any) {
     console.error('[callGemini] Erro geral:', error)
     throw new Error(`Erro ao chamar Gemini: ${error.message || error}`)
+  }
+}
+
+/**
+ * Chama a API de geração de imagens do Google Gemini (Nano Banana)
+ * Modelo: gemini-2.5-flash-image
+ * Documentação: https://ai.google.dev/gemini-api/docs/image-generation
+ */
+async function callGeminiImage(
+  model: string,
+  messages: Array<{ role: string; content: string }>,
+  stream: boolean,
+  startTime: number
+): Promise<LLMResponse> {
+  const modelName = 'Nano Banana'
+  
+  try {
+    if (!process.env.GEMINI_API_KEY) {
+      throw new Error('GEMINI_API_KEY não configurado')
+    }
+
+    console.log('[callGeminiImage] Iniciando geração de imagem:', { model, messagesCount: messages.length, stream })
+
+    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
+    const geminiModel = genAI.getGenerativeModel({ model })
+
+    // Extrair o prompt da última mensagem do usuário
+    const lastUserMessage = messages.filter(msg => msg.role === 'user').pop()
+    if (!lastUserMessage || !lastUserMessage.content) {
+      throw new Error('Nenhuma mensagem do usuário encontrada para gerar imagem')
+    }
+
+    const prompt = lastUserMessage.content
+
+    // Verificar se há imagens anexadas na mensagem (para edição de imagem)
+    // Por enquanto, vamos suportar apenas text-to-image
+    // TODO: Adicionar suporte para image editing quando necessário
+
+    // Detectar aspect ratio no prompt ou usar padrão 1:1
+    const promptLower = prompt.toLowerCase()
+    const aspectRatios: { [key: string]: string } = {
+      '16:9': '16:9',
+      '9:16': '9:16',
+      '4:3': '4:3',
+      '3:4': '3:4',
+      '2:3': '2:3',
+      '3:2': '3:2',
+      '21:9': '21:9',
+      '4:5': '4:5',
+      '5:4': '5:4',
+    }
+
+    let aspectRatio = '1:1' // Padrão
+    for (const [ratio, value] of Object.entries(aspectRatios)) {
+      if (promptLower.includes(ratio) || promptLower.includes(value.replace(':', 'x'))) {
+        aspectRatio = value
+        break
+      }
+    }
+
+    // Detectar outras preferências no prompt
+    if (promptLower.includes('landscape') || promptLower.includes('paisagem') || promptLower.includes('horizontal')) {
+      aspectRatio = '16:9'
+    } else if (promptLower.includes('portrait') || promptLower.includes('retrato') || promptLower.includes('vertical')) {
+      aspectRatio = '9:16'
+    }
+
+    console.log('[callGeminiImage] Aspect ratio detectado:', aspectRatio)
+
+    if (stream) {
+      const encoder = new TextEncoder()
+      const readable = new ReadableStream({
+        async start(controller) {
+          try {
+            // Enviar mensagem inicial de loading
+            controller.enqueue(encoder.encode(`🍌 Gerando imagem com ${modelName}... Isso pode levar alguns segundos.\n\n`))
+
+            // Configurar para gerar imagem
+            // Usar generateContentConfig do SDK do Google Generative AI
+            const config: any = {
+              responseModalities: ['IMAGE'],
+              generationConfig: {
+                imageConfig: {
+                  aspectRatio: aspectRatio,
+                },
+              },
+            }
+
+            // Gerar a imagem - o SDK aceita o prompt como primeiro argumento e config como segundo
+            const result = await geminiModel.generateContent(prompt, config)
+            const response = await result.response
+
+            // Extrair a imagem da resposta
+            let imageData: string | null = null
+            for (const part of response.candidates[0].content.parts) {
+              if ((part as any).inlineData) {
+                const inlineData = (part as any).inlineData
+                const mimeType = inlineData.mimeType || 'image/png'
+                const data = inlineData.data
+                if (data) {
+                  // Converter base64 para data URL
+                  imageData = `data:${mimeType};base64,${data}`
+                  break
+                }
+              }
+            }
+
+            if (!imageData) {
+              throw new Error('Resposta da API não contém dados de imagem')
+            }
+
+            // Calcular latência e custo
+            const latency = Date.now() - startTime
+            const pricing = MODEL_PRICING[`google:${model}`] || MODEL_PRICING['google:gemini-2.5-flash'] || DEFAULT_PRICING
+            // Imagens do Gemini são tokenizadas como 1290 tokens por imagem (até 1024x1024px)
+            const outputTokens = 1290
+            const inputTokens = estimateTokens(prompt)
+            const cost = (inputTokens / 1_000_000) * pricing.input + (outputTokens / 1_000_000) * pricing.output
+
+            // Construir markdown com a imagem
+            let content = `🍌 **Imagem gerada com ${modelName}!**\n\n`
+            content += `![Imagem gerada](${imageData})\n\n`
+            content += `**Parâmetros:**\n`
+            content += `- Aspect Ratio: ${aspectRatio}\n`
+            content += `\n**Tempo de processamento:** ${(latency / 1000).toFixed(1)}s\n**Custo:** $${cost.toFixed(4)} ($${pricing.input.toFixed(2)}/token input + $${pricing.output.toFixed(2)}/token output, imagem = 1290 tokens)`
+
+            // Enviar o conteúdo completo
+            controller.enqueue(encoder.encode(content))
+            controller.close()
+
+          } catch (error: any) {
+            console.error('[callGeminiImage] Erro no stream:', error)
+            controller.error(new Error(`Erro ao gerar imagem com ${modelName}: ${error.message || error}`))
+          }
+        },
+      })
+
+      return {
+        provider: 'Google',
+        model,
+        content: '',
+        latency: 0,
+        cost: 0,
+        stream: readable,
+      }
+    } else {
+      // Modo não-streaming
+      const config: any = {
+        responseModalities: ['IMAGE'],
+        generationConfig: {
+          imageConfig: {
+            aspectRatio: aspectRatio,
+          },
+        },
+      }
+
+      const result = await geminiModel.generateContent(prompt, config)
+      const response = await result.response
+
+      // Extrair a imagem da resposta
+      let imageData: string | null = null
+      for (const part of response.candidates[0].content.parts) {
+        if ((part as any).inlineData) {
+          const inlineData = (part as any).inlineData
+          const mimeType = inlineData.mimeType || 'image/png'
+          const data = inlineData.data
+          if (data) {
+            // Converter base64 para data URL
+            imageData = `data:${mimeType};base64,${data}`
+            break
+          }
+        }
+      }
+
+      if (!imageData) {
+        throw new Error('Resposta da API não contém dados de imagem')
+      }
+
+      const latency = Date.now() - startTime
+      const pricing = MODEL_PRICING[`google:${model}`] || MODEL_PRICING['google:gemini-2.5-flash'] || DEFAULT_PRICING
+      // Imagens do Gemini são tokenizadas como 1290 tokens por imagem (até 1024x1024px)
+      const outputTokens = 1290
+      const inputTokens = estimateTokens(prompt)
+      const cost = (inputTokens / 1_000_000) * pricing.input + (outputTokens / 1_000_000) * pricing.output
+
+      // Construir markdown com a imagem
+      let content = `🍌 **Imagem gerada com ${modelName}!**\n\n`
+      content += `![Imagem gerada](${imageData})\n\n`
+      content += `**Parâmetros:**\n`
+      content += `- Aspect Ratio: ${aspectRatio}\n`
+      content += `\n**Tempo de processamento:** ${(latency / 1000).toFixed(1)}s\n**Custo:** $${cost.toFixed(4)} ($${pricing.input.toFixed(2)}/token input + $${pricing.output.toFixed(2)}/token output, imagem = 1290 tokens)`
+
+      return {
+        provider: 'Google',
+        model,
+        content,
+        latency,
+        cost,
+        inputTokens,
+        outputTokens,
+        metadata: {
+          aspectRatio,
+          imageUrl: imageData,
+        },
+      }
+    }
+  } catch (error: any) {
+    console.error('[callGeminiImage] Erro:', error)
+    
+    // Mensagens de erro específicas
+    if (error.message?.includes('API') || error.message?.includes('404') || error.message?.includes('not found')) {
+      throw new Error(`API do ${modelName} retornou erro. Verifique: https://ai.google.dev/gemini-api/docs/image-generation. Erro: ${error.message}`)
+    }
+    
+    if (error.message?.includes('prompt') || error.message?.includes('conteúdo')) {
+      throw new Error(`Erro no prompt de geração de imagem: ${error.message}`)
+    }
+    
+    throw new Error(`Erro ao gerar imagem com ${modelName}: ${error.message || error}`)
+  }
+}
+
+/**
+ * Chama a API de geração de música Lyria RealTime do Google Gemini
+ * Modelo: lyria-realtime-exp (experimental)
+ * Documentação: https://ai.google.dev/gemini-api/docs/music-generation
+ * 
+ * NOTA: O Lyria RealTime usa WebSocket para streaming bidirecional em tempo real.
+ * A implementação completa requer suporte do SDK para Live API, que pode não estar
+ * disponível no @google/generative-ai atualmente. Esta função fornece uma
+ * implementação básica que tenta usar a API quando disponível.
+ */
+async function callLyria(
+  model: string,
+  messages: Array<{ role: string; content: string }>,
+  stream: boolean,
+  startTime: number
+): Promise<LLMResponse> {
+  const modelName = 'Lyria RealTime'
+  
+  try {
+    if (!process.env.GEMINI_API_KEY) {
+      throw new Error('GEMINI_API_KEY não configurado')
+    }
+
+    console.log('[callLyria] Iniciando geração de música:', { model, messagesCount: messages.length, stream })
+
+    // Extrair o prompt da última mensagem do usuário
+    const lastUserMessage = messages.filter(msg => msg.role === 'user').pop()
+    if (!lastUserMessage || !lastUserMessage.content) {
+      throw new Error('Nenhuma mensagem do usuário encontrada para gerar música')
+    }
+
+    const prompt = lastUserMessage.content
+
+    // O Lyria RealTime requer WebSocket e Live API
+    // Verificar se o SDK suporta live.music.connect()
+    // Por enquanto, retornamos uma mensagem informativa explicando como funciona
+    // TODO: Implementar suporte completo quando o SDK estiver disponível
+
+    if (stream) {
+      const encoder = new TextEncoder()
+      const readable = new ReadableStream({
+        async start(controller) {
+          try {
+            // Enviar mensagem informativa sobre o Lyria RealTime
+            const infoMessage = `🎵 **Sobre o Lyria RealTime**
+
+O Lyria RealTime é um modelo experimental de geração de música em tempo real que usa WebSocket para streaming bidirecional.
+
+**Funcionalidades:**
+- Geração de música instrumental em tempo real
+- Controle de BPM (60-200), densidade, brilho, escala musical
+- Prompts ponderados para influenciar a geração
+- Controles de playback (play, pause, stop, reset)
+
+**Prompt enviado:**
+"${prompt}"
+
+**Status:**
+O suporte completo para Lyria RealTime no Laboratório de IA requer a API Live do Google Generative AI, que pode não estar disponível no SDK atual (@google/generative-ai).
+
+Para usar o Lyria RealTime, você pode:
+1. Acessar o [Google AI Studio](https://aistudio.google.com/app/prompts/new_chat?model=lyria-realtime-exp) diretamente
+2. Usar a [documentação oficial](https://ai.google.dev/gemini-api/docs/music-generation) para integração via SDK Python/JavaScript
+
+**Exemplo de uso:**
+O modelo aceita descrições de gênero, instrumentos, humor, características musicais. Exemplos:
+- "Minimal techno with deep bass, sparse percussion, and atmospheric synths"
+- "Jazz piano with smooth saxophone, laid-back tempo"
+- "Acoustic guitar, folk style, upbeat and cheerful"
+
+**Configurações disponíveis:**
+- BPM: 60-200 (batidas por minuto)
+- Densidade: 0.0-1.0 (densidade de notas/sons)
+- Brilho: 0.0-1.0 (qualidade tonal, frequências mais altas)
+- Escala: Escalas musicais disponíveis (C major, D minor, etc.)
+
+Para mais informações, consulte: https://ai.google.dev/gemini-api/docs/music-generation`
+
+            controller.enqueue(encoder.encode(infoMessage))
+            controller.close()
+
+          } catch (error: any) {
+            console.error('[callLyria] Erro no stream:', error)
+            controller.error(new Error(`Erro ao gerar música com ${modelName}: ${error.message || error}`))
+          }
+        },
+      })
+
+      return {
+        provider: 'Google',
+        model,
+        content: '',
+        latency: 0,
+        cost: 0,
+        stream: readable,
+      }
+    } else {
+      // Modo não-streaming
+      const latency = Date.now() - startTime
+      const pricing = MODEL_PRICING[`google:${model}`] || DEFAULT_PRICING
+      const cost = 0 // Cálculo de custo baseado em tempo de streaming
+
+      const content = `🎵 **Sobre o Lyria RealTime**
+
+O Lyria RealTime é um modelo experimental de geração de música em tempo real que usa WebSocket para streaming bidirecional.
+
+**Funcionalidades:**
+- Geração de música instrumental em tempo real
+- Controle de BPM (60-200), densidade, brilho, escala musical
+- Prompts ponderados para influenciar a geração
+- Controles de playback (play, pause, stop, reset)
+
+**Prompt enviado:**
+"${prompt}"
+
+**Status:**
+O suporte completo para Lyria RealTime no Laboratório de IA requer a API Live do Google Generative AI, que pode não estar disponível no SDK atual (@google/generative-ai).
+
+Para usar o Lyria RealTime, você pode:
+1. Acessar o [Google AI Studio](https://aistudio.google.com/app/prompts/new_chat?model=lyria-realtime-exp) diretamente
+2. Usar a [documentação oficial](https://ai.google.dev/gemini-api/docs/music-generation) para integração via SDK Python/JavaScript
+
+**Exemplo de uso:**
+O modelo aceita descrições de gênero, instrumentos, humor, características musicais. Exemplos:
+- "Minimal techno with deep bass, sparse percussion, and atmospheric synths"
+- "Jazz piano with smooth saxophone, laid-back tempo"
+- "Acoustic guitar, folk style, upbeat and cheerful"
+
+**Configurações disponíveis:**
+- BPM: 60-200 (batidas por minuto)
+- Densidade: 0.0-1.0 (densidade de notas/sons)
+- Brilho: 0.0-1.0 (qualidade tonal, frequências mais altas)
+- Escala: Escalas musicais disponíveis (C major, D minor, etc.)
+
+Para mais informações, consulte: https://ai.google.dev/gemini-api/docs/music-generation`
+
+      return {
+        provider: 'Google',
+        model,
+        content,
+        latency,
+        cost,
+        metadata: {
+          prompt,
+          modelType: 'music-generation',
+        },
+      }
+    }
+  } catch (error: any) {
+    console.error('[callLyria] Erro:', error)
+    
+    throw new Error(`Erro ao gerar música com ${modelName}: ${error.message || error}`)
   }
 }
 
@@ -1078,15 +1907,142 @@ async function callFluxImage(
     const modelName = isKrea ? 'FLUX.1 Krea [dev]' : 'FLUX 1.1 Pro'
     const modelIcon = isKrea ? '📸' : '🎨'
 
-    // Modelos de imagem não suportam streaming tradicional
+    // Modelos de imagem não suportam streaming tradicional, mas precisamos gerar a imagem
+    // mesmo quando stream=true, então vamos gerar e retornar o resultado completo
     if (stream) {
       const encoder = new TextEncoder()
       const readable = new ReadableStream({
         async start(controller) {
           try {
+            // Enviar mensagem inicial de loading
             controller.enqueue(encoder.encode(`${modelIcon} Gerando imagem com ${modelName}... Isso pode levar alguns segundos.\n\n`))
+            
+            // Agora gerar a imagem de fato (mesmo com stream=true)
+            // Extrair o prompt da última mensagem do usuário
+            const lastUserMessage = messages.filter(msg => msg.role === 'user').pop()
+            if (!lastUserMessage || !lastUserMessage.content) {
+              throw new Error('Nenhuma mensagem do usuário encontrada para gerar imagem')
+            }
+
+            const prompt = lastUserMessage.content
+            const promptLower = prompt.toLowerCase()
+            
+            // Detectar resolução no prompt ou usar padrão
+            let aspect_ratio = '1:1'
+            if (promptLower.includes('16:9') || promptLower.includes('paisagem') || promptLower.includes('landscape') || promptLower.includes('widescreen')) {
+              aspect_ratio = '16:9'
+            } else if (promptLower.includes('9:16') || promptLower.includes('retrato') || promptLower.includes('portrait') || promptLower.includes('vertical')) {
+              aspect_ratio = '9:16'
+            } else if (promptLower.includes('21:9') || promptLower.includes('ultrawide')) {
+              aspect_ratio = '21:9'
+            } else if (promptLower.includes('4:3')) {
+              aspect_ratio = '4:3'
+            } else if (promptLower.includes('3:4')) {
+              aspect_ratio = '3:4'
+            }
+
+            let output_format = 'png'
+            if (promptLower.includes('jpeg') || promptLower.includes('jpg')) {
+              output_format = 'jpeg'
+            } else if (promptLower.includes('webp')) {
+              output_format = 'webp'
+            }
+
+            const numImagesMatch = prompt.match(/(\d+)\s*(imagens?|images?)/i)
+            const num_outputs = numImagesMatch ? Math.min(parseInt(numImagesMatch[1]), 4) : 1
+
+            const input: any = {
+              prompt: prompt,
+              aspect_ratio: aspect_ratio,
+              output_format: output_format,
+              num_outputs: num_outputs,
+            }
+
+            const startExecutionTime = Date.now()
+            
+            console.log('[callFluxImage] Chamando Replicate com modelo:', model)
+            console.log('[callFluxImage] Input:', JSON.stringify(input, null, 2))
+            
+            let result: any
+            try {
+              result = await replicate.run(model, { input })
+              console.log('[callFluxImage] Resultado do Replicate recebido:', {
+                type: typeof result,
+                isArray: Array.isArray(result),
+                isAsyncIterator: result && typeof result === 'object' && typeof (result as any)[Symbol.asyncIterator] === 'function',
+                hasUrlMethod: result && typeof result === 'object' && typeof (result as any).url === 'function',
+                constructor: result?.constructor?.name,
+                keys: result && typeof result === 'object' ? Object.keys(result) : null,
+                result: result,
+              })
+            } catch (replicateError: any) {
+              console.error('[callFluxImage] Erro ao chamar replicate.run:', replicateError)
+              throw new Error(`Erro ao chamar Replicate API: ${replicateError.message || replicateError}`)
+            }
+            
+            // Usar função auxiliar para extrair URLs
+            console.log('[callFluxImage] Chamando extractImageUrlsFromReplicate...')
+            const imageUrls = await extractImageUrlsFromReplicate(result, modelName)
+            console.log('[callFluxImage] URLs extraídas:', imageUrls)
+
+            if (imageUrls.length === 0) {
+              console.error(`[callFluxImage] ERRO: Nenhuma URL extraída para ${modelName}`)
+              console.error(`[callFluxImage] Resultado completo do Replicate:`, JSON.stringify(result, null, 2))
+              console.error(`[callFluxImage] Tipo do resultado:`, typeof result)
+              console.error(`[callFluxImage] É array:`, Array.isArray(result))
+              if (result && typeof result === 'object') {
+                console.error(`[callFluxImage] Chaves do objeto:`, Object.keys(result))
+                console.error(`[callFluxImage] Métodos disponíveis:`, Object.getOwnPropertyNames(result).filter(name => typeof (result as any)[name] === 'function'))
+              }
+              throw new Error(`Resposta da API não contém URLs de imagens para ${modelName}. Verifique os logs do console para mais detalhes.`)
+            }
+
+            const executionTime = Date.now() - startExecutionTime
+            const latency = Date.now() - startTime
+
+            const pricing = MODEL_PRICING[`replicate:${model}`] || DEFAULT_PRICING
+            const executionSeconds = executionTime / 1000
+            const cost = pricing.input * executionSeconds * imageUrls.length
+
+            // Construir resposta em formato de mensagem com imagens
+            let content = `${modelIcon} **Imagem${imageUrls.length > 1 ? 's' : ''} gerada${imageUrls.length > 1 ? 's' : ''} com ${modelName}!**\n\n`
+            
+            // Adicionar todas as imagens geradas
+            imageUrls.forEach((url, index) => {
+              if (imageUrls.length > 1) {
+                content += `**Imagem ${index + 1}:**\n`
+              }
+              content += `![Imagem gerada](${url})\n\n`
+            })
+            
+            content += `**Parâmetros:**\n`
+            content += `- Aspecto: ${aspect_ratio}\n`
+            content += `- Formato: ${output_format.toUpperCase()}\n`
+            content += `- Quantidade: ${imageUrls.length}\n`
+            content += `\n**Tempo de processamento:** ${(latency / 1000).toFixed(1)}s\n`
+            content += `**Tempo de execução:** ${executionSeconds.toFixed(1)}s\n`
+            content += `**Custo:** $${cost.toFixed(4)} ($${pricing.input.toFixed(3)}/segundo × ${executionSeconds.toFixed(1)}s × ${imageUrls.length} imagem${imageUrls.length > 1 ? 's' : ''})`
+            
+            if (isKrea) {
+              content += `\n\n*FLUX.1 Krea [dev] oferece fotorealismo excepcional que evita o "AI look" oversaturado, com estética distintiva e imagens visualmente interessantes*`
+            } else {
+              content += `\n\n*FLUX 1.1 Pro oferece excelente qualidade, aderência ao prompt e diversidade de saída*`
+            }
+
+            // Enviar o conteúdo completo
+            controller.enqueue(encoder.encode(content))
             controller.close()
           } catch (error: any) {
+            console.error('[callFluxImage] Erro no stream:', error)
+            
+            let errorMessage = `Erro ao gerar imagem com ${modelName}: ${error.message || error}`
+            if (error.message?.includes('REPLICATE_API_TOKEN') || error.message?.includes('auth')) {
+              errorMessage = 'REPLICATE_API_TOKEN não configurado. Configure a variável de ambiente.'
+            } else if (error.message?.includes('prompt') || error.message?.includes('conteúdo')) {
+              errorMessage = `Erro no prompt de geração de imagem: ${error.message}`
+            }
+            
+            controller.enqueue(encoder.encode(`❌ ${errorMessage}`))
             controller.error(error)
           }
         },
@@ -1151,88 +2107,113 @@ async function callFluxImage(
 
     // Chamar a API do Replicate
     const startExecutionTime = Date.now()
-    const output = await replicate.run(model, { input }) as any
     
-    // O output do FLUX é um array de URLs de imagens
-    let imageUrls: string[] = []
-    if (Array.isArray(output)) {
-      imageUrls = output.filter((url: any) => typeof url === 'string' && url.startsWith('http'))
-    } else if (typeof output === 'string' && output.startsWith('http')) {
-      imageUrls = [output]
-    } else if (output && typeof output === 'object') {
-      // Alguns formatos podem retornar objeto com URLs
-      const urls = output.urls || output.images || output.output || []
-      if (Array.isArray(urls)) {
-        imageUrls = urls.filter((url: any) => typeof url === 'string' && url.startsWith('http'))
+    try {
+      console.log('[callFluxImage][non-stream] Chamando Replicate com modelo:', model)
+      console.log('[callFluxImage][non-stream] Input:', JSON.stringify(input, null, 2))
+      
+      // O Replicate pode retornar um iterador assíncrono ou resultado direto
+      let result: any
+      try {
+        result = await replicate.run(model, { input })
+        console.log('[callFluxImage][non-stream] Resultado do Replicate recebido:', {
+          type: typeof result,
+          isArray: Array.isArray(result),
+          isAsyncIterator: result && typeof result === 'object' && typeof (result as any)[Symbol.asyncIterator] === 'function',
+          hasUrlMethod: result && typeof result === 'object' && typeof (result as any).url === 'function',
+          constructor: result?.constructor?.name,
+          keys: result && typeof result === 'object' ? Object.keys(result) : null,
+          arrayLength: Array.isArray(result) ? result.length : null,
+          result: result,
+        })
+      } catch (replicateError: any) {
+        console.error('[callFluxImage][non-stream] Erro ao chamar replicate.run:', replicateError)
+        throw new Error(`Erro ao chamar Replicate API: ${replicateError.message || replicateError}`)
       }
-    }
+      
+      // Usar função auxiliar para extrair URLs
+      console.log('[callFluxImage][non-stream] Chamando extractImageUrlsFromReplicate...')
+      const imageUrls = await extractImageUrlsFromReplicate(result, modelName)
+      console.log('[callFluxImage][non-stream] URLs extraídas:', imageUrls)
 
-    if (imageUrls.length === 0) {
-      throw new Error('Resposta da API não contém URLs de imagens')
-    }
-
-    const executionTime = Date.now() - startExecutionTime
-    const latency = Date.now() - startTime
-
-    // Calcular custo: ~$0.003 por segundo de execução
-    // Estimativa baseada no tempo de execução
-    const pricing = MODEL_PRICING[`replicate:${model}`] || DEFAULT_PRICING
-    const executionSeconds = executionTime / 1000
-    const cost = pricing.input * executionSeconds * imageUrls.length // Custo por imagem gerada
-
-    // Construir resposta em formato de mensagem com imagens
-    let content = `${modelIcon} **Imagem${imageUrls.length > 1 ? 's' : ''} gerada${imageUrls.length > 1 ? 's' : ''} com ${modelName}!**\n\n`
-    
-    // Adicionar todas as imagens geradas
-    imageUrls.forEach((url, index) => {
-      if (imageUrls.length > 1) {
-        content += `**Imagem ${index + 1}:**\n`
+      if (imageUrls.length === 0) {
+        console.error(`[callFluxImage][non-stream] ERRO: Nenhuma URL extraída para ${modelName}`)
+        console.error(`[callFluxImage][non-stream] Resultado completo do Replicate:`, JSON.stringify(result, null, 2))
+        console.error(`[callFluxImage][non-stream] Tipo do resultado:`, typeof result)
+        console.error(`[callFluxImage][non-stream] É array:`, Array.isArray(result))
+        if (result && typeof result === 'object') {
+          console.error(`[callFluxImage][non-stream] Chaves do objeto:`, Object.keys(result))
+          console.error(`[callFluxImage][non-stream] Métodos disponíveis:`, Object.getOwnPropertyNames(result).filter(name => typeof (result as any)[name] === 'function'))
+        }
+        throw new Error(`Resposta da API não contém URLs de imagens para ${modelName}. Verifique os logs do console para mais detalhes.`)
       }
-      content += `![Imagem gerada](${url})\n\n`
-    })
-    
-    content += `**Parâmetros:**\n`
-    content += `- Aspecto: ${aspect_ratio}\n`
-    content += `- Formato: ${output_format.toUpperCase()}\n`
-    content += `- Quantidade: ${imageUrls.length}\n`
-    content += `\n**Tempo de processamento:** ${(latency / 1000).toFixed(1)}s\n`
-    content += `**Tempo de execução:** ${executionSeconds.toFixed(1)}s\n`
-    content += `**Custo:** $${cost.toFixed(4)} ($${pricing.input.toFixed(3)}/segundo × ${executionSeconds.toFixed(1)}s × ${imageUrls.length} imagem${imageUrls.length > 1 ? 's' : ''})`
-    
-    if (isKrea) {
-      content += `\n\n*FLUX.1 Krea [dev] oferece fotorealismo excepcional que evita o "AI look" oversaturado, com estética distintiva e imagens visualmente interessantes*`
-    } else {
-      content += `\n\n*FLUX 1.1 Pro oferece excelente qualidade, aderência ao prompt e diversidade de saída*`
-    }
 
-    return {
-      provider: 'Replicate',
-      model,
-      content,
-      latency,
-      cost,
-      metadata: {
-        aspect_ratio,
-        output_format,
-        num_outputs: imageUrls.length,
-        imageUrls,
-        executionTime: executionSeconds,
-      },
+      const executionTime = Date.now() - startExecutionTime
+      const latency = Date.now() - startTime
+
+      // Calcular custo: ~$0.003 por segundo de execução
+      // Estimativa baseada no tempo de execução
+      const pricing = MODEL_PRICING[`replicate:${model}`] || DEFAULT_PRICING
+      const executionSeconds = executionTime / 1000
+      const cost = pricing.input * executionSeconds * imageUrls.length // Custo por imagem gerada
+
+      // Construir resposta em formato de mensagem com imagens
+      let content = `${modelIcon} **Imagem${imageUrls.length > 1 ? 's' : ''} gerada${imageUrls.length > 1 ? 's' : ''} com ${modelName}!**\n\n`
+      
+      // Adicionar todas as imagens geradas
+      imageUrls.forEach((url, index) => {
+        if (imageUrls.length > 1) {
+          content += `**Imagem ${index + 1}:**\n`
+        }
+        content += `![Imagem gerada](${url})\n\n`
+      })
+      
+      content += `**Parâmetros:**\n`
+      content += `- Aspecto: ${aspect_ratio}\n`
+      content += `- Formato: ${output_format.toUpperCase()}\n`
+      content += `- Quantidade: ${imageUrls.length}\n`
+      content += `\n**Tempo de processamento:** ${(latency / 1000).toFixed(1)}s\n`
+      content += `**Tempo de execução:** ${executionSeconds.toFixed(1)}s\n`
+      content += `**Custo:** $${cost.toFixed(4)} ($${pricing.input.toFixed(3)}/segundo × ${executionSeconds.toFixed(1)}s × ${imageUrls.length} imagem${imageUrls.length > 1 ? 's' : ''})`
+      
+      if (isKrea) {
+        content += `\n\n*FLUX.1 Krea [dev] oferece fotorealismo excepcional que evita o "AI look" oversaturado, com estética distintiva e imagens visualmente interessantes*`
+      } else {
+        content += `\n\n*FLUX 1.1 Pro oferece excelente qualidade, aderência ao prompt e diversidade de saída*`
+      }
+
+      return {
+        provider: 'Replicate',
+        model,
+        content,
+        latency,
+        cost,
+        metadata: {
+          aspect_ratio,
+          output_format,
+          num_outputs: imageUrls.length,
+          imageUrls,
+          executionTime: executionSeconds,
+        },
+      }
+    } catch (error: any) {
+      console.error('[callFluxImage] Erro:', error)
+      
+      // Mensagens de erro específicas
+      if (error.message?.includes('REPLICATE_API_TOKEN') || error.message?.includes('auth')) {
+        throw new Error('REPLICATE_API_TOKEN não configurado. Configure a variável de ambiente.')
+      }
+      
+      if (error.message?.includes('prompt') || error.message?.includes('conteúdo')) {
+        throw new Error(`Erro no prompt de geração de imagem: ${error.message}`)
+      }
+      
+      const modelName = model.includes('krea') ? 'FLUX.1 Krea [dev]' : 'FLUX 1.1 Pro'
+      throw new Error(`Erro ao gerar imagem com ${modelName}: ${error.message || error}`)
     }
   } catch (error: any) {
-    console.error('[callFluxImage] Erro:', error)
-    
-    // Mensagens de erro específicas
-    if (error.message?.includes('REPLICATE_API_TOKEN') || error.message?.includes('auth')) {
-      throw new Error('REPLICATE_API_TOKEN não configurado. Configure a variável de ambiente.')
-    }
-    
-    if (error.message?.includes('prompt') || error.message?.includes('conteúdo')) {
-      throw new Error(`Erro no prompt de geração de imagem: ${error.message}`)
-    }
-    
-    const modelName = model.includes('krea') ? 'FLUX.1 Krea [dev]' : 'FLUX 1.1 Pro'
-    throw new Error(`Erro ao gerar imagem com ${modelName}: ${error.message || error}`)
+    console.error('[callFluxImage] Erro externo:', error)
+    throw error
   }
 }
 
@@ -1260,15 +2241,97 @@ async function callFluxKontext(
     const modelName = isMax ? 'FLUX.1 Kontext [max]' : (isPro ? 'FLUX.1 Kontext [pro]' : (isDev ? 'FLUX.1 Kontext [dev]' : 'FLUX.1 Kontext'))
     const modelIcon = isMax ? '✏️' : (isPro ? '⭐' : (isDev ? '🔧' : '✏️'))
 
-    // Modelos de imagem não suportam streaming tradicional
+    // Modelos de imagem não suportam streaming tradicional, mas precisamos gerar a imagem
+    // mesmo quando stream=true, então vamos gerar e retornar o resultado completo
     if (stream) {
       const encoder = new TextEncoder()
       const readable = new ReadableStream({
         async start(controller) {
           try {
+            // Enviar mensagem inicial de loading
             controller.enqueue(encoder.encode(`${modelIcon} Editando imagem com ${modelName}... Isso pode levar alguns segundos.\n\n`))
+            
+            // Agora gerar a imagem de fato (mesmo com stream=true)
+            // Extrair o prompt da última mensagem do usuário
+            const lastUserMessage = messages.filter(msg => msg.role === 'user').pop()
+            if (!lastUserMessage || !lastUserMessage.content) {
+              throw new Error('Nenhuma mensagem do usuário encontrada para editar imagem')
+            }
+
+            const prompt = lastUserMessage.content
+            const promptLower = prompt.toLowerCase()
+
+            // Verificar se há imagem anexada (obrigatória para edição)
+            const msgAny = lastUserMessage as any
+            let imageUrl: string | null = null
+            
+            if (msgAny.attachments && Array.isArray(msgAny.attachments)) {
+              const imageAttachments = msgAny.attachments.filter((a: any) => a.type === 'image')
+              if (imageAttachments.length > 0) {
+                imageUrl = imageAttachments[0].url
+              }
+            }
+
+            if (!imageUrl) {
+              throw new Error(`${modelName} requer uma imagem para editar. Por favor, anexe uma imagem.`)
+            }
+
+            const input: any = {
+              image: imageUrl,
+              prompt: prompt,
+            }
+
+            const startExecutionTime = Date.now()
+            const result = await replicate.run(model, { input })
+            
+            // Usar função auxiliar para extrair URLs
+            const imageUrls = await extractImageUrlsFromReplicate(result, modelName)
+            
+            if (imageUrls.length === 0) {
+              throw new Error(`Resposta da API não contém URL de imagem editada para ${modelName}`)
+            }
+            
+            const imageUrlResult = imageUrls[0]
+
+            const executionTime = Date.now() - startExecutionTime
+            const latency = Date.now() - startTime
+            const executionSeconds = executionTime / 1000
+
+            const pricing = MODEL_PRICING[`replicate:${model}`] || DEFAULT_PRICING
+            const cost = pricing.input * executionSeconds
+
+            let content = `${modelIcon} **Imagem editada com ${modelName}!**\n\n`
+            content += `![Imagem editada](${imageUrlResult})\n\n`
+            
+            content += `**Prompt de edição:** "${prompt}"\n`
+            content += `\n**Tempo de processamento:** ${(latency / 1000).toFixed(1)}s\n`
+            content += `**Tempo de execução:** ${executionSeconds.toFixed(1)}s\n`
+            content += `**Custo:** $${cost.toFixed(4)} ($${pricing.input.toFixed(2)}/segundo × ${executionSeconds.toFixed(1)}s)`
+            
+            if (isMax) {
+              content += `\n\n*FLUX.1 Kontext [max] oferece máxima performance em edição de imagem, geração de tipografia melhorada e resultados superiores*`
+            } else if (isPro) {
+              content += `\n\n*FLUX.1 Kontext [pro] oferece performance state-of-the-art com saídas de alta qualidade, excelente seguimento de prompt e resultados consistentes*`
+            } else if (isDev) {
+              content += `\n\n*FLUX.1 Kontext [dev] é a versão open-weight com boa performance e uso comercial disponível via Replicate*`
+            }
+
+            // Enviar o conteúdo completo
+            controller.enqueue(encoder.encode(content))
             controller.close()
           } catch (error: any) {
+            console.error('[callFluxKontext] Erro no stream:', error)
+            
+            let errorMessage = `Erro ao editar imagem com ${modelName}: ${error.message || error}`
+            if (error.message?.includes('REPLICATE_API_TOKEN') || error.message?.includes('auth')) {
+              errorMessage = 'REPLICATE_API_TOKEN não configurado. Configure a variável de ambiente.'
+            } else if (error.message?.includes('imagem') || error.message?.includes('image')) {
+              errorMessage = `${modelName} requer uma imagem para editar. Por favor, anexe uma imagem.`
+            } else if (error.message?.includes('prompt') || error.message?.includes('conteúdo')) {
+              errorMessage = `Erro no prompt de edição de imagem: ${error.message}`
+            }
+            
+            controller.enqueue(encoder.encode(`❌ ${errorMessage}`))
             controller.error(error)
           }
         },
@@ -1357,21 +2420,16 @@ async function callFluxKontext(
 
     // Chamar a API do Replicate
     const startExecutionTime = Date.now()
-    const output = await replicate.run(model, { input }) as any
+    const result = await replicate.run(model, { input })
     
-    // O output do Kontext é uma URL de imagem editada
-    let imageUrlResult: string | null = null
-    if (typeof output === 'string' && output.startsWith('http')) {
-      imageUrlResult = output
-    } else if (Array.isArray(output) && output.length > 0) {
-      imageUrlResult = output.find((url: any) => typeof url === 'string' && url.startsWith('http')) || output[0]
-    } else if (output && typeof output === 'object') {
-      imageUrlResult = output.url || output.image || output.output || null
+    // Usar função auxiliar para extrair URLs
+    const imageUrls = await extractImageUrlsFromReplicate(result, modelName)
+    
+    if (imageUrls.length === 0) {
+      throw new Error(`Resposta da API não contém URL de imagem editada para ${modelName}`)
     }
-
-    if (!imageUrlResult) {
-      throw new Error('Resposta da API não contém URL de imagem editada')
-    }
+    
+    const imageUrlResult = imageUrls[0]
 
     const executionTime = Date.now() - startExecutionTime
     const latency = Date.now() - startTime
@@ -1477,15 +2535,161 @@ async function callSeedreamImage(
       auth: process.env.REPLICATE_API_TOKEN,
     })
 
-    // Modelos de imagem não suportam streaming tradicional
+    // Modelos de imagem não suportam streaming tradicional, mas precisamos gerar a imagem
+    // mesmo quando stream=true, então vamos gerar e retornar o resultado completo
     if (stream) {
       const encoder = new TextEncoder()
       const readable = new ReadableStream({
         async start(controller) {
           try {
+            // Enviar mensagem inicial de loading
             controller.enqueue(encoder.encode('✨ Gerando/Editando imagem com Seedream 4.0... Isso pode levar alguns segundos.\n\n'))
+            
+            // Agora gerar a imagem de fato (mesmo com stream=true)
+            // Extrair o prompt da última mensagem do usuário
+            const lastUserMessage = messages.filter(msg => msg.role === 'user').pop()
+            if (!lastUserMessage || !lastUserMessage.content) {
+              throw new Error('Nenhuma mensagem do usuário encontrada para gerar/editar imagem')
+            }
+
+            const prompt = lastUserMessage.content
+            const promptLower = prompt.toLowerCase()
+
+            // Verificar se há imagens anexadas (para edição)
+            const msgAny = lastUserMessage as any
+            let referenceImages: string[] = []
+            
+            if (msgAny.attachments && Array.isArray(msgAny.attachments)) {
+              const imageAttachments = msgAny.attachments.filter((a: any) => a.type === 'image')
+              referenceImages = imageAttachments.map((a: any) => a.url).filter(Boolean)
+            }
+
+            const isEditing = referenceImages.length > 0 || 
+                              promptLower.includes('remover') || 
+                              promptLower.includes('remove') ||
+                              promptLower.includes('substituir') ||
+                              promptLower.includes('replace') ||
+                              promptLower.includes('editar') ||
+                              promptLower.includes('edit') ||
+                              promptLower.includes('modificar') ||
+                              promptLower.includes('modify')
+
+            let width = 1024
+            let height = 1024
+            
+            if (promptLower.includes('4k') || promptLower.includes('3840') || promptLower.includes('4096')) {
+              width = 3840
+              height = 2160
+            } else if (promptLower.includes('2k') || promptLower.includes('2560')) {
+              width = 2560
+              height = 1440
+            } else if (promptLower.includes('1080p') || promptLower.includes('full hd')) {
+              width = 1920
+              height = 1080
+            } else if (promptLower.includes('16:9') || promptLower.includes('paisagem') || promptLower.includes('landscape')) {
+              width = 1920
+              height = 1080
+            } else if (promptLower.includes('9:16') || promptLower.includes('retrato') || promptLower.includes('portrait')) {
+              width = 1080
+              height = 1920
+            } else if (promptLower.includes('21:9') || promptLower.includes('ultrawide')) {
+              width = 2560
+              height = 1080
+            }
+
+            const numImagesMatch = prompt.match(/(\d+)\s*(imagens?|images?|outputs?)/i)
+            const num_outputs = numImagesMatch ? Math.min(parseInt(numImagesMatch[1]), 4) : 1
+
+            let edit_mode: string | undefined = undefined
+            if (isEditing) {
+              if (promptLower.includes('remover') || promptLower.includes('remove')) {
+                edit_mode = 'remove'
+              } else if (promptLower.includes('substituir') || promptLower.includes('replace')) {
+                edit_mode = 'replace'
+              } else if (promptLower.includes('estilo') || promptLower.includes('style') || promptLower.includes('transfer')) {
+                edit_mode = 'style_transfer'
+              }
+            }
+
+            const input: any = {
+              prompt: prompt,
+              width: width,
+              height: height,
+              num_outputs: num_outputs,
+            }
+
+            if (referenceImages.length > 0) {
+              input.image = referenceImages[0]
+              if (referenceImages.length > 1) {
+                input.reference_images = referenceImages.slice(0, 4)
+              }
+            }
+
+            if (edit_mode) {
+              input.edit_mode = edit_mode
+            }
+
+            const startExecutionTime = Date.now()
+            const result = await replicate.run(model, { input })
+            
+            // Usar função auxiliar para extrair URLs
+            const imageUrls = await extractImageUrlsFromReplicate(result, 'Seedream 4.0')
+
+            if (imageUrls.length === 0) {
+              throw new Error('Resposta da API não contém URLs de imagens para Seedream 4.0')
+            }
+
+            const executionTime = Date.now() - startExecutionTime
+            const latency = Date.now() - startTime
+
+            const pricing = MODEL_PRICING[`replicate:${model}`] || DEFAULT_PRICING
+            const executionSeconds = executionTime / 1000
+            const cost = pricing.input * executionSeconds * imageUrls.length
+
+            const modeText = isEditing ? 'editada' : 'gerada'
+            let content = `✨ **Imagem${imageUrls.length > 1 ? 's' : ''} ${modeText}${imageUrls.length > 1 ? 's' : ''} com Seedream 4.0!**\n\n`
+            
+            imageUrls.forEach((url, index) => {
+              if (imageUrls.length > 1) {
+                content += `**Imagem ${index + 1}:**\n`
+              }
+              content += `![Imagem ${modeText}](${url})\n\n`
+            })
+            
+            content += `**Parâmetros:**\n`
+            content += `- Resolução: ${width}x${height}${width >= 3840 ? ' (4K)' : width >= 2560 ? ' (2K)' : ''}\n`
+            content += `- Quantidade: ${imageUrls.length}\n`
+            if (isEditing) {
+              content += `- Modo: Edição de imagem\n`
+              if (edit_mode) {
+                content += `- Tipo de edição: ${edit_mode}\n`
+              }
+              if (referenceImages.length > 0) {
+                content += `- Imagens de referência: ${referenceImages.length}\n`
+              }
+            } else {
+              content += `- Modo: Geração de imagem\n`
+            }
+            content += `\n**Tempo de processamento:** ${(latency / 1000).toFixed(1)}s\n`
+            content += `**Tempo de execução:** ${executionSeconds.toFixed(1)}s\n`
+            content += `**Custo:** $${cost.toFixed(4)} ($${pricing.input.toFixed(3)}/segundo × ${executionSeconds.toFixed(1)}s × ${imageUrls.length} imagem${imageUrls.length > 1 ? 's' : ''})`
+            
+            content += `\n\n*Seedream 4.0 oferece geração e edição unificadas, suporte a até 4K e múltiplas referências*`
+
+            // Enviar o conteúdo completo
+            controller.enqueue(encoder.encode(content))
             controller.close()
           } catch (error: any) {
+            console.error('[callSeedreamImage] Erro no stream:', error)
+            
+            let errorMessage = `Erro ao gerar/editar imagem com Seedream 4.0: ${error.message || error}`
+            if (error.message?.includes('REPLICATE_API_TOKEN') || error.message?.includes('auth')) {
+              errorMessage = 'REPLICATE_API_TOKEN não configurado. Configure a variável de ambiente.'
+            } else if (error.message?.includes('prompt') || error.message?.includes('conteúdo')) {
+              errorMessage = `Erro no prompt de geração de imagem: ${error.message}`
+            }
+            
+            controller.enqueue(encoder.encode(`❌ ${errorMessage}`))
             controller.error(error)
           }
         },
@@ -1596,24 +2800,13 @@ async function callSeedreamImage(
 
     // Chamar a API do Replicate
     const startExecutionTime = Date.now()
-    const output = await replicate.run(model, { input }) as any
+    const result = await replicate.run(model, { input })
     
-    // O output do Seedream é um array de URLs de imagens
-    let imageUrls: string[] = []
-    if (Array.isArray(output)) {
-      imageUrls = output.filter((url: any) => typeof url === 'string' && url.startsWith('http'))
-    } else if (typeof output === 'string' && output.startsWith('http')) {
-      imageUrls = [output]
-    } else if (output && typeof output === 'object') {
-      // Alguns formatos podem retornar objeto com URLs
-      const urls = output.urls || output.images || output.output || []
-      if (Array.isArray(urls)) {
-        imageUrls = urls.filter((url: any) => typeof url === 'string' && url.startsWith('http'))
-      }
-    }
+    // Usar função auxiliar para extrair URLs
+    const imageUrls = await extractImageUrlsFromReplicate(result, 'Seedream 4.0')
 
     if (imageUrls.length === 0) {
-      throw new Error('Resposta da API não contém URLs de imagens')
+      throw new Error('Resposta da API não contém URLs de imagens para Seedream 4.0')
     }
 
     const executionTime = Date.now() - startExecutionTime
@@ -1720,15 +2913,157 @@ async function callIdeogramImage(
       modelName = 'Ideogram v3 Turbo'
     }
 
-    // Modelos de imagem não suportam streaming tradicional
+    // Modelos de imagem não suportam streaming tradicional, mas precisamos gerar a imagem
+    // mesmo quando stream=true, então vamos gerar e retornar o resultado completo
     if (stream) {
       const encoder = new TextEncoder()
       const readable = new ReadableStream({
         async start(controller) {
           try {
+            // Enviar mensagem inicial de loading
             controller.enqueue(encoder.encode(`🎨 Gerando imagem com ${modelName}... Isso pode levar alguns segundos.\n\n`))
+            
+            // Agora gerar a imagem de fato (mesmo com stream=true)
+            // Extrair o prompt da última mensagem do usuário
+            const lastUserMessage = messages.filter(msg => msg.role === 'user').pop()
+            if (!lastUserMessage || !lastUserMessage.content) {
+              throw new Error('Nenhuma mensagem do usuário encontrada para gerar imagem')
+            }
+
+            const prompt = lastUserMessage.content
+            const promptLower = prompt.toLowerCase()
+
+            // Verificar se há imagens anexadas (para style references)
+            const msgAny = lastUserMessage as any
+            let styleReferences: string[] = []
+            
+            if (msgAny.attachments && Array.isArray(msgAny.attachments)) {
+              const imageAttachments = msgAny.attachments.filter((a: any) => a.type === 'image')
+              styleReferences = imageAttachments.map((a: any) => a.url).filter(Boolean).slice(0, 3)
+            }
+
+            let aspect_ratio = '1:1'
+            
+            if (promptLower.includes('16:9') || promptLower.includes('paisagem') || promptLower.includes('landscape') || promptLower.includes('widescreen')) {
+              aspect_ratio = '16:9'
+            } else if (promptLower.includes('9:16') || promptLower.includes('retrato') || promptLower.includes('portrait') || promptLower.includes('vertical')) {
+              aspect_ratio = '9:16'
+            } else if (promptLower.includes('4:5')) {
+              aspect_ratio = '4:5'
+            } else if (promptLower.includes('5:4')) {
+              aspect_ratio = '5:4'
+            } else if (promptLower.includes('21:9') || promptLower.includes('ultrawide')) {
+              aspect_ratio = '21:9'
+            }
+
+            const useRandomStyle = promptLower.includes('random style') || 
+                                  promptLower.includes('estilo aleatório') ||
+                                  promptLower.includes('estilo random')
+
+            const styleCodeMatch = prompt.match(/style[_\s]?code[:\s]+([a-zA-Z0-9]+)/i)
+            const style_code = styleCodeMatch ? styleCodeMatch[1] : undefined
+
+            const isGraphicDesign = promptLower.includes('logo') ||
+                                   promptLower.includes('design gráfico') ||
+                                   promptLower.includes('graphic design') ||
+                                   promptLower.includes('texto') ||
+                                   promptLower.includes('text') ||
+                                   promptLower.includes('tipografia') ||
+                                   promptLower.includes('typography') ||
+                                   promptLower.includes('marca') ||
+                                   promptLower.includes('branding') ||
+                                   promptLower.includes('publicidade') ||
+                                   promptLower.includes('advertising') ||
+                                   promptLower.includes('marketing')
+
+            const input: any = {
+              prompt: prompt,
+              aspect_ratio: aspect_ratio,
+            }
+
+            if (styleReferences.length > 0) {
+              input.style_references = styleReferences
+            }
+
+            if (useRandomStyle) {
+              input.random_style = true
+            }
+
+            if (style_code) {
+              input.style_code = style_code
+            }
+
+            const startExecutionTime = Date.now()
+            const result = await replicate.run(model, { input })
+            
+            // Usar função auxiliar para extrair URLs
+            const imageUrls = await extractImageUrlsFromReplicate(result, modelName)
+
+            if (imageUrls.length === 0) {
+              throw new Error(`Resposta da API não contém URLs de imagens para ${modelName}`)
+            }
+
+            const executionTime = Date.now() - startExecutionTime
+            const latency = Date.now() - startTime
+
+            const pricing = MODEL_PRICING[`replicate:${model}`] || DEFAULT_PRICING
+            const cost = pricing.input * imageUrls.length
+
+            let content = `🎨 **Imagem${imageUrls.length > 1 ? 's' : ''} gerada${imageUrls.length > 1 ? 's' : ''} com ${modelName}!**\n\n`
+            
+            imageUrls.forEach((url, index) => {
+              if (imageUrls.length > 1) {
+                content += `**Imagem ${index + 1}:**\n`
+              }
+              content += `![Imagem gerada](${url})\n\n`
+            })
+            
+            content += `**Parâmetros:**\n`
+            content += `- Aspecto: ${aspect_ratio}\n`
+            content += `- Quantidade: ${imageUrls.length}\n`
+            
+            if (styleReferences.length > 0) {
+              content += `- Referências de estilo: ${styleReferences.length}\n`
+            }
+            
+            if (useRandomStyle) {
+              content += `- Estilo: Aleatório (4.3 bilhões de presets)\n`
+            }
+            
+            if (style_code) {
+              content += `- Style Code: ${style_code}\n`
+            }
+            
+            if (isGraphicDesign) {
+              content += `- Modo: Design Gráfico (renderização de texto otimizada)\n`
+            }
+            
+            content += `\n**Tempo de processamento:** ${(latency / 1000).toFixed(1)}s\n`
+            content += `**Tempo de execução:** ${(executionTime / 1000).toFixed(1)}s\n`
+            content += `**Custo:** $${cost.toFixed(4)} ($${pricing.input.toFixed(2)}/imagem × ${imageUrls.length} imagem${imageUrls.length > 1 ? 's' : ''})`
+            
+            if (isQuality) {
+              content += `\n\n*Ideogram v3 Quality oferece máxima qualidade, renderização precisa de texto e fotorealismo superior*`
+            } else if (isBalanced) {
+              content += `\n\n*Ideogram v3 Balanced oferece bom equilíbrio entre velocidade e qualidade, renderização precisa de texto e fotorealismo excelente*`
+            } else {
+              content += `\n\n*Ideogram v3 Turbo oferece renderização precisa de texto, fotorealismo e controle de estilo avançado*`
+            }
+
+            // Enviar o conteúdo completo
+            controller.enqueue(encoder.encode(content))
             controller.close()
           } catch (error: any) {
+            console.error('[callIdeogramImage] Erro no stream:', error)
+            
+            let errorMessage = `Erro ao gerar imagem com ${modelName}: ${error.message || error}`
+            if (error.message?.includes('REPLICATE_API_TOKEN') || error.message?.includes('auth')) {
+              errorMessage = 'REPLICATE_API_TOKEN não configurado. Configure a variável de ambiente.'
+            } else if (error.message?.includes('prompt') || error.message?.includes('conteúdo')) {
+              errorMessage = `Erro no prompt de geração de imagem: ${error.message}`
+            }
+            
+            controller.enqueue(encoder.encode(`❌ ${errorMessage}`))
             controller.error(error)
           }
         },
@@ -1825,24 +3160,13 @@ async function callIdeogramImage(
 
     // Chamar a API do Replicate
     const startExecutionTime = Date.now()
-    const output = await replicate.run(model, { input }) as any
+    const result = await replicate.run(model, { input })
     
-    // O output do Ideogram é um array de URLs de imagens
-    let imageUrls: string[] = []
-    if (Array.isArray(output)) {
-      imageUrls = output.filter((url: any) => typeof url === 'string' && url.startsWith('http'))
-    } else if (typeof output === 'string' && output.startsWith('http')) {
-      imageUrls = [output]
-    } else if (output && typeof output === 'object') {
-      // Alguns formatos podem retornar objeto com URLs
-      const urls = output.urls || output.images || output.output || []
-      if (Array.isArray(urls)) {
-        imageUrls = urls.filter((url: any) => typeof url === 'string' && url.startsWith('http'))
-      }
-    }
+    // Usar função auxiliar para extrair URLs
+    const imageUrls = await extractImageUrlsFromReplicate(result, modelName)
 
     if (imageUrls.length === 0) {
-      throw new Error('Resposta da API não contém URLs de imagens')
+      throw new Error(`Resposta da API não contém URLs de imagens para ${modelName}`)
     }
 
     const executionTime = Date.now() - startExecutionTime
@@ -1946,15 +3270,163 @@ async function callIdeogramCharacter(
       auth: process.env.REPLICATE_API_TOKEN,
     })
 
-    // Modelos de imagem não suportam streaming tradicional
+    // Modelos de imagem não suportam streaming tradicional, mas precisamos gerar a imagem
+    // mesmo quando stream=true, então vamos gerar e retornar o resultado completo
     if (stream) {
       const encoder = new TextEncoder()
       const readable = new ReadableStream({
         async start(controller) {
           try {
+            // Enviar mensagem inicial de loading
             controller.enqueue(encoder.encode('👤 Gerando variações de personagem com Ideogram Character... Isso pode levar alguns segundos.\n\n'))
+            
+            // Agora gerar a imagem de fato (mesmo com stream=true)
+            // Extrair o prompt da última mensagem do usuário
+            const lastUserMessage = messages.filter(msg => msg.role === 'user').pop()
+            if (!lastUserMessage || !lastUserMessage.content) {
+              throw new Error('Nenhuma mensagem do usuário encontrada para gerar personagem')
+            }
+
+            const prompt = lastUserMessage.content
+            const promptLower = prompt.toLowerCase()
+
+            // Verificar se há imagem de referência anexada (obrigatória)
+            const msgAny = lastUserMessage as any
+            let referenceImage: string | null = null
+            
+            if (msgAny.attachments && Array.isArray(msgAny.attachments)) {
+              const imageAttachments = msgAny.attachments.filter((a: any) => a.type === 'image')
+              if (imageAttachments.length > 0) {
+                referenceImage = imageAttachments[0].url
+              }
+            }
+
+            if (!referenceImage) {
+              throw new Error('Ideogram Character requer uma imagem de referência com características faciais claras. Por favor, anexe uma imagem do personagem.')
+            }
+
+            let targetImage: string | null = null
+            if (msgAny.attachments && Array.isArray(msgAny.attachments)) {
+              const imageAttachments = msgAny.attachments.filter((a: any) => a.type === 'image')
+              if (imageAttachments.length > 1) {
+                targetImage = imageAttachments[1].url
+              }
+            }
+
+            const isInpainting = targetImage !== null ||
+                               promptLower.includes('adicionar') ||
+                               promptLower.includes('add') ||
+                               promptLower.includes('inserir') ||
+                               promptLower.includes('insert') ||
+                               promptLower.includes('colocar') ||
+                               promptLower.includes('place') ||
+                               promptLower.includes('na imagem') ||
+                               promptLower.includes('in image')
+
+            let aspect_ratio = '1:1'
+            
+            if (promptLower.includes('16:9') || promptLower.includes('paisagem') || promptLower.includes('landscape')) {
+              aspect_ratio = '16:9'
+            } else if (promptLower.includes('9:16') || promptLower.includes('retrato') || promptLower.includes('portrait')) {
+              aspect_ratio = '9:16'
+            } else if (promptLower.includes('4:5')) {
+              aspect_ratio = '4:5'
+            } else if (promptLower.includes('5:4')) {
+              aspect_ratio = '5:4'
+            }
+
+            const numVariationsMatch = prompt.match(/(\d+)\s*(variações?|variations?|imagens?|images?)/i)
+            const num_outputs = numVariationsMatch ? Math.min(parseInt(numVariationsMatch[1]), 4) : 1
+
+            let style: string | undefined = undefined
+            if (promptLower.includes('realista') || promptLower.includes('realistic') || promptLower.includes('fotográfico') || promptLower.includes('photographic')) {
+              style = 'realistic'
+            } else if (promptLower.includes('anime') || promptLower.includes('manga')) {
+              style = 'anime'
+            } else if (promptLower.includes('cartoon') || promptLower.includes('desenho animado')) {
+              style = 'cartoon'
+            } else if (promptLower.includes('3d') || promptLower.includes('3d render')) {
+              style = '3d'
+            }
+
+            const input: any = {
+              prompt: prompt,
+              image: referenceImage,
+              aspect_ratio: aspect_ratio,
+              num_outputs: num_outputs,
+            }
+
+            if (isInpainting && targetImage) {
+              input.target_image = targetImage
+            }
+
+            if (style) {
+              input.style = style
+            }
+
+            const startExecutionTime = Date.now()
+            const result = await replicate.run(model, { input })
+            
+            // Usar função auxiliar para extrair URLs
+            const imageUrls = await extractImageUrlsFromReplicate(result, 'Ideogram Character')
+
+            if (imageUrls.length === 0) {
+              throw new Error('Resposta da API não contém URLs de imagens para Ideogram Character')
+            }
+
+            const executionTime = Date.now() - startExecutionTime
+            const latency = Date.now() - startTime
+            const executionSeconds = executionTime / 1000
+
+            const pricing = MODEL_PRICING[`replicate:${model}`] || DEFAULT_PRICING
+            const cost = pricing.input * imageUrls.length
+
+            const modeText = isInpainting ? 'adicionado' : 'gerado'
+            let content = `👤 **Variações de personagem ${modeText}${imageUrls.length > 1 ? 's' : ''} com Ideogram Character!**\n\n`
+            
+            imageUrls.forEach((url, index) => {
+              if (imageUrls.length > 1) {
+                content += `**Variação ${index + 1}:**\n`
+              }
+              content += `![Variação de personagem](${url})\n\n`
+            })
+            
+            content += `**Parâmetros:**\n`
+            content += `- Aspecto: ${aspect_ratio}\n`
+            content += `- Quantidade: ${imageUrls.length}\n`
+            
+            if (isInpainting) {
+              content += `- Modo: Inpainting (adicionar personagem a imagem existente)\n`
+            } else {
+              content += `- Modo: Geração de variações consistentes\n`
+            }
+            
+            if (style) {
+              content += `- Estilo: ${style}\n`
+            }
+            
+            content += `\n**Tempo de processamento:** ${(latency / 1000).toFixed(1)}s\n`
+            content += `**Tempo de execução:** ${executionSeconds.toFixed(1)}s\n`
+            content += `**Custo:** $${cost.toFixed(4)} ($${pricing.input.toFixed(2)}/imagem × ${imageUrls.length} imagem${imageUrls.length > 1 ? 's' : ''})`
+            
+            content += `\n\n*Ideogram Character gera variações consistentes de personagens a partir de uma imagem de referência, mantendo características faciais e estilo*`
+
+            // Enviar o conteúdo completo
+            controller.enqueue(encoder.encode(content))
             controller.close()
           } catch (error: any) {
+            console.error('[callIdeogramCharacter] Erro no stream:', error)
+            
+            let errorMessage = `Erro ao gerar variações de personagem com Ideogram Character: ${error.message || error}`
+            if (error.message?.includes('REPLICATE_API_TOKEN') || error.message?.includes('auth')) {
+              errorMessage = 'REPLICATE_API_TOKEN não configurado. Configure a variável de ambiente.'
+            } else if (error.message?.includes('referência') || error.message?.includes('reference') || error.message?.includes('imagem')) {
+              errorMessage = 'Ideogram Character requer uma imagem de referência com características faciais claras. Por favor, anexe uma imagem do personagem.'
+            } else if (error.message?.includes('prompt') || error.message?.includes('conteúdo')) {
+              errorMessage = `Erro no prompt de geração de personagem: ${error.message}`
+            }
+            
+            controller.enqueue(encoder.encode(`❌ ${errorMessage}`))
             controller.error(error)
           }
         },
@@ -2064,24 +3536,13 @@ async function callIdeogramCharacter(
 
     // Chamar a API do Replicate
     const startExecutionTime = Date.now()
-    const output = await replicate.run(model, { input }) as any
+    const result = await replicate.run(model, { input })
     
-    // O output do Ideogram Character é um array de URLs de imagens
-    let imageUrls: string[] = []
-    if (Array.isArray(output)) {
-      imageUrls = output.filter((url: any) => typeof url === 'string' && url.startsWith('http'))
-    } else if (typeof output === 'string' && output.startsWith('http')) {
-      imageUrls = [output]
-    } else if (output && typeof output === 'object') {
-      // Alguns formatos podem retornar objeto com URLs
-      const urls = output.urls || output.images || output.output || []
-      if (Array.isArray(urls)) {
-        imageUrls = urls.filter((url: any) => typeof url === 'string' && url.startsWith('http'))
-      }
-    }
+    // Usar função auxiliar para extrair URLs
+    const imageUrls = await extractImageUrlsFromReplicate(result, 'Ideogram Character')
 
     if (imageUrls.length === 0) {
-      throw new Error('Resposta da API não contém URLs de imagens')
+      throw new Error('Resposta da API não contém URLs de imagens para Ideogram Character')
     }
 
     const executionTime = Date.now() - startExecutionTime
@@ -2162,17 +3623,130 @@ async function callSeedanceVideo(
   startTime: number
 ): Promise<LLMResponse> {
   try {
-    // Modelos de vídeo não suportam streaming tradicional
-    // Sempre usar modo não-stream para geração de vídeo
+    if (!process.env.REPLICATE_API_TOKEN) {
+      throw new Error('REPLICATE_API_TOKEN não configurado')
+    }
+
+    const replicate = new Replicate({
+      auth: process.env.REPLICATE_API_TOKEN,
+    })
+
+    const modelName = 'Seedance 1.0 Pro Fast'
+    const modelIcon = '🎬'
+
+    // Extrair o prompt da última mensagem do usuário
+    const lastUserMessage = messages.filter(msg => msg.role === 'user').pop()
+    if (!lastUserMessage || !lastUserMessage.content) {
+      throw new Error('Nenhuma mensagem do usuário encontrada para gerar vídeo')
+    }
+
+    const prompt = lastUserMessage.content
+    const promptLower = prompt.toLowerCase()
+
+    // Detectar duração do vídeo no prompt ou usar padrão
+    let duration = 5 // Padrão 5 segundos
+    const durationMatch = prompt.match(/(\d+)\s*(segundos?|seconds?|s)/i)
+    if (durationMatch) {
+      duration = Math.min(Math.max(parseInt(durationMatch[1]), 1), 10) // Entre 1 e 10 segundos
+    }
+
+    // Detectar intensidade de movimento no prompt ou usar padrão
+    let motion = 0.5 // Padrão 0.5
+    if (promptLower.includes('rápido') || promptLower.includes('fast') || promptLower.includes('intenso')) {
+      motion = 0.8
+    } else if (promptLower.includes('lento') || promptLower.includes('slow') || promptLower.includes('suave')) {
+      motion = 0.2
+    }
+
+    // Configurar input para Seedance
+    const input: any = {
+      prompt: prompt,
+      duration: duration,
+      motion: motion,
+    }
+
+    // Modelos de vídeo não suportam streaming tradicional, mas precisamos gerar o vídeo
+    // mesmo quando stream=true, então vamos gerar e retornar o resultado completo
     if (stream) {
-      // Retornar uma mensagem indicando que o vídeo está sendo gerado
       const encoder = new TextEncoder()
       const readable = new ReadableStream({
         async start(controller) {
           try {
-            controller.enqueue(encoder.encode('🎬 Gerando vídeo... Isso pode levar alguns minutos.\n\n'))
+            // Enviar mensagem inicial de loading
+            controller.enqueue(encoder.encode(`${modelIcon} Gerando vídeo... Isso pode levar alguns minutos.\n\n`))
+            
+            // Agora gerar o vídeo de fato (mesmo com stream=true)
+            const startExecutionTime = Date.now()
+            
+            console.log('[callSeedanceVideo] Chamando Replicate com modelo:', model)
+            console.log('[callSeedanceVideo] Input:', JSON.stringify(input, null, 2))
+            
+            let result: any
+            try {
+              result = await replicate.run(model, { input })
+              console.log('[callSeedanceVideo] Resultado do Replicate recebido:', {
+                type: typeof result,
+                isArray: Array.isArray(result),
+                isAsyncIterator: result && typeof result === 'object' && typeof (result as any)[Symbol.asyncIterator] === 'function',
+                hasUrlMethod: result && typeof result === 'object' && typeof (result as any).url === 'function',
+                constructor: result?.constructor?.name,
+                keys: result && typeof result === 'object' ? Object.keys(result) : null,
+                result: result,
+              })
+            } catch (replicateError: any) {
+              console.error('[callSeedanceVideo] Erro ao chamar replicate.run:', replicateError)
+              throw new Error(`Erro ao chamar Replicate API: ${replicateError.message || replicateError}`)
+            }
+            
+            // Usar função auxiliar para extrair URLs (mesma lógica de imagens)
+            console.log('[callSeedanceVideo] Chamando extractImageUrlsFromReplicate...')
+            const videoUrls = await extractImageUrlsFromReplicate(result, modelName)
+            console.log('[callSeedanceVideo] URLs extraídas:', videoUrls)
+
+            if (videoUrls.length === 0) {
+              console.error(`[callSeedanceVideo] ERRO: Nenhuma URL extraída para ${modelName}`)
+              throw new Error(`Resposta da API não contém URLs de vídeo para ${modelName}. Verifique os logs do console para mais detalhes.`)
+            }
+
+            const executionTime = Date.now() - startExecutionTime
+            const latency = Date.now() - startTime
+
+            const pricing = MODEL_PRICING[`replicate:${model}`] || DEFAULT_PRICING
+            const executionSeconds = executionTime / 1000
+            const cost = pricing.input * executionSeconds
+
+            // Construir resposta em formato de mensagem com vídeo
+            let content = `${modelIcon} **Vídeo gerado com ${modelName}!**\n\n`
+            
+            // Adicionar vídeo gerado
+            videoUrls.forEach((url, index) => {
+              if (videoUrls.length > 1) {
+                content += `**Vídeo ${index + 1}:**\n`
+              }
+              content += `![Vídeo gerado](${url})\n\n`
+            })
+            
+            content += `**Parâmetros:**\n`
+            content += `- Duração: ${duration}s\n`
+            content += `- Movimento: ${motion}\n`
+            content += `\n**Tempo de processamento:** ${(latency / 1000).toFixed(1)}s\n`
+            content += `**Tempo de execução:** ${executionSeconds.toFixed(1)}s\n`
+            content += `**Custo:** $${cost.toFixed(4)} ($${pricing.input.toFixed(3)}/segundo × ${executionSeconds.toFixed(1)}s)`
+
+            // Enviar o conteúdo completo
+            controller.enqueue(encoder.encode(content))
             controller.close()
           } catch (error: any) {
+            console.error('[callSeedanceVideo] Erro no stream:', error)
+            
+            let errorMessage = `Erro ao gerar vídeo com ${modelName}: ${error.message || error}`
+            if (error.message?.includes('REPLICATE_API_TOKEN') || error.message?.includes('auth')) {
+              errorMessage = 'REPLICATE_API_TOKEN não configurado. Configure a variável de ambiente.'
+            } else if (error.message?.includes('prompt') || error.message?.includes('conteúdo')) {
+              errorMessage = `Erro no prompt de geração de vídeo: ${error.message}`
+            }
+            
+            controller.enqueue(encoder.encode(`❌ ${errorMessage}`))
             controller.error(error)
           }
         },
@@ -2188,33 +3762,63 @@ async function callSeedanceVideo(
       }
     }
 
-    // Extrair o prompt da última mensagem do usuário
-    const lastUserMessage = messages.filter(msg => msg.role === 'user').pop()
-    if (!lastUserMessage || !lastUserMessage.content) {
-      throw new Error('Nenhuma mensagem do usuário encontrada para gerar vídeo')
+    // Modo não-stream
+    const startExecutionTime = Date.now()
+    
+    console.log('[callSeedanceVideo][non-stream] Chamando Replicate com modelo:', model)
+    console.log('[callSeedanceVideo][non-stream] Input:', JSON.stringify(input, null, 2))
+    
+    let result: any
+    try {
+      result = await replicate.run(model, { input })
+      console.log('[callSeedanceVideo][non-stream] Resultado do Replicate recebido:', {
+        type: typeof result,
+        isArray: Array.isArray(result),
+        isAsyncIterator: result && typeof result === 'object' && typeof (result as any)[Symbol.asyncIterator] === 'function',
+        hasUrlMethod: result && typeof result === 'object' && typeof (result as any).url === 'function',
+        constructor: result?.constructor?.name,
+        keys: result && typeof result === 'object' ? Object.keys(result) : null,
+        result: result,
+      })
+    } catch (replicateError: any) {
+      console.error('[callSeedanceVideo][non-stream] Erro ao chamar replicate.run:', replicateError)
+      throw new Error(`Erro ao chamar Replicate API: ${replicateError.message || replicateError}`)
+    }
+    
+    // Usar função auxiliar para extrair URLs
+    console.log('[callSeedanceVideo][non-stream] Chamando extractImageUrlsFromReplicate...')
+    const videoUrls = await extractImageUrlsFromReplicate(result, modelName)
+    console.log('[callSeedanceVideo][non-stream] URLs extraídas:', videoUrls)
+
+    if (videoUrls.length === 0) {
+      console.error(`[callSeedanceVideo][non-stream] ERRO: Nenhuma URL extraída para ${modelName}`)
+      throw new Error(`Resposta da API não contém URLs de vídeo para ${modelName}. Verifique os logs do console para mais detalhes.`)
     }
 
-    const prompt = lastUserMessage.content
-
-    // Gerar vídeo usando a função generateVideo
-    const result = await generateVideo(prompt, {
-      duration: 5, // Duração padrão de 5 segundos
-      motion: 0.5, // Intensidade de movimento padrão
-    })
-
-    if (!result.success || !result.output) {
-      throw new Error(result.error || 'Erro ao gerar vídeo')
-    }
-
-    const videoUrl = typeof result.output === 'string' ? result.output : result.output[0]
-
-    // Construir resposta em formato de mensagem
-    // Retornar URL do vídeo como conteúdo, que será exibido no chat
-    const content = `🎬 Vídeo gerado com sucesso!\n\n[Assistir vídeo](${videoUrl})\n\n**Prompt:** ${prompt}\n\n**Tempo de processamento:** ${(result.processingTime || 0) / 1000}s\n**Custo estimado:** $${(result.cost || 0).toFixed(4)}`
-
+    const executionTime = Date.now() - startExecutionTime
     const latency = Date.now() - startTime
+
     const pricing = MODEL_PRICING[`replicate:${model}`] || DEFAULT_PRICING
-    const cost = result.cost || pricing.input
+    const executionSeconds = executionTime / 1000
+    const cost = pricing.input * executionSeconds
+
+    // Construir resposta em formato de mensagem com vídeo
+    let content = `${modelIcon} **Vídeo gerado com ${modelName}!**\n\n`
+    
+    // Adicionar vídeo gerado
+    videoUrls.forEach((url, index) => {
+      if (videoUrls.length > 1) {
+        content += `**Vídeo ${index + 1}:**\n`
+      }
+      content += `![Vídeo gerado](${url})\n\n`
+    })
+    
+    content += `**Parâmetros:**\n`
+    content += `- Duração: ${duration}s\n`
+    content += `- Movimento: ${motion}\n`
+    content += `\n**Tempo de processamento:** ${(latency / 1000).toFixed(1)}s\n`
+    content += `**Tempo de execução:** ${executionSeconds.toFixed(1)}s\n`
+    content += `**Custo:** $${cost.toFixed(4)} ($${pricing.input.toFixed(3)}/segundo × ${executionSeconds.toFixed(1)}s)`
 
     return {
       provider: 'Replicate',
@@ -2222,10 +3826,488 @@ async function callSeedanceVideo(
       content,
       latency,
       cost,
+      metadata: {
+        duration,
+        motion,
+        videoUrls,
+        executionTime: executionTime / 1000,
+      },
     }
   } catch (error: any) {
     console.error('[callSeedanceVideo] Erro:', error)
+    
+    // Mensagens de erro específicas
+    if (error.message?.includes('REPLICATE_API_TOKEN') || error.message?.includes('auth')) {
+      throw new Error('REPLICATE_API_TOKEN não configurado. Configure a variável de ambiente.')
+    }
+    
+    if (error.message?.includes('prompt') || error.message?.includes('conteúdo')) {
+      throw new Error(`Erro no prompt de geração de vídeo: ${error.message}`)
+    }
+    
     throw new Error(`Erro ao gerar vídeo com Seedance: ${error.message || error}`)
+  }
+}
+
+/**
+ * Chama a API do VEO 3.1 do Google para geração de vídeo
+ * Documentação: https://ai.google.dev/gemini-api/docs/video
+ * 
+ * Se userId, conversationId e messageId forem fornecidos, salva a operação no banco
+ * e retorna imediatamente sem fazer polling (processamento assíncrono)
+ */
+async function callVeo(
+  model: string,
+  messages: Array<{ role: string; content: string }>,
+  stream: boolean,
+  startTime: number,
+  userId?: string,
+  conversationId?: string,
+  messageId?: string
+): Promise<LLMResponse> {
+  try {
+    if (!process.env.GEMINI_API_KEY) {
+      throw new Error('GEMINI_API_KEY não configurado')
+    }
+
+    // Extrair o prompt da última mensagem do usuário
+    const lastUserMessage = messages.filter(msg => msg.role === 'user').pop()
+    if (!lastUserMessage || !lastUserMessage.content) {
+      throw new Error('Nenhuma mensagem do usuário encontrada para gerar vídeo')
+    }
+
+    const prompt = lastUserMessage.content
+    const modelName = model.includes('fast') ? 'Veo 3.1 Fast Generate' : 'Veo 3.1 Generate'
+    const modelIcon = '🎬'
+    const isFast = model.includes('fast')
+    
+    // Base URL da API do Google Gemini
+    const BASE_URL = 'https://generativelanguage.googleapis.com/v1beta'
+    const endpoint = `${BASE_URL}/models/${model}:predictLongRunning`
+    
+    console.log('[callVeo] Iniciando geração de vídeo com:', model)
+    console.log('[callVeo] Endpoint:', endpoint)
+    console.log('[callVeo] Prompt:', prompt.substring(0, 100) + '...')
+    console.log('[callVeo] Modo assíncrono:', !!(userId && conversationId && messageId))
+
+    // Função auxiliar para fazer polling da operação
+    const pollOperation = async (operationName: string, maxWaitTime: number = 360000): Promise<any> => {
+      const startPollTime = Date.now()
+      let attempts = 0
+      
+      while (Date.now() - startPollTime < maxWaitTime) {
+        attempts++
+        console.log(`[callVeo] Verificando status da operação (tentativa ${attempts})...`)
+        
+        const statusResponse = await fetch(`${BASE_URL}/${operationName}`, {
+          method: 'GET',
+          headers: {
+            'x-goog-api-key': process.env.GEMINI_API_KEY!,
+          },
+        })
+
+        if (!statusResponse.ok) {
+          const errorText = await statusResponse.text()
+          throw new Error(`Erro ao verificar status: ${statusResponse.status} - ${errorText}`)
+        }
+
+        const statusData = await statusResponse.json()
+        console.log('[callVeo] Status da operação:', statusData.done ? 'Concluída' : 'Em progresso')
+
+        if (statusData.done) {
+          return statusData
+        }
+
+        // Aguardar 10 segundos antes da próxima verificação (conforme documentação)
+        await new Promise(resolve => setTimeout(resolve, 10000))
+      }
+
+      throw new Error('Timeout: A operação excedeu o tempo máximo de espera (6 minutos)')
+    }
+
+    // Função auxiliar para fazer download do vídeo
+    const downloadVideo = async (videoUri: string): Promise<string> => {
+      console.log('[callVeo] Fazendo download do vídeo de:', videoUri)
+      
+      const videoResponse = await fetch(videoUri, {
+        headers: {
+          'x-goog-api-key': process.env.GEMINI_API_KEY!,
+        },
+      })
+
+      if (!videoResponse.ok) {
+        throw new Error(`Erro ao fazer download do vídeo: ${videoResponse.status} - ${videoResponse.statusText}`)
+      }
+
+      const videoBuffer = await videoResponse.arrayBuffer()
+      // Converter ArrayBuffer para base64 usando Buffer (disponível no Node.js)
+      const videoBase64 = Buffer.from(videoBuffer).toString('base64')
+      console.log('[callVeo] Vídeo baixado com sucesso. Tamanho:', (videoBuffer.byteLength / 1024 / 1024).toFixed(2), 'MB')
+      
+      return `data:video/mp4;base64,${videoBase64}`
+    }
+
+    // Modo stream
+    if (stream) {
+      const encoder = new TextEncoder()
+      const readable = new ReadableStream({
+        async start(controller) {
+          try {
+            // Enviar mensagem inicial de loading
+            controller.enqueue(encoder.encode(`${modelIcon} Gerando vídeo com ${modelName}... Isso pode levar de 11 segundos a 6 minutos.\n\n`))
+
+            const startExecutionTime = Date.now()
+
+            // 1. Fazer chamada inicial à API
+            console.log('[callVeo] Fazendo requisição inicial...')
+            const initialResponse = await fetch(endpoint, {
+              method: 'POST',
+              headers: {
+                'x-goog-api-key': process.env.GEMINI_API_KEY!,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                instances: [{
+                  prompt: prompt,
+                }],
+              }),
+            })
+
+            console.log('[callVeo] Status da resposta inicial:', initialResponse.status, initialResponse.statusText)
+
+            if (!initialResponse.ok) {
+              const errorText = await initialResponse.text()
+              let errorData: any = {}
+              try {
+                errorData = JSON.parse(errorText)
+              } catch {
+                errorData = { message: errorText }
+              }
+              
+              if (initialResponse.status === 401 || initialResponse.status === 403) {
+                throw new Error('Erro de autenticação: GEMINI_API_KEY inválida ou sem permissão para usar VEO 3.1.')
+              } else if (initialResponse.status === 429) {
+                throw new Error('Limite de taxa excedido. Aguarde alguns instantes antes de tentar novamente.')
+              }
+              
+              const errorMessage = errorData.error?.message || errorData.message || errorText
+              throw new Error(`Erro ao iniciar geração de vídeo: ${initialResponse.status} - ${errorMessage}`)
+            }
+
+            const initialData = await initialResponse.json()
+            const operationName = initialData.name
+            
+            if (!operationName) {
+              throw new Error('Resposta da API não contém o nome da operação')
+            }
+
+            console.log('[callVeo] Operação criada:', operationName)
+
+            // Se modo assíncrono (userId, conversationId, messageId fornecidos), salvar no banco e retornar imediatamente
+            if (userId && conversationId && messageId) {
+              console.log('[callVeo] Modo assíncrono: salvando operação no banco e retornando imediatamente')
+              
+              // Criar cliente Supabase com service role key para inserir no banco
+              const supabase = createClient(
+                process.env.NEXT_PUBLIC_SUPABASE_URL!,
+                process.env.SUPABASE_SERVICE_ROLE_KEY!
+              )
+
+              // Salvar operação no banco
+              const { error: dbError } = await supabase
+                .from('lab_video_operations')
+                .insert({
+                  user_id: userId,
+                  conversation_id: conversationId,
+                  message_id: messageId,
+                  model: model,
+                  prompt: prompt,
+                  operation_name: operationName,
+                  status: 'pending',
+                })
+
+              if (dbError) {
+                console.error('[callVeo] Erro ao salvar operação no banco:', dbError)
+                // Continuar com polling normal se falhar ao salvar
+              } else {
+                console.log('[callVeo] Operação salva no banco com sucesso')
+                
+                // Retornar mensagem informando que o vídeo está sendo processado
+                const content = `${modelIcon} **Vídeo em processamento**\n\n` +
+                  `Seu vídeo está sendo gerado com ${modelName}. Isso pode levar de 11 segundos a 6 minutos.\n\n` +
+                  `Você será notificado quando o vídeo estiver pronto. Você pode continuar usando o chat enquanto isso acontece.\n\n` +
+                  `**Status:** Processando...\n` +
+                  `**Prompt:** ${prompt.substring(0, 100)}${prompt.length > 100 ? '...' : ''}`
+                
+                controller.enqueue(encoder.encode(content))
+                controller.close()
+                return
+              }
+            }
+
+            console.log('[callVeo] Modo síncrono: fazendo polling da operação')
+            controller.enqueue(encoder.encode(`⏳ Processando vídeo... Aguarde.\n\n`))
+
+            // 2. Fazer polling da operação (modo síncrono)
+            const finalStatus = await pollOperation(operationName)
+            
+            // 3. Extrair URI do vídeo (suporta diferentes estruturas de resposta)
+            console.log('[callVeo] Estrutura completa da resposta:', JSON.stringify(finalStatus, null, 2))
+            
+            let videoUri: string | undefined
+            
+            // Tentar diferentes caminhos possíveis na estrutura de resposta
+            if (finalStatus?.response?.generateVideoResponse?.generatedSamples?.[0]?.video?.uri) {
+              videoUri = finalStatus.response.generateVideoResponse.generatedSamples[0].video.uri
+            } else if (finalStatus?.response?.generatedVideos?.[0]?.video?.uri) {
+              videoUri = finalStatus.response.generatedVideos[0].video.uri
+            } else if (finalStatus?.response?.video?.uri) {
+              videoUri = finalStatus.response.video.uri
+            } else if (finalStatus?.video?.uri) {
+              videoUri = finalStatus.video.uri
+            } else if (finalStatus?.response?.generateVideoResponse?.generatedSamples?.[0]?.uri) {
+              videoUri = finalStatus.response.generateVideoResponse.generatedSamples[0].uri
+            }
+            
+            if (!videoUri) {
+              console.error('[callVeo] Estrutura de resposta inesperada. Chaves disponíveis:', Object.keys(finalStatus || {}))
+              console.error('[callVeo] Response keys:', Object.keys(finalStatus?.response || {}))
+              throw new Error('URI do vídeo não encontrado na resposta da API. Verifique os logs do servidor para mais detalhes.')
+            }
+
+            console.log('[callVeo] URI do vídeo obtido:', videoUri)
+
+            // 4. Fazer download do vídeo
+            controller.enqueue(encoder.encode(`📥 Baixando vídeo gerado...\n\n`))
+            const videoDataUrl = await downloadVideo(videoUri)
+
+            const executionTime = Date.now() - startExecutionTime
+            const latency = Date.now() - startTime
+
+            // Calcular custo baseado na configuração de preços
+            const pricingKey = `google:${model}`
+            const pricing = MODEL_PRICING[pricingKey] || { input: 1.0, output: 1.0 }
+            const videoDuration = 8 // VEO 3.1 gera vídeos de 8 segundos
+            const costPerMinute = pricing.input || 1.0
+            const cost = (videoDuration / 60) * costPerMinute
+
+            // Construir resposta final
+            let content = `${modelIcon} **Vídeo gerado com ${modelName}!**\n\n`
+            content += `![Vídeo gerado](${videoDataUrl})\n\n`
+            content += `**Parâmetros:**\n`
+            content += `- Duração: ${videoDuration}s\n`
+            content += `- Resolução: 720p/1080p\n`
+            content += `- Áudio: Nativo\n`
+            content += `\n**Tempo de processamento:** ${(latency / 1000).toFixed(1)}s\n`
+            content += `**Tempo de execução:** ${(executionTime / 1000).toFixed(1)}s\n`
+            content += `**Custo:** $${cost.toFixed(2)} ($${costPerMinute.toFixed(2)}/minuto × ${(videoDuration / 60).toFixed(2)}min)`
+
+            controller.enqueue(encoder.encode(content))
+            controller.close()
+          } catch (error: any) {
+            console.error('[callVeo] Erro no stream:', error)
+            
+            let errorMessage = `Erro ao gerar vídeo com ${modelName}: ${error.message || error}`
+            if (error.message?.includes('GEMINI_API_KEY') || error.message?.includes('auth')) {
+              errorMessage = 'GEMINI_API_KEY não configurado ou inválido. Configure a variável de ambiente.'
+            } else if (error.message?.includes('Timeout')) {
+              errorMessage = 'Timeout: A geração do vídeo excedeu o tempo máximo de espera. Tente novamente.'
+            } else if (error.message?.includes('429')) {
+              errorMessage = 'Limite de taxa excedido. Aguarde alguns instantes antes de tentar novamente.'
+            }
+            
+            controller.enqueue(encoder.encode(`❌ ${errorMessage}`))
+            controller.error(error)
+          }
+        },
+      })
+
+      return {
+        provider: 'Google',
+        model,
+        content: '',
+        latency: 0,
+        cost: 0,
+        stream: readable,
+      }
+    }
+
+    // Modo não-stream
+    const startExecutionTime = Date.now()
+
+    // 1. Fazer chamada inicial à API
+    console.log('[callVeo][non-stream] Fazendo requisição inicial...')
+    const initialResponse = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'x-goog-api-key': process.env.GEMINI_API_KEY!,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        instances: [{
+          prompt: prompt,
+        }],
+      }),
+    })
+
+    console.log('[callVeo][non-stream] Status da resposta inicial:', initialResponse.status, initialResponse.statusText)
+
+    if (!initialResponse.ok) {
+      const errorText = await initialResponse.text()
+      let errorData: any = {}
+      try {
+        errorData = JSON.parse(errorText)
+      } catch {
+        errorData = { message: errorText }
+      }
+      
+      if (initialResponse.status === 401 || initialResponse.status === 403) {
+        throw new Error('Erro de autenticação: GEMINI_API_KEY inválida ou sem permissão para usar VEO 3.1.')
+      } else if (initialResponse.status === 429) {
+        throw new Error('Limite de taxa excedido. Aguarde alguns instantes antes de tentar novamente.')
+      }
+      
+      const errorMessage = errorData.error?.message || errorData.message || errorText
+      throw new Error(`Erro ao iniciar geração de vídeo: ${initialResponse.status} - ${errorMessage}`)
+    }
+
+    const initialData = await initialResponse.json()
+    const operationName = initialData.name
+    
+    if (!operationName) {
+      throw new Error('Resposta da API não contém o nome da operação')
+    }
+
+    console.log('[callVeo][non-stream] Operação criada:', operationName)
+
+    // Se modo assíncrono (userId, conversationId, messageId fornecidos), salvar no banco e retornar imediatamente
+    if (userId && conversationId && messageId) {
+      console.log('[callVeo][non-stream] Modo assíncrono: salvando operação no banco e retornando imediatamente')
+      
+      // Criar cliente Supabase com service role key para inserir no banco
+      const supabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY!
+      )
+
+      // Salvar operação no banco
+      const { error: dbError } = await supabase
+        .from('lab_video_operations')
+        .insert({
+          user_id: userId,
+          conversation_id: conversationId,
+          message_id: messageId,
+          model: model,
+          prompt: prompt,
+          operation_name: operationName,
+          status: 'pending',
+        })
+
+      if (dbError) {
+        console.error('[callVeo][non-stream] Erro ao salvar operação no banco:', dbError)
+        // Continuar com polling normal se falhar ao salvar
+      } else {
+        console.log('[callVeo][non-stream] Operação salva no banco com sucesso')
+        
+        // Retornar mensagem informando que o vídeo está sendo processado
+        const content = `${modelIcon} **Vídeo em processamento**\n\n` +
+          `Seu vídeo está sendo gerado com ${modelName}. Isso pode levar de 11 segundos a 6 minutos.\n\n` +
+          `Você será notificado quando o vídeo estiver pronto. Você pode continuar usando o chat enquanto isso acontece.\n\n` +
+          `**Status:** Processando...\n` +
+          `**Prompt:** ${prompt.substring(0, 100)}${prompt.length > 100 ? '...' : ''}`
+        
+        return {
+          provider: 'Google',
+          model,
+          content,
+          latency: Date.now() - startTime,
+          cost: 0,
+        }
+      }
+    }
+
+    console.log('[callVeo][non-stream] Modo síncrono: fazendo polling da operação')
+
+    // 2. Fazer polling da operação (modo síncrono)
+    const finalStatus = await pollOperation(operationName)
+    
+    // 3. Extrair URI do vídeo (suporta diferentes estruturas de resposta)
+    console.log('[callVeo][non-stream] Estrutura completa da resposta:', JSON.stringify(finalStatus, null, 2))
+    
+    let videoUri: string | undefined
+    
+    // Tentar diferentes caminhos possíveis na estrutura de resposta
+    if (finalStatus?.response?.generateVideoResponse?.generatedSamples?.[0]?.video?.uri) {
+      videoUri = finalStatus.response.generateVideoResponse.generatedSamples[0].video.uri
+    } else if (finalStatus?.response?.generatedVideos?.[0]?.video?.uri) {
+      videoUri = finalStatus.response.generatedVideos[0].video.uri
+    } else if (finalStatus?.response?.video?.uri) {
+      videoUri = finalStatus.response.video.uri
+    } else if (finalStatus?.video?.uri) {
+      videoUri = finalStatus.video.uri
+    } else if (finalStatus?.response?.generateVideoResponse?.generatedSamples?.[0]?.uri) {
+      videoUri = finalStatus.response.generateVideoResponse.generatedSamples[0].uri
+    }
+    
+    if (!videoUri) {
+      console.error('[callVeo][non-stream] Estrutura de resposta inesperada. Chaves disponíveis:', Object.keys(finalStatus || {}))
+      console.error('[callVeo][non-stream] Response keys:', Object.keys(finalStatus?.response || {}))
+      throw new Error('URI do vídeo não encontrado na resposta da API. Verifique os logs do servidor para mais detalhes.')
+    }
+
+    console.log('[callVeo][non-stream] URI do vídeo obtido:', videoUri)
+
+    // 4. Fazer download do vídeo
+    console.log('[callVeo][non-stream] Fazendo download do vídeo...')
+    const videoDataUrl = await downloadVideo(videoUri)
+
+    const executionTime = Date.now() - startExecutionTime
+    const latency = Date.now() - startTime
+
+    // Calcular custo baseado na configuração de preços
+    const pricingKey = `google:${model}`
+    const pricing = MODEL_PRICING[pricingKey] || { input: 1.0, output: 1.0 }
+    const videoDuration = 8 // VEO 3.1 gera vídeos de 8 segundos
+    const costPerMinute = pricing.input || 1.0
+    const cost = (videoDuration / 60) * costPerMinute
+
+    // Construir resposta final
+    let content = `${modelIcon} **Vídeo gerado com ${modelName}!**\n\n`
+    content += `![Vídeo gerado](${videoDataUrl})\n\n`
+    content += `**Parâmetros:**\n`
+    content += `- Duração: ${videoDuration}s\n`
+    content += `- Resolução: 720p/1080p\n`
+    content += `- Áudio: Nativo\n`
+    content += `\n**Tempo de processamento:** ${(latency / 1000).toFixed(1)}s\n`
+    content += `**Tempo de execução:** ${(executionTime / 1000).toFixed(1)}s\n`
+    content += `**Custo:** $${cost.toFixed(2)} ($${costPerMinute.toFixed(2)}/minuto × ${(videoDuration / 60).toFixed(2)}min)`
+
+    return {
+      provider: 'Google',
+      model,
+      content,
+      latency,
+      cost,
+      metadata: {
+        duration: videoDuration,
+        resolution: '720p/1080p',
+        videoUrl: videoDataUrl,
+        executionTime: executionTime / 1000,
+      },
+    }
+  } catch (error: any) {
+    console.error('[callVeo] Erro:', error)
+    
+    // Mensagens de erro específicas
+    if (error.message?.includes('GEMINI_API_KEY') || error.message?.includes('auth')) {
+      throw new Error('GEMINI_API_KEY não configurado ou inválido. Configure a variável de ambiente.')
+    } else if (error.message?.includes('Timeout')) {
+      throw new Error('Timeout: A geração do vídeo excedeu o tempo máximo de espera (6 minutos). Tente novamente.')
+    } else if (error.message?.includes('429')) {
+      throw new Error('Limite de taxa excedido. Aguarde alguns instantes antes de tentar novamente.')
+    }
+    
+    throw new Error(`Erro ao gerar vídeo com VEO 3.1: ${error.message || error}`)
   }
 }
 
@@ -2250,31 +4332,8 @@ async function callSora2(
       apiKey: process.env.OPENAI_API_KEY,
     })
 
-    // Modelos de vídeo não suportam streaming tradicional
-    // Retornar mensagem indicando que o vídeo está sendo gerado
-    if (stream) {
-      const encoder = new TextEncoder()
-      const readable = new ReadableStream({
-        async start(controller) {
-          try {
-            const modelName = isPro ? 'Sora 2 Pro' : 'Sora 2'
-            controller.enqueue(encoder.encode(`🎬 Gerando vídeo com ${modelName}... Isso pode levar alguns minutos.\n\n`))
-            controller.close()
-          } catch (error: any) {
-            controller.error(error)
-          }
-        },
-      })
-
-      return {
-        provider: 'OpenAI',
-        model,
-        content: '',
-        latency: 0,
-        cost: 0,
-        stream: readable,
-      }
-    }
+    const modelName = isPro ? 'Sora 2 Pro' : 'Sora 2'
+    const modelIcon = '🎬'
 
     // Extrair o prompt da última mensagem do usuário
     const lastUserMessage = messages.filter(msg => msg.role === 'user').pop()
@@ -2315,54 +4374,514 @@ async function callSora2(
       duration = Math.max(duration, 1)
     }
 
-    // Chamar a API do Sora 2
-    // Documentação oficial: https://platform.openai.com/docs/models/sora-2-pro
+    // Modelos de vídeo não suportam streaming tradicional, mas precisamos gerar o vídeo
+    // mesmo quando stream=true, então vamos gerar e retornar o resultado completo
+    if (stream) {
+      const encoder = new TextEncoder()
+      const readable = new ReadableStream({
+        async start(controller) {
+          try {
+            // Enviar mensagem inicial de loading
+            controller.enqueue(encoder.encode(`${modelIcon} Gerando vídeo com ${modelName}... Isso pode levar alguns minutos.\n\n`))
+            
+            // Agora gerar o vídeo de fato (mesmo com stream=true)
+            const startExecutionTime = Date.now()
+            
+            console.log('[callSora2] Chamando API do Sora 2 com modelo:', model)
+            console.log('[callSora2] Parâmetros:', { prompt, size, seconds: duration })
+            
+            // Chamar a API do Sora 2
+            // Documentação oficial: https://platform.openai.com/docs/models/sora-2-pro
+            // Tentar usar o SDK da OpenAI primeiro, depois fallback para fetch
+            // Documentação: https://platform.openai.com/docs/guides/video-generation
+            let response: any
+            let apiResponse: Response | null = null
+            
+            try {
+              // Tentar usar o SDK da OpenAI se tiver suporte para vídeos
+              console.log('[callSora2] Tentando usar SDK da OpenAI...')
+              // @ts-ignore - videos pode não estar no tipo ainda
+              if (openai.videos && typeof openai.videos.create === 'function') {
+                console.log('[callSora2] SDK tem suporte para vídeos, usando openai.videos.create()')
+                response = await openai.videos.create({
+                  model: model,
+                  prompt: prompt,
+                  size: size,
+                  seconds: duration,
+                })
+                console.log('[callSora2] Resposta do SDK:', JSON.stringify(response, null, 2))
+              } else {
+                throw new Error('SDK não tem suporte para vídeos, usando fetch')
+              }
+            } catch (sdkError: any) {
+              console.log('[callSora2] SDK não disponível ou erro:', sdkError.message)
+              console.log('[callSora2] Usando fetch diretamente...')
+              
+              // Fallback: usar fetch diretamente
+              // Tentar ambos os endpoints possíveis
+              const endpoints = [
+                'https://api.openai.com/v1/videos/generations',
+                'https://api.openai.com/v1/videos',
+              ]
+              
+              const requestBody = {
+                model: model,
+                prompt: prompt,
+                size: size,
+                seconds: duration, // Parâmetro correto conforme documentação: 'seconds'
+              }
+              
+              let lastError: Error | null = null
+              
+              const failedEndpoints: string[] = []
+              
+              for (const endpoint of endpoints) {
+                try {
+                  console.log('[callSora2] Tentando endpoint:', endpoint)
+                  console.log('[callSora2] Request Body:', JSON.stringify(requestBody, null, 2))
+                  
+                  apiResponse = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: {
+                      'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
+                      'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(requestBody),
+                  })
+                  
+                  console.log('[callSora2] Status da resposta:', apiResponse.status, apiResponse.statusText)
+                  
+                  if (apiResponse.ok) {
+                    console.log('[callSora2] Endpoint funcionou:', endpoint)
+                    break
+                  } else {
+                    // Adicionar endpoint à lista de falhas
+                    failedEndpoints.push(`${endpoint} (${apiResponse.status})`)
+                    
+                    if (apiResponse.status === 405) {
+                      console.log('[callSora2] Endpoint retornou 405, tentando próximo...')
+                      // Continuar para o próximo endpoint
+                      continue
+                    } else {
+                      // Outro erro, não tentar próximo endpoint
+                      const errorText = await apiResponse.text()
+                      let errorData: any = {}
+                      try {
+                        errorData = JSON.parse(errorText)
+                      } catch {
+                        errorData = { message: errorText }
+                      }
+                      const errorMessage = errorData.error?.message || errorData.message || errorData.error || apiResponse.statusText
+                      throw new Error(`Endpoint ${endpoint} retornou ${apiResponse.status}: ${errorMessage}`)
+                    }
+                  }
+                } catch (fetchError: any) {
+                  console.log('[callSora2] Erro ao tentar endpoint:', endpoint, fetchError.message)
+                  failedEndpoints.push(`${endpoint} (erro: ${fetchError.message})`)
+                  lastError = fetchError
+                  // Se não for erro de rede, não tentar próximo
+                  if (!fetchError.message?.includes('fetch') && !fetchError.message?.includes('network')) {
+                    throw fetchError
+                  }
+                  continue
+                }
+              }
+              
+              if (!apiResponse || !apiResponse.ok) {
+                // Se ambos os endpoints retornaram 405, fornecer mensagem mais clara
+                if (failedEndpoints.length === endpoints.length && failedEndpoints.every(e => e.includes('405'))) {
+                  throw new Error(`A API do Sora 2 não está disponível publicamente ainda ou requer acesso especial. Ambos os endpoints tentados retornaram 405 (Método não permitido):\n- ${failedEndpoints.join('\n- ')}\n\nVerifique a documentação oficial: https://platform.openai.com/docs/guides/video-generation`)
+                } else if (apiResponse) {
+                  const errorText = await apiResponse.text()
+                  let errorData: any = {}
+                  try {
+                    errorData = JSON.parse(errorText)
+                  } catch {
+                    errorData = { message: errorText }
+                  }
+                  
+                  const errorMessage = errorData.error?.message || errorData.message || errorData.error || apiResponse.statusText
+                  throw new Error(`Endpoint ${endpoints[endpoints.length - 1]} retornou ${apiResponse.status}: ${errorMessage}`)
+                } else if (lastError) {
+                  throw lastError
+                } else {
+                  throw new Error(`Nenhum endpoint funcionou. Endpoints tentados:\n- ${failedEndpoints.join('\n- ')}`)
+                }
+              }
+            }
+
+            // Se usamos fetch, processar a resposta
+            if (apiResponse) {
+              console.log('[callSora2] Status da resposta:', apiResponse.status, apiResponse.statusText)
+              console.log('[callSora2] Response Headers:', Object.fromEntries(apiResponse.headers.entries()))
+
+              if (!apiResponse.ok) {
+                const errorText = await apiResponse.text()
+                let errorData: any = {}
+                try {
+                  errorData = JSON.parse(errorText)
+                } catch {
+                  errorData = { message: errorText }
+                }
+                
+                console.error('[callSora2] Erro da API - Status:', apiResponse.status, apiResponse.statusText)
+                console.error('[callSora2] Erro da API - Body:', errorData)
+                
+                // Tratamento específico de erros HTTP
+                if (apiResponse.status === 401) {
+                  throw new Error('Erro de autenticação: OPENAI_API_KEY inválida ou expirada. Verifique suas credenciais.')
+                } else if (apiResponse.status === 403) {
+                  throw new Error(`Acesso negado à API do ${modelName}. Verifique se sua conta tem permissão para usar a API de vídeos do Sora 2.`)
+                } else if (apiResponse.status === 404) {
+                  throw new Error(`Endpoint não encontrado. Verifique se o endpoint está correto na documentação oficial.`)
+                } else if (apiResponse.status === 405) {
+                  throw new Error(`Método HTTP não permitido. Verifique se está usando POST e se o endpoint está correto.`)
+                } else if (apiResponse.status === 429) {
+                  throw new Error('Limite de taxa excedido. Aguarde alguns instantes antes de tentar novamente.')
+                } else if (apiResponse.status >= 500) {
+                  throw new Error(`Erro interno do servidor da OpenAI (${apiResponse.status}). Tente novamente mais tarde.`)
+                }
+                
+                const errorMessage = errorData.error?.message || errorData.message || errorData.error || apiResponse.statusText
+                throw new Error(`API do ${modelName} retornou erro ${apiResponse.status}: ${errorMessage}`)
+              }
+
+              response = await apiResponse.json()
+            }
+            
+            console.log('[callSora2] Resposta completa da API:', JSON.stringify(response, null, 2))
+            console.log('[callSora2] Estrutura da resposta - Keys:', Object.keys(response))
+
+            // Verificar se a resposta indica processamento assíncrono (polling necessário)
+            // A API pode retornar um job_id ou status indicando que o vídeo está sendo processado
+            if (response?.status && response.status !== 'completed' && response.status !== 'succeeded') {
+              // Se houver um job_id, implementar polling
+              const jobId = response?.id || response?.job_id || response?.jobId
+              if (jobId) {
+                console.log('[callSora2] Processamento assíncrono detectado. Job ID:', jobId)
+                console.log('[callSora2] Status atual:', response.status)
+                
+                // Implementar polling para verificar o status do job
+                // Nota: A documentação oficial pode especificar um endpoint diferente para polling
+                // Por enquanto, vamos assumir que a API retorna diretamente o vídeo quando pronto
+                // Se necessário, implementar polling baseado na documentação oficial
+                controller.enqueue(encoder.encode(`${modelIcon} Processando vídeo com ${modelName}... Isso pode levar alguns minutos.\n\n`))
+                
+                // Por enquanto, vamos aguardar e tentar novamente após um delay
+                // Em produção, isso deve ser implementado com polling adequado conforme documentação
+                throw new Error('Processamento assíncrono detectado, mas polling ainda não implementado. Verifique a documentação oficial para implementar polling adequado.')
+              }
+            }
+
+            // O Sora 2 retorna um objeto com informações sobre o vídeo gerado
+            // Conforme documentação: https://platform.openai.com/docs/guides/video-generation
+            // A resposta pode ter estrutura: { data: [{ url: "...", ... }] } ou { url: "...", ... }
+            console.log('[callSora2] Tentando extrair URL do vídeo da resposta...')
+            console.log('[callSora2] response.data:', response?.data)
+            console.log('[callSora2] response.url:', response?.url)
+            console.log('[callSora2] response.video_url:', response?.video_url)
+            console.log('[callSora2] response.status:', response?.status)
+            console.log('[callSora2] response.id:', response?.id)
+            
+            let videoUrl: string | undefined
+            if (response?.data && Array.isArray(response.data) && response.data.length > 0) {
+              // Estrutura: { data: [{ url: "...", ... }] }
+              videoUrl = response.data[0]?.url || response.data[0]?.video_url
+            } else if (response?.url) {
+              // Estrutura: { url: "..." }
+              videoUrl = response.url
+            } else if (response?.video_url) {
+              // Estrutura: { video_url: "..." }
+              videoUrl = response.video_url
+            } else if (response?.output) {
+              // Fallback: { output: "..." }
+              videoUrl = typeof response.output === 'string' ? response.output : response.output?.url
+            }
+            
+            if (!videoUrl) {
+              console.error('[callSora2] Estrutura de resposta inesperada. Resposta completa:', JSON.stringify(response, null, 2))
+              throw new Error('URL do vídeo não retornada pela API. Estrutura da resposta não corresponde ao esperado. Verifique os logs do servidor para mais detalhes.')
+            }
+            
+            console.log('[callSora2] URL do vídeo extraída:', videoUrl)
+
+            const executionTime = Date.now() - startExecutionTime
+            const latency = Date.now() - startTime
+
+            // Calcular custo baseado na duração e resolução do vídeo
+            // Sora 2: $0.10/segundo (720p)
+            // Sora 2 Pro: $0.30/segundo (720p) ou $0.50/segundo (1024p)
+            const actualDuration = response?.duration || response?.seconds || duration
+            let costPerSecond: number
+            
+            if (isPro) {
+              costPerSecond = resolution === '1024p' ? 0.50 : 0.30
+            } else {
+              costPerSecond = 0.10
+            }
+            
+            const cost = costPerSecond * actualDuration
+            const resolutionLabel = resolution === '1024p' ? 'Full HD (1024p)' : 'HD (720p)'
+
+            // Construir resposta em formato de mensagem com vídeo
+            let content = `${modelIcon} **Vídeo gerado com ${modelName}!**\n\n`
+            
+            // Adicionar vídeo gerado
+            content += `![Vídeo gerado](${videoUrl})\n\n`
+            
+            content += `**Parâmetros:**\n`
+            content += `- Duração: ${actualDuration}s\n`
+            content += `- Resolução: ${resolutionLabel} (${size})\n`
+            content += `\n**Tempo de processamento:** ${(latency / 1000).toFixed(1)}s\n`
+            content += `**Tempo de execução:** ${(executionTime / 1000).toFixed(1)}s\n`
+            content += `**Custo:** $${cost.toFixed(2)} ($${costPerSecond.toFixed(2)}/segundo × ${actualDuration}s)`
+
+            // Enviar o conteúdo completo
+            controller.enqueue(encoder.encode(content))
+            controller.close()
+          } catch (error: any) {
+            console.error('[callSora2] Erro no stream:', error)
+            
+            let errorMessage = `Erro ao gerar vídeo com ${modelName}: ${error.message || error}`
+            if (error.message?.includes('OPENAI_API_KEY') || error.message?.includes('auth')) {
+              errorMessage = 'OPENAI_API_KEY não configurado. Configure a variável de ambiente.'
+            } else if (error.message?.includes('videos') || error.message?.includes('404') || error.message?.includes('not found')) {
+              const docUrl = isPro 
+                ? 'https://platform.openai.com/docs/models/sora-2-pro'
+                : 'https://platform.openai.com/docs/models/sora-2'
+              errorMessage = `API do ${modelName} ainda não está disponível ou requer acesso especial. Verifique: ${docUrl}`
+            }
+            
+            controller.enqueue(encoder.encode(`❌ ${errorMessage}`))
+            controller.error(error)
+          }
+        }
+      })
+
+      return {
+        provider: 'OpenAI',
+        model,
+        content: '',
+        latency: 0,
+        cost: 0,
+        stream: readable,
+      }
+    }
+
+    // Modo não-stream
+    const startExecutionTime = Date.now()
+    
+    console.log('[callSora2][non-stream] Chamando API do Sora 2 com modelo:', model)
+    console.log('[callSora2][non-stream] Parâmetros:', { prompt, size, seconds: duration })
+    
+    // Tentar usar o SDK da OpenAI primeiro, depois fallback para fetch
+    // Documentação oficial: https://platform.openai.com/docs/guides/video-generation
     let response: any
+    let apiResponse: Response | null = null
     
     try {
-      // Tentar usar a API de vídeos se disponível no SDK
-      response = await (openai as any).videos?.generate?.({
+      // Tentar usar o SDK da OpenAI se tiver suporte para vídeos
+      console.log('[callSora2][non-stream] Tentando usar SDK da OpenAI...')
+      // @ts-ignore - videos pode não estar no tipo ainda
+      if (openai.videos && typeof openai.videos.create === 'function') {
+        console.log('[callSora2][non-stream] SDK tem suporte para vídeos, usando openai.videos.create()')
+        response = await openai.videos.create({
+          model: model,
+          prompt: prompt,
+          size: size,
+          seconds: duration,
+        })
+        console.log('[callSora2][non-stream] Resposta do SDK:', JSON.stringify(response, null, 2))
+      } else {
+        throw new Error('SDK não tem suporte para vídeos, usando fetch')
+      }
+    } catch (sdkError: any) {
+      console.log('[callSora2][non-stream] SDK não disponível ou erro:', sdkError.message)
+      console.log('[callSora2][non-stream] Usando fetch diretamente...')
+      
+      // Fallback: usar fetch diretamente
+      // Tentar ambos os endpoints possíveis
+      const endpoints = [
+        'https://api.openai.com/v1/videos/generations',
+        'https://api.openai.com/v1/videos',
+      ]
+      
+      const requestBody = {
         model: model,
         prompt: prompt,
         size: size,
-        seconds: duration,
-      })
-    } catch (apiError: any) {
-      // Se a API não existir ainda, usar fetch diretamente
-      if (apiError.message?.includes('videos') || apiError.code === 'invalid_api_function') {
-        const apiResponse = await fetch('https://api.openai.com/v1/videos/generations', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            model: model,
-            prompt: prompt,
-            size: size,
-            seconds: duration,
-          }),
-        })
-
-        if (!apiResponse.ok) {
-          const errorData = await apiResponse.json().catch(() => ({}))
-          throw new Error(`API do Sora 2 Pro retornou erro: ${apiResponse.status} - ${errorData.error?.message || apiResponse.statusText}`)
+        seconds: duration, // Parâmetro correto conforme documentação: 'seconds'
+      }
+      
+      let lastError: Error | null = null
+      const failedEndpoints: string[] = []
+      
+      for (const endpoint of endpoints) {
+        try {
+          console.log('[callSora2][non-stream] Tentando endpoint:', endpoint)
+          console.log('[callSora2][non-stream] Request Body:', JSON.stringify(requestBody, null, 2))
+          
+          apiResponse = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(requestBody),
+          })
+          
+          console.log('[callSora2][non-stream] Status da resposta:', apiResponse.status, apiResponse.statusText)
+          
+          if (apiResponse.ok) {
+            console.log('[callSora2][non-stream] Endpoint funcionou:', endpoint)
+            break
+          } else {
+            // Adicionar endpoint à lista de falhas
+            failedEndpoints.push(`${endpoint} (${apiResponse.status})`)
+            
+            if (apiResponse.status === 405) {
+              console.log('[callSora2][non-stream] Endpoint retornou 405, tentando próximo...')
+              // Continuar para o próximo endpoint
+              continue
+            } else {
+              // Outro erro, não tentar próximo endpoint
+              const errorText = await apiResponse.text()
+              let errorData: any = {}
+              try {
+                errorData = JSON.parse(errorText)
+              } catch {
+                errorData = { message: errorText }
+              }
+              const errorMessage = errorData.error?.message || errorData.message || errorData.error || apiResponse.statusText
+              throw new Error(`Endpoint ${endpoint} retornou ${apiResponse.status}: ${errorMessage}`)
+            }
+          }
+        } catch (fetchError: any) {
+          console.log('[callSora2][non-stream] Erro ao tentar endpoint:', endpoint, fetchError.message)
+          failedEndpoints.push(`${endpoint} (erro: ${fetchError.message})`)
+          lastError = fetchError
+          // Se não for erro de rede, não tentar próximo
+          if (!fetchError.message?.includes('fetch') && !fetchError.message?.includes('network')) {
+            throw fetchError
+          }
+          continue
         }
+      }
+      
+      if (!apiResponse || !apiResponse.ok) {
+        // Se ambos os endpoints retornaram 405, fornecer mensagem mais clara
+        if (failedEndpoints.length === endpoints.length && failedEndpoints.every(e => e.includes('405'))) {
+          throw new Error(`A API do Sora 2 não está disponível publicamente ainda ou requer acesso especial. Ambos os endpoints tentados retornaram 405 (Método não permitido):\n- ${failedEndpoints.join('\n- ')}\n\nVerifique a documentação oficial: https://platform.openai.com/docs/guides/video-generation`)
+        } else if (apiResponse) {
+          const errorText = await apiResponse.text()
+          let errorData: any = {}
+          try {
+            errorData = JSON.parse(errorText)
+          } catch {
+            errorData = { message: errorText }
+          }
+          
+          const errorMessage = errorData.error?.message || errorData.message || errorData.error || apiResponse.statusText
+          throw new Error(`Endpoint ${endpoints[endpoints.length - 1]} retornou ${apiResponse.status}: ${errorMessage}`)
+        } else if (lastError) {
+          throw lastError
+        } else {
+          throw new Error(`Nenhum endpoint funcionou. Endpoints tentados:\n- ${failedEndpoints.join('\n- ')}`)
+        }
+      }
+    }
+    
+    // Se usamos fetch, processar a resposta
+    if (apiResponse) {
+      console.log('[callSora2][non-stream] Status da resposta:', apiResponse.status, apiResponse.statusText)
+      console.log('[callSora2][non-stream] Response Headers:', Object.fromEntries(apiResponse.headers.entries()))
 
-        response = await apiResponse.json()
-      } else {
-        throw apiError
+      if (!apiResponse.ok) {
+        const errorText = await apiResponse.text()
+        let errorData: any = {}
+        try {
+          errorData = JSON.parse(errorText)
+        } catch {
+          errorData = { message: errorText }
+        }
+        
+        console.error('[callSora2][non-stream] Erro da API - Status:', apiResponse.status, apiResponse.statusText)
+        console.error('[callSora2][non-stream] Erro da API - Body:', errorData)
+        
+        // Tratamento específico de erros HTTP
+        if (apiResponse.status === 401) {
+          throw new Error('Erro de autenticação: OPENAI_API_KEY inválida ou expirada. Verifique suas credenciais.')
+        } else if (apiResponse.status === 403) {
+          throw new Error(`Acesso negado à API do ${modelName}. Verifique se sua conta tem permissão para usar a API de vídeos do Sora 2.`)
+        } else if (apiResponse.status === 404) {
+          throw new Error(`Endpoint não encontrado. Verifique se o endpoint está correto na documentação oficial.`)
+        } else if (apiResponse.status === 405) {
+          throw new Error(`Método HTTP não permitido. Verifique se está usando POST e se o endpoint está correto.`)
+        } else if (apiResponse.status === 429) {
+          throw new Error('Limite de taxa excedido. Aguarde alguns instantes antes de tentar novamente.')
+        } else if (apiResponse.status >= 500) {
+          throw new Error(`Erro interno do servidor da OpenAI (${apiResponse.status}). Tente novamente mais tarde.`)
+        }
+        
+        const errorMessage = errorData.error?.message || errorData.message || errorData.error || apiResponse.statusText
+        throw new Error(`API do ${modelName} retornou erro ${apiResponse.status}: ${errorMessage}`)
+      }
+
+      response = await apiResponse.json()
+    }
+    console.log('[callSora2][non-stream] Resposta completa da API:', JSON.stringify(response, null, 2))
+    console.log('[callSora2][non-stream] Estrutura da resposta - Keys:', Object.keys(response))
+
+    // Verificar se a resposta indica processamento assíncrono (polling necessário)
+    // A API pode retornar um job_id ou status indicando que o vídeo está sendo processado
+    if (response?.status && response.status !== 'completed' && response.status !== 'succeeded') {
+      // Se houver um job_id, implementar polling
+      const jobId = response?.id || response?.job_id || response?.jobId
+      if (jobId) {
+        console.log('[callSora2][non-stream] Processamento assíncrono detectado. Job ID:', jobId)
+        console.log('[callSora2][non-stream] Status atual:', response.status)
+        
+        // Por enquanto, vamos assumir que a API retorna diretamente o vídeo quando pronto
+        // Se necessário, implementar polling baseado na documentação oficial
+        // Em produção, isso deve ser implementado com polling adequado conforme documentação
+        throw new Error('Processamento assíncrono detectado, mas polling ainda não implementado. Verifique a documentação oficial para implementar polling adequado.')
       }
     }
 
     // O Sora 2 retorna um objeto com informações sobre o vídeo gerado
-    // A estrutura pode variar - ajustar conforme documentação oficial
-    const videoUrl = response?.video_url || response?.url || response?.output || response?.data?.[0]?.url
+    // Conforme documentação: https://platform.openai.com/docs/guides/video-generation
+    // A resposta pode ter estrutura: { data: [{ url: "...", ... }] } ou { url: "...", ... }
+    console.log('[callSora2][non-stream] Tentando extrair URL do vídeo da resposta...')
+    console.log('[callSora2][non-stream] response.data:', response?.data)
+    console.log('[callSora2][non-stream] response.url:', response?.url)
+    console.log('[callSora2][non-stream] response.video_url:', response?.video_url)
+    console.log('[callSora2][non-stream] response.status:', response?.status)
+    console.log('[callSora2][non-stream] response.id:', response?.id)
+    
+    let videoUrl: string | undefined
+    if (response?.data && Array.isArray(response.data) && response.data.length > 0) {
+      // Estrutura: { data: [{ url: "...", ... }] }
+      videoUrl = response.data[0]?.url || response.data[0]?.video_url
+    } else if (response?.url) {
+      // Estrutura: { url: "..." }
+      videoUrl = response.url
+    } else if (response?.video_url) {
+      // Estrutura: { video_url: "..." }
+      videoUrl = response.video_url
+    } else if (response?.output) {
+      // Fallback: { output: "..." }
+      videoUrl = typeof response.output === 'string' ? response.output : response.output?.url
+    }
     
     if (!videoUrl) {
-      console.warn('[callSora2] Estrutura de resposta inesperada:', response)
-      throw new Error('URL do vídeo não retornada pela API. Verifique a estrutura da resposta.')
+      console.error('[callSora2][non-stream] Estrutura de resposta inesperada. Resposta completa:', JSON.stringify(response, null, 2))
+      throw new Error('URL do vídeo não retornada pela API. Estrutura da resposta não corresponde ao esperado. Verifique os logs do servidor para mais detalhes.')
     }
+    
+    console.log('[callSora2][non-stream] URL do vídeo extraída:', videoUrl)
+
+    const executionTime = Date.now() - startExecutionTime
+    const latency = Date.now() - startTime
 
     // Calcular custo baseado na duração e resolução do vídeo
     // Sora 2: $0.10/segundo (720p)
@@ -2377,13 +4896,20 @@ async function callSora2(
     }
     
     const cost = costPerSecond * actualDuration
-    const latency = Date.now() - startTime
-
-    // Construir resposta em formato de mensagem com informações detalhadas
-    const modelName = isPro ? 'Sora 2 Pro' : 'Sora 2'
     const resolutionLabel = resolution === '1024p' ? 'Full HD (1024p)' : 'HD (720p)'
+
+    // Construir resposta em formato de mensagem com vídeo
+    let content = `${modelIcon} **Vídeo gerado com ${modelName}!**\n\n`
     
-    const content = `🎬 Vídeo gerado com sucesso usando **${modelName}**!\n\n[Assistir vídeo](${videoUrl})\n\n**Prompt:** ${prompt}\n\n**Especificações:**\n- Duração: ${actualDuration}s\n- Resolução: ${resolutionLabel} (${size})\n- Tempo de processamento: ${(latency / 1000).toFixed(1)}s\n- Custo: $${cost.toFixed(2)} ($${costPerSecond.toFixed(2)}/segundo)`
+    // Adicionar vídeo gerado
+    content += `![Vídeo gerado](${videoUrl})\n\n`
+    
+    content += `**Parâmetros:**\n`
+    content += `- Duração: ${actualDuration}s\n`
+    content += `- Resolução: ${resolutionLabel} (${size})\n`
+    content += `\n**Tempo de processamento:** ${(latency / 1000).toFixed(1)}s\n`
+    content += `**Tempo de execução:** ${(executionTime / 1000).toFixed(1)}s\n`
+    content += `**Custo:** $${cost.toFixed(2)} ($${costPerSecond.toFixed(2)}/segundo × ${actualDuration}s)`
 
     return {
       provider: 'OpenAI',
@@ -2391,6 +4917,13 @@ async function callSora2(
       content,
       latency,
       cost,
+      metadata: {
+        duration: actualDuration,
+        resolution,
+        size,
+        videoUrl,
+        executionTime: executionTime / 1000,
+      },
     }
   } catch (error: any) {
     console.error('[callSora2] Erro:', error)
@@ -2416,6 +4949,10 @@ async function callImageGeneration(
   stream: boolean,
   startTime: number
 ): Promise<LLMResponse> {
+  // Definir variáveis no início para uso em catch
+  const isMini = model === 'gpt-image-1-mini'
+  const modelName = isMini ? 'GPT-Image-1 Mini' : 'GPT-Image-1'
+  
   try {
     if (!process.env.OPENAI_API_KEY) {
       throw new Error('OPENAI_API_KEY não configurado')
@@ -2425,18 +4962,161 @@ async function callImageGeneration(
       apiKey: process.env.OPENAI_API_KEY,
     })
 
-    const isMini = model === 'gpt-image-1-mini'
-    const modelName = isMini ? 'GPT-Image-1 Mini' : 'GPT-Image-1'
-
-    // Modelos de imagem não suportam streaming tradicional
+    // Modelos de imagem não suportam streaming tradicional, mas precisamos gerar a imagem
+    // mesmo quando stream=true, então vamos gerar e retornar o resultado completo
     if (stream) {
       const encoder = new TextEncoder()
       const readable = new ReadableStream({
         async start(controller) {
           try {
+            // Enviar mensagem inicial de loading
             controller.enqueue(encoder.encode(`🖼️ Gerando imagem com ${modelName}... Isso pode levar alguns segundos.\n\n`))
+            
+            // Agora gerar a imagem de fato (mesmo com stream=true)
+            // Extrair o prompt da última mensagem do usuário
+            const lastUserMessage = messages.filter(msg => msg.role === 'user').pop()
+            if (!lastUserMessage || !lastUserMessage.content) {
+              throw new Error('Nenhuma mensagem do usuário encontrada para gerar imagem')
+            }
+
+            const prompt = lastUserMessage.content
+
+            // Detectar resolução no prompt ou usar padrão
+            const promptLower = prompt.toLowerCase()
+            const wantsHighRes = promptLower.includes('1024x1024') || 
+                                 promptLower.includes('hd') || 
+                                 promptLower.includes('alta resolução') ||
+                                 promptLower.includes('high resolution') ||
+                                 promptLower.includes('4k')
+            
+            // Resoluções suportadas: 1024x1024 (padrão), 1792x1024, 1024x1792
+            let size = '1024x1024'
+            if (promptLower.includes('1792x1024') || promptLower.includes('landscape') || promptLower.includes('paisagem')) {
+              size = '1792x1024'
+            } else if (promptLower.includes('1024x1792') || promptLower.includes('portrait') || promptLower.includes('retrato')) {
+              size = '1024x1792'
+            } else if (wantsHighRes) {
+              size = '1024x1024'
+            }
+
+            // Detectar qualidade ou usar padrão
+            // Valores suportados: 'low', 'medium', 'high', 'auto'
+            let quality = 'auto' // Padrão
+            if (promptLower.includes('hd') || promptLower.includes('alta qualidade') || promptLower.includes('high quality') || promptLower.includes('máxima qualidade')) {
+              quality = 'high'
+            } else if (promptLower.includes('baixa qualidade') || promptLower.includes('low quality')) {
+              quality = 'low'
+            } else if (promptLower.includes('qualidade média') || promptLower.includes('medium quality')) {
+              quality = 'medium'
+            }
+
+            // Chamar a API de geração de imagens
+            let response: any
+            
+            try {
+              // Tentar usar a API de imagens se disponível no SDK
+              const requestBody: any = {
+                model: model,
+                prompt: prompt,
+                size: size,
+                quality: quality,
+                n: 1, // Gerar 1 imagem por padrão
+              }
+              
+              response = await (openai as any).images?.generate?.(requestBody)
+            } catch (sdkError: any) {
+              // Se o SDK não suportar, usar fetch diretamente
+              console.log('[callImageGeneration] SDK não suporta, usando fetch direto')
+              
+              const requestBody: any = {
+                model: model,
+                prompt: prompt,
+                size: size,
+                quality: quality,
+                n: 1,
+              }
+              
+              const apiResponse = await fetch('https://api.openai.com/v1/images/generations', {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(requestBody),
+              })
+
+              if (!apiResponse.ok) {
+                const errorData = await apiResponse.json().catch(() => ({}))
+                throw new Error(errorData.error?.message || `API retornou erro: ${apiResponse.status}`)
+              }
+
+              response = await apiResponse.json()
+            }
+
+            // Extrair URL da imagem gerada
+            let imageUrl = response?.data?.[0]?.url || response?.data?.[0]?.b64_json
+            
+            console.log('[callImageGeneration] Resposta da API completa:', JSON.stringify(response, null, 2))
+            console.log('[callImageGeneration] imageUrl extraído:', imageUrl ? imageUrl.substring(0, 100) : 'null')
+            
+            if (!imageUrl) {
+              console.error('[callImageGeneration] Resposta da API:', JSON.stringify(response, null, 2))
+              throw new Error('Resposta da API não contém URL de imagem')
+            }
+            
+            // Garantir que a URL seja uma string válida
+            imageUrl = String(imageUrl).trim()
+            if (!imageUrl) {
+              throw new Error('URL de imagem está vazia')
+            }
+            
+            // Se é base64, converter para data URL
+            let finalImageUrl = imageUrl
+            if (imageUrl.startsWith('iVBORw0KGg') || imageUrl.startsWith('/9j/')) {
+              // É base64 sem prefixo data:, adicionar prefixo
+              const mimeType = imageUrl.startsWith('iVBORw0KGg') ? 'image/png' : 'image/jpeg'
+              finalImageUrl = `data:${mimeType};base64,${imageUrl}`
+              console.log('[callImageGeneration] Convertido base64 para data URL, tamanho:', finalImageUrl.length)
+            } else if (!imageUrl.startsWith('http://') && !imageUrl.startsWith('https://') && !imageUrl.startsWith('data:')) {
+              console.warn('[callImageGeneration] URL pode estar em formato inválido:', imageUrl.substring(0, 100))
+            }
+
+            // Calcular custo: $0.04 por imagem (GPT-Image-1) ou $0.02 (GPT-Image-1 Mini)
+            const pricing = MODEL_PRICING[`openai:${model}`] || DEFAULT_PRICING
+            const cost = pricing.input
+            const latency = Date.now() - startTime
+
+            // Construir resposta em formato de mensagem com imagem
+            let content = `🖼️ **Imagem gerada com ${modelName}!**\n\n`
+            
+            // Incluir a imagem no markdown
+            content += `![Imagem gerada](${finalImageUrl})\n\n`
+            
+            console.log('[callImageGeneration] Conteúdo final (primeiros 200 chars):', content.substring(0, 200))
+            
+            content += `**Parâmetros:**\n`
+            content += `- Resolução: ${size}\n`
+            content += `- Qualidade: ${quality}\n`
+            content += `\n**Tempo de processamento:** ${(latency / 1000).toFixed(1)}s\n**Custo:** $${cost.toFixed(4)} ($${pricing.input.toFixed(2)}/imagem)`
+
+            // Enviar o conteúdo completo
+            controller.enqueue(encoder.encode(content))
             controller.close()
           } catch (error: any) {
+            console.error('[callImageGeneration] Erro no stream:', error)
+            
+            // Mensagens de erro específicas
+            let errorMessage = `Erro ao gerar imagem com ${modelName}: ${error.message || error}`
+            if (error.message?.includes('images') || error.code === 'invalid_api_function' || error.message?.includes('404')) {
+              const docUrl = isMini 
+                ? 'https://platform.openai.com/docs/models/gpt-image-1-mini'
+                : 'https://platform.openai.com/docs/models/gpt-image-1'
+              errorMessage = `API do ${modelName} ainda não está disponível ou requer acesso especial. Verifique: ${docUrl}. Erro: ${error.message}`
+            } else if (error.message?.includes('prompt') || error.message?.includes('conteúdo')) {
+              errorMessage = `Erro no prompt de geração de imagem: ${error.message}`
+            }
+            
+            controller.enqueue(encoder.encode(`❌ ${errorMessage}`))
             controller.error(error)
           }
         },
@@ -2479,34 +5159,43 @@ async function callImageGeneration(
     }
 
     // Detectar qualidade ou usar padrão
-    const quality = promptLower.includes('hd') || promptLower.includes('alta qualidade') || promptLower.includes('high quality')
-      ? 'hd'
-      : 'standard'
-
-    // Detectar estilo ou usar padrão
-    const style = promptLower.includes('vivid') || promptLower.includes('vivido')
-      ? 'vivid'
-      : promptLower.includes('natural') || promptLower.includes('natural')
-      ? 'natural'
-      : 'vivid' // Padrão vivid
+    // Valores suportados: 'low', 'medium', 'high', 'auto'
+    let quality = 'auto' // Padrão
+    if (promptLower.includes('hd') || promptLower.includes('alta qualidade') || promptLower.includes('high quality') || promptLower.includes('máxima qualidade')) {
+      quality = 'high'
+    } else if (promptLower.includes('baixa qualidade') || promptLower.includes('low quality')) {
+      quality = 'low'
+    } else if (promptLower.includes('qualidade média') || promptLower.includes('medium quality')) {
+      quality = 'medium'
+    }
 
     // Chamar a API de geração de imagens
     // Documentação oficial: https://platform.openai.com/docs/models/gpt-image-1
+    // Nota: A API pode não suportar o parâmetro 'style' ainda
     let response: any
     
     try {
       // Tentar usar a API de imagens se disponível no SDK
-      response = await (openai as any).images?.generate?.({
+      const requestBody: any = {
         model: model,
         prompt: prompt,
         size: size,
         quality: quality,
-        style: style,
         n: 1, // Gerar 1 imagem por padrão
-      })
+      }
+      
+      response = await (openai as any).images?.generate?.(requestBody)
     } catch (sdkError: any) {
       // Se o SDK não suportar, usar fetch diretamente
       console.log('[callImageGeneration] SDK não suporta, usando fetch direto')
+      
+      const requestBody: any = {
+        model: model,
+        prompt: prompt,
+        size: size,
+        quality: quality,
+        n: 1,
+      }
       
       const apiResponse = await fetch('https://api.openai.com/v1/images/generations', {
         method: 'POST',
@@ -2514,14 +5203,7 @@ async function callImageGeneration(
           'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          model: model,
-          prompt: prompt,
-          size: size,
-          quality: quality,
-          style: style,
-          n: 1,
-        }),
+        body: JSON.stringify(requestBody),
       })
 
       if (!apiResponse.ok) {
@@ -2533,10 +5215,31 @@ async function callImageGeneration(
     }
 
     // Extrair URL da imagem gerada
-    const imageUrl = response?.data?.[0]?.url || response?.data?.[0]?.b64_json
+    let imageUrl = response?.data?.[0]?.url || response?.data?.[0]?.b64_json
+    
+    console.log('[callImageGeneration] Resposta da API completa:', JSON.stringify(response, null, 2))
+    console.log('[callImageGeneration] imageUrl extraído:', imageUrl ? imageUrl.substring(0, 100) : 'null')
     
     if (!imageUrl) {
+      console.error('[callImageGeneration] Resposta da API:', JSON.stringify(response, null, 2))
       throw new Error('Resposta da API não contém URL de imagem')
+    }
+    
+    // Garantir que a URL seja uma string válida
+    imageUrl = String(imageUrl).trim()
+    if (!imageUrl) {
+      throw new Error('URL de imagem está vazia')
+    }
+    
+    // Se é base64, converter para data URL
+    let finalImageUrl = imageUrl
+    if (imageUrl.startsWith('iVBORw0KGg') || imageUrl.startsWith('/9j/')) {
+      // É base64 sem prefixo data:, adicionar prefixo
+      const mimeType = imageUrl.startsWith('iVBORw0KGg') ? 'image/png' : 'image/jpeg'
+      finalImageUrl = `data:${mimeType};base64,${imageUrl}`
+      console.log('[callImageGeneration] Convertido base64 para data URL, tamanho:', finalImageUrl.length)
+    } else if (!imageUrl.startsWith('http://') && !imageUrl.startsWith('https://') && !imageUrl.startsWith('data:')) {
+      console.warn('[callImageGeneration] URL pode estar em formato inválido:', imageUrl.substring(0, 100))
     }
 
     // Calcular custo: $0.04 por imagem (GPT-Image-1) ou $0.02 (GPT-Image-1 Mini)
@@ -2548,17 +5251,14 @@ async function callImageGeneration(
     // Construir resposta em formato de mensagem com imagem
     let content = `🖼️ **Imagem gerada com ${modelName}!**\n\n`
     
-    // Se é base64, converter para data URL
-    if (typeof imageUrl === 'string' && imageUrl.startsWith('data:')) {
-      content += `![Imagem gerada](${imageUrl})\n\n`
-    } else {
-      content += `![Imagem gerada](${imageUrl})\n\n`
-    }
+    // Incluir a imagem no markdown
+    content += `![Imagem gerada](${finalImageUrl})\n\n`
+    
+    console.log('[callImageGeneration] Conteúdo final (primeiros 200 chars):', content.substring(0, 200))
     
     content += `**Parâmetros:**\n`
     content += `- Resolução: ${size}\n`
     content += `- Qualidade: ${quality}\n`
-    content += `- Estilo: ${style}\n`
     content += `\n**Tempo de processamento:** ${(latency / 1000).toFixed(1)}s\n**Custo:** $${cost.toFixed(4)} ($${pricing.input.toFixed(2)}/imagem)`
 
     return {
@@ -2570,7 +5270,6 @@ async function callImageGeneration(
       metadata: {
         size,
         quality,
-        style,
         imageUrl: typeof imageUrl === 'string' ? imageUrl : undefined,
       },
     }
@@ -3128,3 +5827,4 @@ function parsePubMedXML(xml: string): Array<{
 
   return articles
 }
+

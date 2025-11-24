@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase'
+import { getCachedMemories, setCachedMemories, invalidateCache, invalidateUserCache } from '@/lib/cache/memoryCache'
 
 export interface MemoryItem {
   key: string
@@ -48,6 +49,9 @@ export async function remember({
   if (error) {
     throw new Error(`Failed to remember: ${error.message}`)
   }
+
+  // Invalidar cache após salvar/atualizar memória
+  invalidateCache(userId, agentId || null)
 }
 
 /**
@@ -60,43 +64,68 @@ export async function recallProfile({
   userId: string
   agentId?: string
 }): Promise<MemoryProfile> {
+  // Tentar obter do cache primeiro
+  const cachedGlobal = getCachedMemories(userId, null)
+  const cachedAgent = agentId ? getCachedMemories(userId, agentId) : null
+
+  // Se ambos estiverem no cache, retornar direto
+  if (cachedGlobal && (agentId ? cachedAgent !== null : true)) {
+    return {
+      global: cachedGlobal as MemoryItem[],
+      agent: (cachedAgent as MemoryItem[]) || [],
+    }
+  }
+
   const supabase = await createClient()
 
   // Memória global (sem agentId)
-  const { data: globalMem, error: globalError } = await supabase
-    .from('lab_agent_memory')
-    .select('key, value, importance')
-    .eq('user_id', userId)
-    .is('agent_id', null)
-    .order('importance', { ascending: false })
-    .order('updated_at', { ascending: false })
-    .limit(20)
-
-  if (globalError) {
-    console.error('Error fetching global memories:', globalError)
-  }
-
-  let agentMem: any[] = []
-  if (agentId) {
-    // Memória do agente específico
-    const { data, error: agentError } = await supabase
+  let globalMem: MemoryItem[] = []
+  if (cachedGlobal) {
+    globalMem = cachedGlobal as MemoryItem[]
+  } else {
+    const { data, error: globalError } = await supabase
       .from('lab_agent_memory')
       .select('key, value, importance')
       .eq('user_id', userId)
-      .eq('agent_id', agentId)
+      .is('agent_id', null)
       .order('importance', { ascending: false })
       .order('updated_at', { ascending: false })
       .limit(20)
 
-    if (agentError) {
-      console.error('Error fetching agent memories:', agentError)
+    if (globalError) {
+      console.error('Error fetching global memories:', globalError)
     } else {
-      agentMem = data || []
+      globalMem = data || []
+      setCachedMemories(userId, null, globalMem)
+    }
+  }
+
+  let agentMem: any[] = []
+  if (agentId) {
+    if (cachedAgent) {
+      agentMem = cachedAgent as MemoryItem[]
+    } else {
+      // Memória do agente específico
+      const { data, error: agentError } = await supabase
+        .from('lab_agent_memory')
+        .select('key, value, importance')
+        .eq('user_id', userId)
+        .eq('agent_id', agentId)
+        .order('importance', { ascending: false })
+        .order('updated_at', { ascending: false })
+        .limit(20)
+
+      if (agentError) {
+        console.error('Error fetching agent memories:', agentError)
+      } else {
+        agentMem = data || []
+        setCachedMemories(userId, agentId, agentMem)
+      }
     }
   }
 
   return {
-    global: globalMem || [],
+    global: globalMem,
     agent: agentMem,
   }
 }
@@ -105,6 +134,12 @@ export async function recallProfile({
  * Recupera apenas memória global
  */
 export async function recallGlobal(userId: string): Promise<MemoryItem[]> {
+  // Tentar obter do cache primeiro
+  const cached = getCachedMemories(userId, null)
+  if (cached) {
+    return cached as MemoryItem[]
+  }
+
   const supabase = await createClient()
 
   const { data, error } = await supabase
@@ -121,7 +156,12 @@ export async function recallGlobal(userId: string): Promise<MemoryItem[]> {
     return []
   }
 
-  return data || []
+  const memories = data || []
+  
+  // Armazenar no cache
+  setCachedMemories(userId, null, memories)
+
+  return memories
 }
 
 /**
@@ -189,6 +229,9 @@ export async function forget({
   if (error) {
     throw new Error(`Failed to forget: ${error.message}`)
   }
+
+  // Invalidar cache após deletar memória
+  invalidateCache(userId, agentId || null)
 }
 
 /**
@@ -213,6 +256,13 @@ export async function clearAllMemories({
 
   if (error) {
     throw new Error(`Failed to clear memories: ${error.message}`)
+  }
+
+  // Invalidar cache após limpar memórias
+  if (agentId !== undefined) {
+    invalidateCache(userId, agentId || null)
+  } else {
+    invalidateUserCache(userId)
   }
 }
 
@@ -245,4 +295,57 @@ export async function listMemories({
   }
 
   return data || []
+}
+
+/**
+ * Formata memórias para serem usadas no contexto do LLM, respeitando limite de tokens
+ * Prioriza memórias por importância
+ */
+export function formatMemoriesForContext(
+  memories: MemoryItem[],
+  maxTokens: number = 1000
+): string {
+  if (!memories || memories.length === 0) {
+    return ''
+  }
+
+  // Estimar tokens: ~1 palavra = 1.3 tokens (aproximação)
+  // Função auxiliar para estimar tokens
+  const estimateTokens = (text: string): number => {
+    const words = text.trim().split(/\s+/).length
+    return Math.ceil(words * 1.3)
+  }
+
+  // Ordenar por importância (maior primeiro)
+  const sortedMemories = [...memories].sort((a, b) => b.importance - a.importance)
+
+  // Construir contexto respeitando limite de tokens
+  const lines: string[] = []
+  let currentTokens = 0
+  const header = '[Memórias do Usuário]'
+  const headerTokens = estimateTokens(header)
+  const footer = '\nUse essas informações para personalizar suas respostas.'
+  const footerTokens = estimateTokens(footer)
+  const reservedTokens = headerTokens + footerTokens
+
+  let availableTokens = maxTokens - reservedTokens
+
+  for (const memory of sortedMemories) {
+    const line = `- ${memory.key}: ${memory.value}`
+    const lineTokens = estimateTokens(line)
+
+    if (currentTokens + lineTokens <= availableTokens) {
+      lines.push(line)
+      currentTokens += lineTokens
+    } else {
+      // Parar se não couber mais
+      break
+    }
+  }
+
+  if (lines.length === 0) {
+    return ''
+  }
+
+  return `${header}\n${lines.join('\n')}${footer}`
 }

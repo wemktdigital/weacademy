@@ -73,7 +73,7 @@ describe('POST /api/lab-ia/admin/pipelines/[id]/test', () => {
     expect(runPipeline).not.toHaveBeenCalled()
   })
 
-  it('retorna 403 quando usuário não é admin/gestor', async () => {
+  it('retorna 403 quando usuário não é admin', async () => {
     const user = { id: 'user-1' }
     // Token auth
     supabaseCreateClientMock

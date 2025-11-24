@@ -40,7 +40,8 @@ import { supabase } from '@/lib/supabase'
 import type { Agent } from '@/lib/validations/agent.schema'
 import { PROVIDERS, getModelsByProvider } from '@/modules/laboratorio-ia/config/models'
 import { PROMPT_TEMPLATES, getDefaultTemplate } from '@/modules/laboratorio-ia/config/promptTemplates'
-import { Upload, FileText, X, File, Loader2, Info, LayoutGrid, List } from 'lucide-react'
+import { Upload, FileText, X, File, Loader2, Info, LayoutGrid, List, CheckSquare2, Square, Power, PowerOff, Trash2 } from 'lucide-react'
+import { EmojiPicker } from '@/components/ui/emoji-picker'
 
 export default function AgentsAdminPage() {
   const router = useRouter()
@@ -51,6 +52,7 @@ export default function AgentsAdminPage() {
   const [checkingRole, setCheckingRole] = useState(true)
   const [openDialog, setOpenDialog] = useState(false)
   const [deleteAgentId, setDeleteAgentId] = useState<string | null>(null)
+  const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false)
   const [editingAgent, setEditingAgent] = useState<Agent | null>(null)
   const [formData, setFormData] = useState<Partial<Agent>>({
     name: '',
@@ -74,6 +76,8 @@ export default function AgentsAdminPage() {
   const [selectedTemplate, setSelectedTemplate] = useState<string>('')
   const [selectedCategory, setSelectedCategory] = useState<string>('all')
   const [viewMode, setViewMode] = useState<'cards' | 'list'>('cards')
+  const [selectedAgentIds, setSelectedAgentIds] = useState<Set<string>>(new Set())
+  const [bulkUpdating, setBulkUpdating] = useState(false)
 
   useEffect(() => {
     checkUserRole()
@@ -104,6 +108,11 @@ export default function AgentsAdminPage() {
     }
   }, [checkingRole, user])
 
+  // Limpar seleção quando a categoria mudar
+  useEffect(() => {
+    setSelectedAgentIds(new Set())
+  }, [selectedCategory])
+
   const checkUserRole = async () => {
     if (!user) {
       router.push('/auth/login')
@@ -119,7 +128,7 @@ export default function AgentsAdminPage() {
 
       if (error) throw error
 
-      if (!profile || !['admin', 'gestor_we'].includes(profile.role)) {
+      if (!profile || profile.role !== 'admin') {
         toast.error('Acesso negado. Apenas administradores podem acessar esta página.')
         router.push('/ai-lab')
         return
@@ -471,6 +480,119 @@ export default function AgentsAdminPage() {
     setKnowledgeFiles((prev) => prev.filter((_, i) => i !== index))
   }
 
+  // Funções para seleção em massa
+  const toggleAgentSelection = (agentId: string) => {
+    setSelectedAgentIds((prev) => {
+      const newSet = new Set(prev)
+      if (newSet.has(agentId)) {
+        newSet.delete(agentId)
+      } else {
+        newSet.add(agentId)
+      }
+      return newSet
+    })
+  }
+
+  const toggleSelectAll = () => {
+    if (selectedAgentIds.size === filteredAgents.length) {
+      setSelectedAgentIds(new Set())
+    } else {
+      setSelectedAgentIds(new Set(filteredAgents.map((a) => a.id)))
+    }
+  }
+
+  const handleBulkUpdate = async (active: boolean) => {
+    if (selectedAgentIds.size === 0) {
+      toast.error('Selecione pelo menos um agente')
+      return
+    }
+
+    setBulkUpdating(true)
+    try {
+      // Obter token de autenticação
+      const { data: sessionData } = await supabase.auth.getSession()
+      const token = sessionData?.session?.access_token
+
+      if (!token) {
+        throw new Error('Não autenticado')
+      }
+
+      const response = await fetch('/api/lab-ia/admin/agents/bulk', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          agentIds: Array.from(selectedAgentIds),
+          active,
+        }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Erro desconhecido' }))
+        throw new Error(errorData.error || 'Erro ao atualizar agentes')
+      }
+
+      const data = await response.json()
+      toast.success(`${data.updated} agente(s) ${active ? 'ativado(s)' : 'desativado(s)'} com sucesso!`)
+      setSelectedAgentIds(new Set())
+      fetchAgents()
+    } catch (error: any) {
+      console.error('Error updating agents in bulk:', error)
+      toast.error(error.message || 'Erro ao atualizar agentes em massa')
+    } finally {
+      setBulkUpdating(false)
+    }
+  }
+
+  const handleBulkDelete = async () => {
+    if (selectedAgentIds.size === 0) {
+      toast.error('Selecione pelo menos um agente')
+      return
+    }
+
+    setBulkUpdating(true)
+    try {
+      // Obter token de autenticação
+      const { data: sessionData } = await supabase.auth.getSession()
+      const token = sessionData?.session?.access_token
+
+      if (!token) {
+        throw new Error('Não autenticado')
+      }
+
+      const response = await fetch('/api/lab-ia/admin/agents/bulk', {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          agentIds: Array.from(selectedAgentIds),
+        }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Erro desconhecido' }))
+        throw new Error(errorData.error || 'Erro ao excluir agentes')
+      }
+
+      const data = await response.json()
+      toast.success(`${data.deleted} agente(s) excluído(s) com sucesso!`)
+      setSelectedAgentIds(new Set())
+      setBulkDeleteConfirm(false)
+      fetchAgents()
+    } catch (error: any) {
+      console.error('Error deleting agents in bulk:', error)
+      toast.error(error.message || 'Erro ao excluir agentes em massa')
+    } finally {
+      setBulkUpdating(false)
+    }
+  }
+
   const handleEdit = (agent: Agent) => {
     setEditingAgent(agent)
     setFormData(agent)
@@ -555,7 +677,7 @@ export default function AgentsAdminPage() {
           </div>
         </div>
 
-        <div className="flex justify-between items-center">
+        <div className="flex justify-between items-center gap-4">
           <div className="flex items-center gap-2 border rounded-lg p-1">
             <Button
               variant={viewMode === 'cards' ? 'default' : 'ghost'}
@@ -576,17 +698,73 @@ export default function AgentsAdminPage() {
               Lista
             </Button>
           </div>
-          <Button onClick={() => {
-            resetForm()
-            // Garantir que o prompt padrão seja pré-preenchido
-            setFormData((prev) => ({
-              ...prev,
-              prompt: prev.prompt || getDefaultTemplate(),
-            }))
-            setOpenDialog(true)
-          }}>
-            + Novo Agente
-          </Button>
+          <div className="flex items-center gap-2">
+            {selectedAgentIds.size > 0 && (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleBulkUpdate(true)}
+                  disabled={bulkUpdating}
+                  className="h-8"
+                >
+                  {bulkUpdating ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Power className="h-4 w-4 mr-2" />
+                  )}
+                  Ativar ({selectedAgentIds.size})
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleBulkUpdate(false)}
+                  disabled={bulkUpdating}
+                  className="h-8"
+                >
+                  {bulkUpdating ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <PowerOff className="h-4 w-4 mr-2" />
+                  )}
+                  Desativar ({selectedAgentIds.size})
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => setBulkDeleteConfirm(true)}
+                  disabled={bulkUpdating}
+                  className="h-8"
+                >
+                  {bulkUpdating ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Trash2 className="h-4 w-4 mr-2" />
+                  )}
+                  Excluir ({selectedAgentIds.size})
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setSelectedAgentIds(new Set())}
+                  className="h-8"
+                >
+                  Limpar seleção
+                </Button>
+              </>
+            )}
+            <Button onClick={() => {
+              resetForm()
+              // Garantir que o prompt padrão seja pré-preenchido
+              setFormData((prev) => ({
+                ...prev,
+                prompt: prev.prompt || getDefaultTemplate(),
+              }))
+              setOpenDialog(true)
+            }}>
+              + Novo Agente
+            </Button>
+          </div>
         </div>
 
         {/* Agents List */}
@@ -595,28 +773,69 @@ export default function AgentsAdminPage() {
             Nenhum agente encontrado para esta categoria.
           </div>
         ) : viewMode === 'cards' ? (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {filteredAgents.map((agent) => (
-              <Card
-                key={agent.id}
-                className="dark:bg-slate-900/80 dark:border-slate-700/60 dark:text-slate-100 transition hover:shadow-lg hover:shadow-primary/5 dark:hover:shadow-sky-500/10"
-              >
-                <CardHeader>
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-2xl">{agent.icon || '🤖'}</span>
-                        <CardTitle className="text-lg text-foreground dark:text-white">{agent.name}</CardTitle>
+          <>
+            {filteredAgents.length > 0 && (
+              <div className="flex items-center gap-2 mb-2 p-2 bg-muted/30 rounded-lg border">
+                <button
+                  type="button"
+                  onClick={toggleSelectAll}
+                  className="flex items-center gap-2 text-sm hover:text-primary transition-colors"
+                >
+                  {selectedAgentIds.size === filteredAgents.length ? (
+                    <CheckSquare2 className="h-5 w-5" />
+                  ) : (
+                    <Square className="h-5 w-5" />
+                  )}
+                  <span>
+                    {selectedAgentIds.size === filteredAgents.length
+                      ? 'Desmarcar todos'
+                      : 'Selecionar todos'}
+                  </span>
+                </button>
+                {selectedAgentIds.size > 0 && (
+                  <span className="text-sm text-muted-foreground ml-auto">
+                    {selectedAgentIds.size} de {filteredAgents.length} selecionado(s)
+                  </span>
+                )}
+              </div>
+            )}
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {filteredAgents.map((agent) => (
+                <Card
+                  key={agent.id}
+                  className={`dark:bg-slate-900/80 dark:border-slate-700/60 dark:text-slate-100 transition hover:shadow-lg hover:shadow-primary/5 dark:hover:shadow-sky-500/10 ${
+                    selectedAgentIds.has(agent.id) ? 'ring-2 ring-primary' : ''
+                  }`}
+                >
+                  <CardHeader>
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-start gap-2 flex-1">
+                        <button
+                          type="button"
+                          onClick={() => toggleAgentSelection(agent.id)}
+                          className="mt-1 flex-shrink-0"
+                        >
+                          {selectedAgentIds.has(agent.id) ? (
+                            <CheckSquare2 className="h-5 w-5 text-primary" />
+                          ) : (
+                            <Square className="h-5 w-5 text-muted-foreground hover:text-primary transition-colors" />
+                          )}
+                        </button>
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-2xl">{agent.icon || '🤖'}</span>
+                            <CardTitle className="text-lg text-foreground dark:text-white">{agent.name}</CardTitle>
+                          </div>
+                          <Badge
+                            className="mt-2"
+                            variant={agent.active ? 'default' : 'secondary'}
+                          >
+                            {agent.active ? 'Ativo' : 'Inativo'}
+                          </Badge>
+                        </div>
                       </div>
-                      <Badge
-                        className="mt-2"
-                        variant={agent.active ? 'default' : 'secondary'}
-                      >
-                        {agent.active ? 'Ativo' : 'Inativo'}
-                      </Badge>
                     </div>
-                  </div>
-                </CardHeader>
+                  </CardHeader>
                 <CardContent>
                   <p className="text-sm text-muted-foreground mb-4 dark:text-slate-300">
                     {agent.description || 'Sem descrição'}
@@ -662,18 +881,58 @@ export default function AgentsAdminPage() {
               </Card>
             ))}
           </div>
+          </>
         ) : (
-          <div className="space-y-2">
-            {filteredAgents.map((agent) => (
-              <Card
-                key={agent.id}
-                className="dark:bg-slate-900/80 dark:border-slate-700/60 dark:text-slate-100 transition hover:shadow-md hover:shadow-primary/5 dark:hover:shadow-sky-500/10"
-              >
-                <CardContent className="p-4">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex items-start gap-4 flex-1 min-w-0">
-                      <span className="text-3xl flex-shrink-0">{agent.icon || '🤖'}</span>
-                      <div className="flex-1 min-w-0">
+          <>
+            {filteredAgents.length > 0 && (
+              <div className="flex items-center gap-2 mb-2 p-2 bg-muted/30 rounded-lg border">
+                <button
+                  type="button"
+                  onClick={toggleSelectAll}
+                  className="flex items-center gap-2 text-sm hover:text-primary transition-colors"
+                >
+                  {selectedAgentIds.size === filteredAgents.length ? (
+                    <CheckSquare2 className="h-5 w-5" />
+                  ) : (
+                    <Square className="h-5 w-5" />
+                  )}
+                  <span>
+                    {selectedAgentIds.size === filteredAgents.length
+                      ? 'Desmarcar todos'
+                      : 'Selecionar todos'}
+                  </span>
+                </button>
+                {selectedAgentIds.size > 0 && (
+                  <span className="text-sm text-muted-foreground ml-auto">
+                    {selectedAgentIds.size} de {filteredAgents.length} selecionado(s)
+                  </span>
+                )}
+              </div>
+            )}
+            <div className="space-y-2">
+              {filteredAgents.map((agent) => (
+                <Card
+                  key={agent.id}
+                  className={`dark:bg-slate-900/80 dark:border-slate-700/60 dark:text-slate-100 transition hover:shadow-md hover:shadow-primary/5 dark:hover:shadow-sky-500/10 ${
+                    selectedAgentIds.has(agent.id) ? 'ring-2 ring-primary' : ''
+                  }`}
+                >
+                  <CardContent className="p-4">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex items-start gap-4 flex-1 min-w-0">
+                        <button
+                          type="button"
+                          onClick={() => toggleAgentSelection(agent.id)}
+                          className="mt-1 flex-shrink-0"
+                        >
+                          {selectedAgentIds.has(agent.id) ? (
+                            <CheckSquare2 className="h-5 w-5 text-primary" />
+                          ) : (
+                            <Square className="h-5 w-5 text-muted-foreground hover:text-primary transition-colors" />
+                          )}
+                        </button>
+                        <span className="text-3xl flex-shrink-0">{agent.icon || '🤖'}</span>
+                        <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-3 mb-2">
                           <h3 className="text-lg font-semibold text-foreground dark:text-white truncate">
                             {agent.name}
@@ -737,6 +996,7 @@ export default function AgentsAdminPage() {
               </Card>
             ))}
           </div>
+          </>
         )}
 
         {/* Create/Edit Dialog */}
@@ -761,12 +1021,23 @@ export default function AgentsAdminPage() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="icon">Ícone</Label>
-                  <Input
-                    id="icon"
-                    value={formData.icon}
-                    onChange={(e) => setFormData({ ...formData, icon: e.target.value })}
-                    placeholder="🤖"
-                  />
+                  <div className="flex gap-2">
+                    <EmojiPicker
+                      value={formData.icon || ''}
+                      onChange={(emoji) => setFormData({ ...formData, icon: emoji })}
+                    />
+                    {formData.icon && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        onClick={() => setFormData({ ...formData, icon: '' })}
+                        title="Limpar ícone"
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -1050,6 +1321,35 @@ export default function AgentsAdminPage() {
             </form>
           </DialogContent>
         </Dialog>
+
+        {/* Bulk Delete Confirmation */}
+        <AlertDialog open={bulkDeleteConfirm} onOpenChange={setBulkDeleteConfirm}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Confirmar exclusão em massa</AlertDialogTitle>
+              <AlertDialogDescription>
+                Tem certeza que deseja excluir {selectedAgentIds.size} agente(s) selecionado(s)? Esta ação não pode ser desfeita.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleBulkDelete}
+                className="bg-destructive hover:bg-destructive/90"
+                disabled={bulkUpdating}
+              >
+                {bulkUpdating ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Excluindo...
+                  </>
+                ) : (
+                  'Excluir'
+                )}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
         {/* Delete Confirmation */}
         <AlertDialog open={!!deleteAgentId} onOpenChange={() => setDeleteAgentId(null)}>

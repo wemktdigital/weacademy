@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { toast } from '@/hooks/use-toast'
+import { trackLessonStart, trackLessonComplete } from '@/lib/analytics'
 import { 
   ArrowLeft, 
   CheckCircle2, 
@@ -117,6 +118,15 @@ export default function LessonPlayerPage() {
 
       setCurrentLesson(lessonData)
       setModules(courseModules)
+
+      // Rastrear início da lição
+      if (moduleData && courseData) {
+        trackLessonStart(
+          courseData.id,
+          lessonData.id,
+          lessonData.title
+        )
+      }
     } catch (error: any) {
       console.error('Error fetching lesson:', error)
       toast({
@@ -137,7 +147,18 @@ export default function LessonPlayerPage() {
     if (!currentLesson || !user) return
 
     try {
-      // Marcar como concluída
+      // Buscar curso para verificar se deve marcar como completo
+      let courseId: string | null = null
+      if (modules.length > 0 && modules[0].lessons.length > 0) {
+        const { data: moduleData } = await supabase
+          .from('modules')
+          .select('course_id')
+          .eq('id', modules[0].id)
+          .single()
+        courseId = moduleData?.course_id || null
+      }
+
+      // Marcar como concluída (trigger SQL vai adicionar XP automaticamente)
       await supabase
         .from('lesson_progress')
         .upsert({
@@ -147,15 +168,101 @@ export default function LessonPlayerPage() {
           completed_at: new Date().toISOString(),
         })
 
+      // Verificar se todas as aulas do curso foram completadas
+      if (courseId) {
+        try {
+          // Buscar todas as aulas do curso
+          const { data: allLessons } = await supabase
+            .from('modules')
+            .select(`
+              id,
+              lessons:lessons(id)
+            `)
+            .eq('course_id', courseId)
+
+          const allLessonIds = allLessons?.flatMap(m => m.lessons.map((l: any) => l.id)) || []
+
+          // Buscar aulas completadas
+          const { data: completedLessons } = await supabase
+            .from('lesson_progress')
+            .select('lesson_id')
+            .eq('user_id', user.id)
+            .in('lesson_id', allLessonIds)
+            .not('completed_at', 'is', null)
+
+          // Se todas as aulas foram completadas, marcar curso como completo
+          if (allLessonIds.length > 0 && completedLessons && completedLessons.length >= allLessonIds.length) {
+            const { data: enrollment } = await supabase
+              .from('enrollments')
+              .select('id, completed_at')
+              .eq('user_id', user.id)
+              .eq('course_id', courseId)
+              .single()
+
+            if (enrollment && !enrollment.completed_at) {
+              await supabase
+                .from('enrollments')
+                .update({
+                  completed_at: new Date().toISOString(),
+                  progress_percentage: 100,
+                })
+                .eq('id', enrollment.id)
+
+              toast({
+                title: '🎉 Parabéns!',
+                description: 'Curso completo! Você ganhou XP adicional!',
+              })
+            }
+          }
+        } catch (error) {
+          // Ignorar erros de verificação de curso completo
+          console.error('Error checking course completion:', error)
+        }
+      }
+
+      // Verificar achievements (após trigger adicionar XP)
+      try {
+        const { data: sessionData } = await supabase.auth.getSession()
+        const token = sessionData?.session?.access_token
+
+        if (token) {
+          await fetch('/api/gamification/check-achievements', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({ user_id: user.id }),
+          })
+        }
+      } catch (error) {
+        // Ignorar erros de achievements para não bloquear a conclusão da aula
+        console.error('Error checking achievements:', error)
+      }
+
       // Marcar localmente como completa
       setCurrentLesson({ ...currentLesson, completed: true })
 
+      // Rastrear conclusão da lição
+      if (courseId) {
+        trackLessonComplete(
+          courseId,
+          currentLesson.id,
+          currentLesson.title
+        )
+      }
+
       toast({
         title: 'Parabéns!',
-        description: 'Lição concluída',
+        description: 'Lição concluída! Você ganhou XP! 🎉',
       })
     } catch (error) {
       console.error('Error updating progress:', error)
+      toast({
+        title: 'Erro',
+        description: 'Erro ao marcar lição como concluída',
+        variant: 'destructive',
+      })
     }
   }
 

@@ -442,12 +442,14 @@ export default function PipelinesPage() {
 
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {pipelines.map((pipeline) => (
-            <Card key={pipeline.id}>
-              <CardHeader>
+            <Card key={pipeline.id} className="flex flex-col">
+              <CardHeader className="flex-shrink-0">
                 <div className="flex items-start justify-between">
-                  <div>
-                    <CardTitle className="text-lg">{pipeline.name}</CardTitle>
-                    <div className="flex gap-2 mt-2">
+                  <div className="flex-1 min-w-0">
+                    <CardTitle className="text-lg truncate" title={pipeline.name}>
+                      {pipeline.name}
+                    </CardTitle>
+                    <div className="flex gap-2 mt-2 flex-wrap">
                       <Badge variant={pipeline.active ? 'default' : 'secondary'}>
                         {pipeline.active ? 'Ativo' : 'Inativo'}
                       </Badge>
@@ -460,22 +462,30 @@ export default function PipelinesPage() {
                   </div>
                 </div>
               </CardHeader>
-              <CardContent>
-                <p className="text-sm text-muted-foreground mb-4">
+              <CardContent className="flex-1 flex flex-col min-h-0">
+                <p className="text-sm text-muted-foreground mb-4 line-clamp-2" title={pipeline.description || 'Sem descrição'}>
                   {pipeline.description || 'Sem descrição'}
                 </p>
-                <div className="space-y-2 text-sm mb-4">
+                <div className="space-y-2 text-sm mb-4 flex-shrink-0">
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Etapas:</span>
                     <span className="font-semibold">{pipeline.steps?.length || 0}</span>
                   </div>
                   <div className="text-muted-foreground">
                     <div className="flex flex-wrap gap-1">
-                      {pipeline.steps?.slice(0, 3).map((step, i) => (
-                        <Badge key={i} variant="outline" className="text-xs">
-                          {getAgentName(step.agent_id).slice(0, 15)}...
+                      {pipeline.steps?.slice(0, 3).map((step, i) => {
+                        const agentName = getAgentName(step.agent_id)
+                        return (
+                          <Badge key={i} variant="outline" className="text-xs" title={agentName}>
+                            {agentName.length > 15 ? `${agentName.slice(0, 15)}...` : agentName}
+                          </Badge>
+                        )
+                      })}
+                      {pipeline.steps && pipeline.steps.length > 3 && (
+                        <Badge variant="outline" className="text-xs">
+                          +{pipeline.steps.length - 3}
                         </Badge>
-                      ))}
+                      )}
                     </div>
                   </div>
                   {pipeline.last_tested_at && (
@@ -484,11 +494,12 @@ export default function PipelinesPage() {
                     </div>
                   )}
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2 mt-auto pt-4">
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => setTestingPipeline(pipeline)}
+                    className="flex-shrink-0"
                   >
                     <FlaskConical className="h-4 w-4 mr-1" />
                     Testar
@@ -497,6 +508,7 @@ export default function PipelinesPage() {
                     variant="outline"
                     size="sm"
                     onClick={() => setDebugPipeline(pipeline)}
+                    className="flex-shrink-0"
                   >
                     <Bug className="h-4 w-4 mr-1" />
                     Debug
@@ -505,6 +517,7 @@ export default function PipelinesPage() {
                     variant="outline"
                     size="sm"
                     onClick={() => setVersionsPipeline(pipeline)}
+                    className="flex-shrink-0"
                   >
                     <GitBranch className="h-4 w-4 mr-1" />
                     Versões
@@ -513,6 +526,7 @@ export default function PipelinesPage() {
                     variant="outline"
                     size="sm"
                     onClick={() => router.push(`/ai-lab/admin/pipelines/${pipeline.id}/analytics`)}
+                    className="flex-shrink-0"
                   >
                     <Brain className="h-4 w-4 mr-1" />
                     Analytics
@@ -521,14 +535,16 @@ export default function PipelinesPage() {
                     variant="outline"
                     size="sm"
                     onClick={() => router.push(`/ai-lab/admin/pipelines/editor?id=${pipeline.id}`)}
+                    className="flex-shrink-0"
                   >
                     <Workflow className="h-4 w-4 mr-1" />
-                    Editar Visual
+                    Editor
                   </Button>
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => handleEdit(pipeline)}
+                    className="flex-shrink-0"
                   >
                     Editar
                   </Button>
@@ -536,6 +552,7 @@ export default function PipelinesPage() {
                     variant="destructive"
                     size="sm"
                     onClick={() => setDeletePipelineId(pipeline.id)}
+                    className="flex-shrink-0"
                   >
                     Excluir
                   </Button>

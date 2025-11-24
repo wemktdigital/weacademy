@@ -122,7 +122,7 @@ export default function HumanTasksAdminPage() {
 
         if (error) throw error
 
-        if (!profile || !['admin', 'gestor_we'].includes(profile.role)) {
+        if (!profile || profile.role !== 'admin') {
           router.push('/ai-lab')
           return
         }
@@ -163,6 +163,14 @@ export default function HumanTasksAdminPage() {
   const fetchTasks = async () => {
     setLoading(true)
     try {
+      // Obter token de autenticação
+      const { data: sessionData } = await supabase.auth.getSession()
+      const token = sessionData?.session?.access_token
+
+      if (!token) {
+        throw new Error('Não autenticado. Por favor, faça login novamente.')
+      }
+
       const params = new URLSearchParams()
       if (statusFilter && statusFilter !== 'all') {
         params.set('status', statusFilter)
@@ -171,7 +179,12 @@ export default function HumanTasksAdminPage() {
         params.set('include_completed', 'true')
       }
 
-      const response = await fetch(`/api/lab-ia/workflows/human-tasks?${params.toString()}`)
+      const response = await fetch(`/api/lab-ia/workflows/human-tasks?${params.toString()}`, {
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+      })
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}))
         throw new Error(payload.error || 'Erro ao listar tarefas')
@@ -215,7 +228,20 @@ export default function HumanTasksAdminPage() {
     setTaskLogs([])
     setTaskLogsLoading(true)
     try {
-      const response = await fetch(`/api/lab-ia/workflows/human-tasks/${task.id}`)
+      // Obter token de autenticação
+      const { data: sessionData } = await supabase.auth.getSession()
+      const token = sessionData?.session?.access_token
+
+      if (!token) {
+        throw new Error('Não autenticado. Por favor, faça login novamente.')
+      }
+
+      const response = await fetch(`/api/lab-ia/workflows/human-tasks/${task.id}`, {
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+      })
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}))
         throw new Error(payload.error || 'Erro ao carregar detalhes')

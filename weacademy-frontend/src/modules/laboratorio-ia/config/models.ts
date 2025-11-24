@@ -148,6 +148,26 @@ export const AVAILABLE_MODELS: LLMModel[] = [
   },
   {
     provider: 'Google',
+    model: 'gemini-3-pro-preview-high',
+    displayName: 'Gemini 3 Pro (High Thinking)',
+    icon: '🧠',
+    capabilities: {
+      input: ['text', 'image', 'audio', 'video'],
+      output: ['text'],
+    },
+  },
+  {
+    provider: 'Google',
+    model: 'gemini-3-pro-preview-low',
+    displayName: 'Gemini 3 Pro (Low Thinking)',
+    icon: '⚡🧠',
+    capabilities: {
+      input: ['text', 'image', 'audio', 'video'],
+      output: ['text'],
+    },
+  },
+  {
+    provider: 'Google',
     model: 'gemini-2.5-pro',
     displayName: 'Gemini 2.5 Pro',
     icon: '💎',
@@ -169,11 +189,11 @@ export const AVAILABLE_MODELS: LLMModel[] = [
   {
     provider: 'Google',
     model: 'gemini-2.5-flash-image',
-    displayName: 'Gemini 2.5 Flash Image',
-    icon: '🖼️',
+    displayName: 'Nano Banana',
+    icon: '🍌',
     capabilities: {
       input: ['text', 'image'],
-      output: ['text'],
+      output: ['image'],
     },
   },
   {
@@ -194,6 +214,16 @@ export const AVAILABLE_MODELS: LLMModel[] = [
     capabilities: {
       input: ['text', 'image'],
       output: ['video'],
+    },
+  },
+  {
+    provider: 'Google',
+    model: 'lyria-realtime-exp',
+    displayName: 'Lyria RealTime',
+    icon: '🎵',
+    capabilities: {
+      input: ['text'],
+      output: ['audio'],
     },
   },
   {

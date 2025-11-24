@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
         hour: '2-digit',
         minute: '2-digit',
       })
-      const role = msg.role === 'user' ? '**Você**' : '**Assistente**'
+      const role = msg.role === 'user' ? '**Você**' : '**WE IA**'
       markdown += `## ${role} - ${time}\n\n`
       markdown += `${msg.content}\n\n`
       if (msg.is_favorite) {

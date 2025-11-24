@@ -1,18 +1,46 @@
-import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase'
-import { listMemories, clearAllMemories } from '@/modules/laboratorio-ia/services/memory'
+import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
+import { supabaseServer } from '@/lib/supabaseServer'
+import { listMemories, clearAllMemories, remember } from '@/modules/laboratorio-ia/services/memory'
 
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
   try {
-    const supabase = await createClient()
+    // Verificar autenticação - tentar token primeiro, depois cookies
+    let user = null
     
-    // Verificar autenticação
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
+    const authHeader = request.headers.get('authorization')
+    const token = authHeader?.replace('Bearer ', '')
+    
+    if (token) {
+      // Tentar autenticar com token do header
+      const supabaseWithToken = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        {
+          global: {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          },
+        }
+      )
+      
+      const { data: { user: tokenUser }, error: tokenError } = await supabaseWithToken.auth.getUser(token)
+      if (!tokenError && tokenUser) {
+        user = tokenUser
+      }
+    }
+    
+    // Se não autenticou via token, tentar via cookies
+    if (!user) {
+      const sb = await supabaseServer()
+      const { data: { user: cookieUser }, error: authErr } = await sb.auth.getUser()
+      if (!authErr && cookieUser) {
+        user = cookieUser
+      }
+    }
 
-    if (authError || !user) {
+    if (!user) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
@@ -39,17 +67,124 @@ export async function GET(request: Request) {
   }
 }
 
-export async function DELETE(request: Request) {
+export async function POST(request: NextRequest) {
   try {
-    const supabase = await createClient()
+    // Verificar autenticação - tentar token primeiro, depois cookies
+    let user = null
     
-    // Verificar autenticação
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser()
+    const authHeader = request.headers.get('authorization')
+    const token = authHeader?.replace('Bearer ', '')
+    
+    if (token) {
+      // Tentar autenticar com token do header
+      const supabaseWithToken = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        {
+          global: {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          },
+        }
+      )
+      
+      const { data: { user: tokenUser }, error: tokenError } = await supabaseWithToken.auth.getUser(token)
+      if (!tokenError && tokenUser) {
+        user = tokenUser
+      }
+    }
+    
+    // Se não autenticou via token, tentar via cookies
+    if (!user) {
+      const sb = await supabaseServer()
+      const { data: { user: cookieUser }, error: authErr } = await sb.auth.getUser()
+      if (!authErr && cookieUser) {
+        user = cookieUser
+      }
+    }
 
-    if (authError || !user) {
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      )
+    }
+
+    // Obter dados do body
+    const body = await request.json()
+    const { key, value, importance, agentId } = body
+
+    // Validar dados
+    if (!key || typeof key !== 'string' || !value || typeof value !== 'string') {
+      return NextResponse.json(
+        { error: 'Invalid parameters. key and value are required and must be strings.' },
+        { status: 400 }
+      )
+    }
+
+    // Validar importância
+    const validImportance = importance && typeof importance === 'number' && importance >= 1 && importance <= 5
+      ? importance
+      : 1
+
+    // Criar/atualizar memória (remember faz upsert)
+    await remember({
+      userId: user.id,
+      agentId: agentId || null,
+      key: key.trim(),
+      value: value.trim(),
+      importance: validImportance,
+    })
+
+    return NextResponse.json({ success: true })
+  } catch (error: any) {
+    console.error('Error creating memory:', error)
+    return NextResponse.json(
+      { error: error.message || 'Internal server error' },
+      { status: 500 }
+    )
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    // Verificar autenticação - tentar token primeiro, depois cookies
+    let user = null
+    
+    const authHeader = request.headers.get('authorization')
+    const token = authHeader?.replace('Bearer ', '')
+    
+    if (token) {
+      // Tentar autenticar com token do header
+      const supabaseWithToken = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        {
+          global: {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          },
+        }
+      )
+      
+      const { data: { user: tokenUser }, error: tokenError } = await supabaseWithToken.auth.getUser(token)
+      if (!tokenError && tokenUser) {
+        user = tokenUser
+      }
+    }
+    
+    // Se não autenticou via token, tentar via cookies
+    if (!user) {
+      const sb = await supabaseServer()
+      const { data: { user: cookieUser }, error: authErr } = await sb.auth.getUser()
+      if (!authErr && cookieUser) {
+        user = cookieUser
+      }
+    }
+
+    if (!user) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }

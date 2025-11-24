@@ -97,7 +97,7 @@ export async function GET(
       .eq('id', user.id)
       .single()
 
-    if (!profile || !['admin', 'gestor_we'].includes(profile.role)) {
+    if (!profile || profile.role !== 'admin') {
       return NextResponse.json(
         { error: 'Acesso negado' },
         { status: 403 }

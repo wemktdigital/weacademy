@@ -187,6 +187,15 @@
   }
 }
 
+@keyframes glow {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(234, 179, 8, 0.4), 0 0 40px rgba(234, 179, 8, 0.2);
+  }
+  50% {
+    box-shadow: 0 0 30px rgba(234, 179, 8, 0.6), 0 0 60px rgba(234, 179, 8, 0.3);
+  }
+}
+
 @keyframes pulse {
   0%, 100% {
     opacity: 1;
@@ -247,11 +256,23 @@ p, span {
 /* Botões WE */
 .we-btn-primary {
   background-color: var(--we-primary);
-  color: var(--we-white);
+  color: var(--we-white) !important;
   border-radius: 10px;
   padding: 0.75rem 1.5rem;
   font-weight: 600;
   transition: all 0.2s ease;
+}
+
+/* Garantir que todos os botões com bg-primary tenham texto branco */
+[class*="bg-primary"]:where(button, a, [role="button"]),
+button[class*="bg-primary"],
+a[class*="bg-primary"] {
+  color: var(--we-white) !important;
+}
+
+/* Garantir que textos dentro de botões azuis sejam brancos */
+[class*="bg-primary"] * {
+  color: var(--we-white) !important;
 }
 
 .we-btn-primary:hover {

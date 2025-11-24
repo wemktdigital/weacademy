@@ -55,7 +55,7 @@ export async function GET(
       .select('*')
       .eq('pipeline_id', pipelineId)
 
-    if (!profile || !['admin', 'gestor_we', 'gestor'].includes(profile.role)) {
+    if (!profile || profile.role !== 'admin') {
       query = query.eq('user_id', user.id)
     }
 
@@ -144,7 +144,7 @@ export async function POST(
       .eq('id', user.id)
       .single()
 
-    const isAdmin = profile && ['admin', 'gestor_we', 'gestor'].includes(profile.role)
+    const isAdmin = profile && profile.role === 'admin'
     if (pipeline.user_id !== user.id && !isAdmin) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
