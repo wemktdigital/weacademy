@@ -74,10 +74,12 @@ CREATE INDEX IF NOT EXISTS idx_quiz_attempts_user ON public.quiz_attempts(user_i
 CREATE INDEX IF NOT EXISTS idx_quiz_attempts_submitted ON public.quiz_attempts(submitted_at);
 
 -- Triggers
+DROP TRIGGER IF EXISTS update_quizzes_updated_at ON public.quizzes;
 CREATE TRIGGER update_quizzes_updated_at 
     BEFORE UPDATE ON public.quizzes 
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_questions_updated_at ON public.questions;
 CREATE TRIGGER update_questions_updated_at 
     BEFORE UPDATE ON public.questions 
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
@@ -160,6 +162,7 @@ ALTER TABLE public.question_options ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.quiz_attempts ENABLE ROW LEVEL SECURITY;
 
 -- Políticas para quizzes
+DROP POLICY IF EXISTS "Anyone can view quizzes of published courses" ON public.quizzes;
 CREATE POLICY "Anyone can view quizzes of published courses"
     ON public.quizzes FOR SELECT 
     USING (
@@ -172,6 +175,7 @@ CREATE POLICY "Anyone can view quizzes of published courses"
         )
     );
 
+DROP POLICY IF EXISTS "Instructors can manage quizzes of their courses" ON public.quizzes;
 CREATE POLICY "Instructors can manage quizzes of their courses"
     ON public.quizzes FOR ALL 
     USING (
@@ -185,6 +189,7 @@ CREATE POLICY "Instructors can manage quizzes of their courses"
     );
 
 -- Políticas para questions
+DROP POLICY IF EXISTS "Anyone can view questions of published courses" ON public.questions;
 CREATE POLICY "Anyone can view questions of published courses"
     ON public.questions FOR SELECT 
     USING (
@@ -198,6 +203,7 @@ CREATE POLICY "Anyone can view questions of published courses"
         )
     );
 
+DROP POLICY IF EXISTS "Instructors can manage questions" ON public.questions;
 CREATE POLICY "Instructors can manage questions"
     ON public.questions FOR ALL 
     USING (
@@ -212,6 +218,7 @@ CREATE POLICY "Instructors can manage questions"
     );
 
 -- Políticas para question_options
+DROP POLICY IF EXISTS "Anyone can view question options" ON public.question_options;
 CREATE POLICY "Anyone can view question options"
     ON public.question_options FOR SELECT 
     USING (
@@ -221,6 +228,7 @@ CREATE POLICY "Anyone can view question options"
         )
     );
 
+DROP POLICY IF EXISTS "Instructors can manage question options" ON public.question_options;
 CREATE POLICY "Instructors can manage question options"
     ON public.question_options FOR ALL 
     USING (
@@ -236,14 +244,17 @@ CREATE POLICY "Instructors can manage question options"
     );
 
 -- Políticas para quiz_attempts
+DROP POLICY IF EXISTS "Users can view their own quiz attempts" ON public.quiz_attempts;
 CREATE POLICY "Users can view their own quiz attempts"
     ON public.quiz_attempts FOR SELECT 
     USING (user_id = auth.uid());
 
+DROP POLICY IF EXISTS "Users can submit quiz attempts" ON public.quiz_attempts;
 CREATE POLICY "Users can submit quiz attempts"
     ON public.quiz_attempts FOR INSERT 
     WITH CHECK (user_id = auth.uid());
 
+DROP POLICY IF EXISTS "Users can update their own quiz attempts" ON public.quiz_attempts;
 CREATE POLICY "Users can update their own quiz attempts"
     ON public.quiz_attempts FOR UPDATE 
     USING (user_id = auth.uid());

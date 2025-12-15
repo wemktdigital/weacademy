@@ -133,6 +133,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS update_lab_workflows_updated_at ON public.lab_workflows;
 CREATE TRIGGER update_lab_workflows_updated_at
   BEFORE UPDATE ON public.lab_workflows
   FOR EACH ROW EXECUTE FUNCTION update_timestamp_column();

@@ -19,11 +19,13 @@ CREATE INDEX IF NOT EXISTS idx_lab_agent_logs_created_at ON lab_agent_logs(creat
 ALTER TABLE lab_agent_logs ENABLE ROW LEVEL SECURITY;
 
 -- Políticas RLS para lab_agent_logs
+DROP POLICY IF EXISTS "Users can view their own agent logs" ON lab_agent_logs;
 CREATE POLICY "Users can view their own agent logs"
   ON lab_agent_logs
   FOR SELECT
   USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can insert their own agent logs" ON lab_agent_logs;
 CREATE POLICY "Users can insert their own agent logs"
   ON lab_agent_logs
   FOR INSERT

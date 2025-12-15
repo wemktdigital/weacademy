@@ -39,6 +39,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- Trigger para atualizar updated_at
+DROP TRIGGER IF EXISTS update_lab_pipelines_timestamp_trigger ON lab_agent_pipelines;
 CREATE TRIGGER update_lab_pipelines_timestamp_trigger
 BEFORE UPDATE ON lab_agent_pipelines
 FOR EACH ROW
@@ -49,11 +50,13 @@ ALTER TABLE lab_agent_pipelines ENABLE ROW LEVEL SECURITY;
 ALTER TABLE lab_pipeline_logs ENABLE ROW LEVEL SECURITY;
 
 -- Políticas RLS - Pipelines
+DROP POLICY IF EXISTS "Anyone can view active pipelines" ON lab_agent_pipelines;
 CREATE POLICY "Anyone can view active pipelines"
   ON lab_agent_pipelines
   FOR SELECT
   USING (active = true);
 
+DROP POLICY IF EXISTS "Admins can view all pipelines" ON lab_agent_pipelines;
 CREATE POLICY "Admins can view all pipelines"
   ON lab_agent_pipelines
   FOR SELECT
@@ -65,6 +68,7 @@ CREATE POLICY "Admins can view all pipelines"
     )
   );
 
+DROP POLICY IF EXISTS "Admins can manage pipelines" ON lab_agent_pipelines;
 CREATE POLICY "Admins can manage pipelines"
   ON lab_agent_pipelines
   FOR ALL
@@ -77,11 +81,13 @@ CREATE POLICY "Admins can manage pipelines"
   );
 
 -- Políticas RLS - Logs
+DROP POLICY IF EXISTS "Users can view their own pipeline logs" ON lab_pipeline_logs;
 CREATE POLICY "Users can view their own pipeline logs"
   ON lab_pipeline_logs
   FOR SELECT
   USING (user_id = auth.uid());
 
+DROP POLICY IF EXISTS "Admins can view all pipeline logs" ON lab_pipeline_logs;
 CREATE POLICY "Admins can view all pipeline logs"
   ON lab_pipeline_logs
   FOR SELECT
@@ -93,6 +99,7 @@ CREATE POLICY "Admins can view all pipeline logs"
     )
   );
 
+DROP POLICY IF EXISTS "System can insert pipeline logs" ON lab_pipeline_logs;
 CREATE POLICY "System can insert pipeline logs"
   ON lab_pipeline_logs
   FOR INSERT

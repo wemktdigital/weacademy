@@ -28,19 +28,23 @@ CREATE INDEX IF NOT EXISTS idx_lab_model_feedback_category
 ALTER TABLE public.lab_model_feedback ENABLE ROW LEVEL SECURITY;
 
 -- Política: usuário vê apenas seus feedbacks
+DROP POLICY IF EXISTS "Users can view their own model feedback" ON public.lab_model_feedback;
 CREATE POLICY "Users can view their own model feedback"
   ON public.lab_model_feedback FOR SELECT
   USING (auth.uid() = user_id);
 
 -- Política: usuário pode inserir/atualizar seus feedbacks
+DROP POLICY IF EXISTS "Users can insert their own model feedback" ON public.lab_model_feedback;
 CREATE POLICY "Users can insert their own model feedback"
   ON public.lab_model_feedback FOR INSERT
   WITH CHECK (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can update their own model feedback" ON public.lab_model_feedback;
 CREATE POLICY "Users can update their own model feedback"
   ON public.lab_model_feedback FOR UPDATE
   USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can delete their own model feedback" ON public.lab_model_feedback;
 CREATE POLICY "Users can delete their own model feedback"
   ON public.lab_model_feedback FOR DELETE
   USING (auth.uid() = user_id);

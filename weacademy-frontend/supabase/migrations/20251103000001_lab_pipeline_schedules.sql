@@ -97,11 +97,13 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS update_lab_pipeline_schedules_updated_at ON public.lab_pipeline_schedules;
 CREATE TRIGGER update_lab_pipeline_schedules_updated_at
     BEFORE UPDATE ON public.lab_pipeline_schedules
     FOR EACH ROW
     EXECUTE FUNCTION update_lab_pipeline_schedules_updated_at();
 
+DROP TRIGGER IF EXISTS update_lab_pipeline_webhooks_updated_at ON public.lab_pipeline_webhooks;
 CREATE TRIGGER update_lab_pipeline_webhooks_updated_at
     BEFORE UPDATE ON public.lab_pipeline_webhooks
     FOR EACH ROW
@@ -114,12 +116,14 @@ ALTER TABLE public.lab_pipeline_webhooks ENABLE ROW LEVEL SECURITY;
 
 -- Políticas para lab_pipeline_schedules
 -- Usuários podem ver seus próprios agendamentos
+DROP POLICY IF EXISTS "Users can view their own schedules" ON public.lab_pipeline_schedules;
 CREATE POLICY "Users can view their own schedules"
     ON public.lab_pipeline_schedules
     FOR SELECT
     USING (auth.uid() = user_id);
 
 -- Admins podem ver todos os agendamentos
+DROP POLICY IF EXISTS "Admins can view all schedules" ON public.lab_pipeline_schedules;
 CREATE POLICY "Admins can view all schedules"
     ON public.lab_pipeline_schedules
     FOR SELECT
@@ -132,24 +136,28 @@ CREATE POLICY "Admins can view all schedules"
     );
 
 -- Usuários podem criar seus próprios agendamentos
+DROP POLICY IF EXISTS "Users can create their own schedules" ON public.lab_pipeline_schedules;
 CREATE POLICY "Users can create their own schedules"
     ON public.lab_pipeline_schedules
     FOR INSERT
     WITH CHECK (auth.uid() = user_id);
 
 -- Usuários podem atualizar seus próprios agendamentos
+DROP POLICY IF EXISTS "Users can update their own schedules" ON public.lab_pipeline_schedules;
 CREATE POLICY "Users can update their own schedules"
     ON public.lab_pipeline_schedules
     FOR UPDATE
     USING (auth.uid() = user_id);
 
 -- Usuários podem deletar seus próprios agendamentos
+DROP POLICY IF EXISTS "Users can delete their own schedules" ON public.lab_pipeline_schedules;
 CREATE POLICY "Users can delete their own schedules"
     ON public.lab_pipeline_schedules
     FOR DELETE
     USING (auth.uid() = user_id);
 
 -- Admins podem gerenciar todos os agendamentos
+DROP POLICY IF EXISTS "Admins can manage all schedules" ON public.lab_pipeline_schedules;
 CREATE POLICY "Admins can manage all schedules"
     ON public.lab_pipeline_schedules
     FOR ALL
@@ -163,12 +171,14 @@ CREATE POLICY "Admins can manage all schedules"
 
 -- Políticas para lab_pipeline_schedule_runs
 -- Usuários podem ver execuções de seus próprios agendamentos
+DROP POLICY IF EXISTS "Users can view their own schedule runs" ON public.lab_pipeline_schedule_runs;
 CREATE POLICY "Users can view their own schedule runs"
     ON public.lab_pipeline_schedule_runs
     FOR SELECT
     USING (auth.uid() = user_id);
 
 -- Admins podem ver todas as execuções
+DROP POLICY IF EXISTS "Admins can view all schedule runs" ON public.lab_pipeline_schedule_runs;
 CREATE POLICY "Admins can view all schedule runs"
     ON public.lab_pipeline_schedule_runs
     FOR SELECT
@@ -182,6 +192,7 @@ CREATE POLICY "Admins can view all schedule runs"
 
 -- Políticas para lab_pipeline_webhooks
 -- Usuários podem ver webhooks de seus próprios agendamentos
+DROP POLICY IF EXISTS "Users can view their own webhooks" ON public.lab_pipeline_webhooks;
 CREATE POLICY "Users can view their own webhooks"
     ON public.lab_pipeline_webhooks
     FOR SELECT
@@ -194,6 +205,7 @@ CREATE POLICY "Users can view their own webhooks"
     );
 
 -- Admins podem ver todos os webhooks
+DROP POLICY IF EXISTS "Admins can view all webhooks" ON public.lab_pipeline_webhooks;
 CREATE POLICY "Admins can view all webhooks"
     ON public.lab_pipeline_webhooks
     FOR SELECT
@@ -206,6 +218,7 @@ CREATE POLICY "Admins can view all webhooks"
     );
 
 -- Usuários podem criar webhooks para seus próprios agendamentos
+DROP POLICY IF EXISTS "Users can create webhooks for their schedules" ON public.lab_pipeline_webhooks;
 CREATE POLICY "Users can create webhooks for their schedules"
     ON public.lab_pipeline_webhooks
     FOR INSERT
@@ -218,6 +231,7 @@ CREATE POLICY "Users can create webhooks for their schedules"
     );
 
 -- Usuários podem atualizar webhooks de seus próprios agendamentos
+DROP POLICY IF EXISTS "Users can update their own webhooks" ON public.lab_pipeline_webhooks;
 CREATE POLICY "Users can update their own webhooks"
     ON public.lab_pipeline_webhooks
     FOR UPDATE
@@ -230,6 +244,7 @@ CREATE POLICY "Users can update their own webhooks"
     );
 
 -- Usuários podem deletar webhooks de seus próprios agendamentos
+DROP POLICY IF EXISTS "Users can delete their own webhooks" ON public.lab_pipeline_webhooks;
 CREATE POLICY "Users can delete their own webhooks"
     ON public.lab_pipeline_webhooks
     FOR DELETE
@@ -242,6 +257,7 @@ CREATE POLICY "Users can delete their own webhooks"
     );
 
 -- Admins podem gerenciar todos os webhooks
+DROP POLICY IF EXISTS "Admins can manage all webhooks" ON public.lab_pipeline_webhooks;
 CREATE POLICY "Admins can manage all webhooks"
     ON public.lab_pipeline_webhooks
     FOR ALL

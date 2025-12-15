@@ -111,11 +111,13 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS update_lab_knowledge_bases_updated_at ON public.lab_knowledge_bases;
 CREATE TRIGGER update_lab_knowledge_bases_updated_at
     BEFORE UPDATE ON public.lab_knowledge_bases
     FOR EACH ROW
     EXECUTE FUNCTION update_lab_knowledge_base_updated_at();
 
+DROP TRIGGER IF EXISTS update_lab_knowledge_documents_updated_at ON public.lab_knowledge_documents;
 CREATE TRIGGER update_lab_knowledge_documents_updated_at
     BEFORE UPDATE ON public.lab_knowledge_documents
     FOR EACH ROW
@@ -188,11 +190,13 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS update_kb_document_counters ON public.lab_knowledge_documents;
 CREATE TRIGGER update_kb_document_counters
     AFTER INSERT OR DELETE ON public.lab_knowledge_documents
     FOR EACH ROW
     EXECUTE FUNCTION update_knowledge_base_counters();
 
+DROP TRIGGER IF EXISTS update_kb_chunk_counters ON public.lab_knowledge_chunks;
 CREATE TRIGGER update_kb_chunk_counters
     AFTER INSERT OR DELETE ON public.lab_knowledge_chunks
     FOR EACH ROW
@@ -205,12 +209,14 @@ ALTER TABLE public.lab_knowledge_chunks ENABLE ROW LEVEL SECURITY;
 
 -- Políticas para lab_knowledge_bases
 -- Usuários podem ver suas próprias knowledge bases
+DROP POLICY IF EXISTS "Users can view their own knowledge bases" ON public.lab_knowledge_bases;
 CREATE POLICY "Users can view their own knowledge bases"
     ON public.lab_knowledge_bases
     FOR SELECT
     USING (auth.uid() = user_id);
 
 -- Admins podem ver todas as knowledge bases
+DROP POLICY IF EXISTS "Admins can view all knowledge bases" ON public.lab_knowledge_bases;
 CREATE POLICY "Admins can view all knowledge bases"
     ON public.lab_knowledge_bases
     FOR SELECT
@@ -223,24 +229,28 @@ CREATE POLICY "Admins can view all knowledge bases"
     );
 
 -- Usuários podem criar suas próprias knowledge bases
+DROP POLICY IF EXISTS "Users can create their own knowledge bases" ON public.lab_knowledge_bases;
 CREATE POLICY "Users can create their own knowledge bases"
     ON public.lab_knowledge_bases
     FOR INSERT
     WITH CHECK (auth.uid() = user_id);
 
 -- Usuários podem atualizar suas próprias knowledge bases
+DROP POLICY IF EXISTS "Users can update their own knowledge bases" ON public.lab_knowledge_bases;
 CREATE POLICY "Users can update their own knowledge bases"
     ON public.lab_knowledge_bases
     FOR UPDATE
     USING (auth.uid() = user_id);
 
 -- Usuários podem deletar suas próprias knowledge bases
+DROP POLICY IF EXISTS "Users can delete their own knowledge bases" ON public.lab_knowledge_bases;
 CREATE POLICY "Users can delete their own knowledge bases"
     ON public.lab_knowledge_bases
     FOR DELETE
     USING (auth.uid() = user_id);
 
 -- Admins podem gerenciar todas as knowledge bases
+DROP POLICY IF EXISTS "Admins can manage all knowledge bases" ON public.lab_knowledge_bases;
 CREATE POLICY "Admins can manage all knowledge bases"
     ON public.lab_knowledge_bases
     FOR ALL
@@ -253,6 +263,7 @@ CREATE POLICY "Admins can manage all knowledge bases"
     );
 
 -- Políticas para lab_knowledge_documents (herdam acesso da knowledge base)
+DROP POLICY IF EXISTS "Users can manage documents in their knowledge bases" ON public.lab_knowledge_documents;
 CREATE POLICY "Users can manage documents in their knowledge bases"
     ON public.lab_knowledge_documents
     FOR ALL
@@ -264,6 +275,7 @@ CREATE POLICY "Users can manage documents in their knowledge bases"
         )
     );
 
+DROP POLICY IF EXISTS "Admins can manage all documents" ON public.lab_knowledge_documents;
 CREATE POLICY "Admins can manage all documents"
     ON public.lab_knowledge_documents
     FOR ALL
@@ -276,6 +288,7 @@ CREATE POLICY "Admins can manage all documents"
     );
 
 -- Políticas para lab_knowledge_chunks (herdam acesso da knowledge base)
+DROP POLICY IF EXISTS "Users can manage chunks in their knowledge bases" ON public.lab_knowledge_chunks;
 CREATE POLICY "Users can manage chunks in their knowledge bases"
     ON public.lab_knowledge_chunks
     FOR ALL
@@ -287,6 +300,7 @@ CREATE POLICY "Users can manage chunks in their knowledge bases"
         )
     );
 
+DROP POLICY IF EXISTS "Admins can manage all chunks" ON public.lab_knowledge_chunks;
 CREATE POLICY "Admins can manage all chunks"
     ON public.lab_knowledge_chunks
     FOR ALL

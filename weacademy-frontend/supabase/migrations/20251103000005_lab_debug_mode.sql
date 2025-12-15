@@ -69,6 +69,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS update_lab_debug_sessions_updated_at ON public.lab_pipeline_debug_sessions;
 CREATE TRIGGER update_lab_debug_sessions_updated_at
     BEFORE UPDATE ON public.lab_pipeline_debug_sessions
     FOR EACH ROW
@@ -121,12 +122,14 @@ ALTER TABLE public.lab_pipeline_debug_sessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.lab_pipeline_debug_snapshots ENABLE ROW LEVEL SECURITY;
 
 -- Políticas para debug sessions
+DROP POLICY IF EXISTS "Users can manage their own debug sessions" ON public.lab_pipeline_debug_sessions;
 CREATE POLICY "Users can manage their own debug sessions"
     ON public.lab_pipeline_debug_sessions
     FOR ALL
     USING (auth.uid() = user_id);
 
 -- Admins podem ver todas as sessões
+DROP POLICY IF EXISTS "Admins can view all debug sessions" ON public.lab_pipeline_debug_sessions;
 CREATE POLICY "Admins can view all debug sessions"
     ON public.lab_pipeline_debug_sessions
     FOR SELECT
@@ -139,6 +142,7 @@ CREATE POLICY "Admins can view all debug sessions"
     );
 
 -- Políticas para snapshots
+DROP POLICY IF EXISTS "Users can manage snapshots of their sessions" ON public.lab_pipeline_debug_snapshots;
 CREATE POLICY "Users can manage snapshots of their sessions"
     ON public.lab_pipeline_debug_snapshots
     FOR ALL

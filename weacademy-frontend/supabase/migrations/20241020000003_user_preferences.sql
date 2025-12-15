@@ -84,9 +84,11 @@ CREATE TABLE IF NOT EXISTS public.profile_changes (
 -- Políticas para logs de mudanças
 ALTER TABLE public.profile_changes ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view their own profile changes" ON public.profile_changes;
 CREATE POLICY "Users can view their own profile changes" ON public.profile_changes
     FOR SELECT USING (user_id = auth.uid());
 
+DROP POLICY IF EXISTS "Users can insert their own profile changes" ON public.profile_changes;
 CREATE POLICY "Users can insert their own profile changes" ON public.profile_changes
     FOR INSERT WITH CHECK (user_id = auth.uid());
 
@@ -127,6 +129,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS profile_change_log_trigger ON public.profiles;
 CREATE TRIGGER profile_change_log_trigger
     AFTER UPDATE ON public.profiles
     FOR EACH ROW

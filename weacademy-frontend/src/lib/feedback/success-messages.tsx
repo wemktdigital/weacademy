@@ -1,5 +1,6 @@
 'use client'
 
+import React from 'react'
 import { CheckCircle2, Star, Trophy, Sparkles, Award } from 'lucide-react'
 import type { ReactNode } from 'react'
 
@@ -23,50 +24,57 @@ export interface SuccessMessage {
   variant: 'default' | 'success' | 'achievement'
 }
 
-const SUCCESS_MESSAGES: Record<string, { title: string; icon?: ReactNode; variant?: 'default' | 'success' | 'achievement' }> = {
+// Funções auxiliares para criar ícones usando React.createElement para evitar problemas de parsing
+const createStarIcon = () => React.createElement(Star, { className: "h-5 w-5 text-yellow-500" })
+const createCheckIcon = () => React.createElement(CheckCircle2, { className: "h-5 w-5 text-green-500" })
+const createSparklesIcon = () => React.createElement(Sparkles, { className: "h-5 w-5 text-primary" })
+const createTrophyIcon = () => React.createElement(Trophy, { className: "h-5 w-5 text-yellow-500" })
+const createAwardIcon = () => React.createElement(Award, { className: "h-5 w-5 text-primary" })
+
+const SUCCESS_MESSAGES: Record<string, { title: string; icon?: () => ReactNode; variant?: 'default' | 'success' | 'achievement' }> = {
   'curso criado': {
     title: 'Curso criado com sucesso!',
-    icon: <Star className="h-5 w-5 text-yellow-500" />,
+    icon: createStarIcon,
     variant: 'success',
   },
   'curso atualizado': {
     title: 'Curso atualizado com sucesso!',
-    icon: <CheckCircle2 className="h-5 w-5 text-green-500" />,
+    icon: createCheckIcon,
     variant: 'success',
   },
   'curso deletado': {
     title: 'Curso removido com sucesso',
-    icon: <CheckCircle2 className="h-5 w-5 text-green-500" />,
+    icon: createCheckIcon,
     variant: 'success',
   },
   'mensagem enviada': {
     title: 'Mensagem enviada!',
-    icon: <Sparkles className="h-5 w-5 text-primary" />,
+    icon: createSparklesIcon,
     variant: 'success',
   },
   'perfil atualizado': {
     title: 'Perfil atualizado com sucesso!',
-    icon: <CheckCircle2 className="h-5 w-5 text-green-500" />,
+    icon: createCheckIcon,
     variant: 'success',
   },
   'configurações salvas': {
     title: 'Configurações salvas!',
-    icon: <CheckCircle2 className="h-5 w-5 text-green-500" />,
+    icon: createCheckIcon,
     variant: 'success',
   },
   'arquivo enviado': {
     title: 'Arquivo enviado com sucesso!',
-    icon: <CheckCircle2 className="h-5 w-5 text-green-500" />,
+    icon: createCheckIcon,
     variant: 'success',
   },
   'conquista desbloqueada': {
     title: 'Conquista Desbloqueada!',
-    icon: <Trophy className="h-5 w-5 text-yellow-500" />,
+    icon: createTrophyIcon,
     variant: 'achievement',
   },
   'nível alcançado': {
     title: 'Level Up!',
-    icon: <Award className="h-5 w-5 text-primary" />,
+    icon: createAwardIcon,
     variant: 'achievement',
   },
 }
@@ -78,7 +86,7 @@ export function createSuccessMessage(context: SuccessContext): SuccessMessage {
   const actionKey = context.action.toLowerCase()
   const defaultConfig = SUCCESS_MESSAGES[actionKey] || {
     title: `${context.action.charAt(0).toUpperCase() + context.action.slice(1)} com sucesso!`,
-    icon: <CheckCircle2 className="h-5 w-5 text-green-500" />,
+    icon: createCheckIcon,
     variant: 'success' as const,
   }
 
@@ -87,7 +95,7 @@ export function createSuccessMessage(context: SuccessContext): SuccessMessage {
     description: context.entity 
       ? `${context.entity.charAt(0).toUpperCase() + context.entity.slice(1)} processado com sucesso.`
       : undefined,
-    icon: context.showIcon !== false ? defaultConfig.icon : undefined,
+    icon: context.showIcon !== false && defaultConfig.icon ? defaultConfig.icon() : undefined,
     duration: context.duration || (defaultConfig.variant === 'achievement' ? 6000 : 5000),
     variant: defaultConfig.variant || 'success',
   }

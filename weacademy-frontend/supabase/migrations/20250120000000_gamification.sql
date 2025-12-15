@@ -724,31 +724,53 @@ RETURNS TRIGGER AS $$
 DECLARE
     points_to_award INTEGER;
 BEGIN
-    IF NEW.passed = true AND (OLD.passed IS NULL OR OLD.passed = false) THEN
-        -- Pontos base: 50 XP
-        points_to_award := 50;
-        
-        -- Bônus por score perfeito: +25 XP
-        IF NEW.score = 100 THEN
-            points_to_award := points_to_award + 25;
+    -- Verificar se passed mudou para true (INSERT ou UPDATE)
+    IF NEW.passed = true THEN
+        -- Se é UPDATE, verificar se antes era false ou NULL
+        IF TG_OP = 'UPDATE' AND (OLD.passed IS NULL OR OLD.passed = false) THEN
+            -- Pontos base: 50 XP
+            points_to_award := 50;
+            
+            -- Bônus por score perfeito: +25 XP
+            IF NEW.score = 100 THEN
+                points_to_award := points_to_award + 25;
+            END IF;
+            
+            PERFORM public.add_user_points(
+                NEW.user_id,
+                points_to_award,
+                CASE WHEN NEW.score = 100 THEN 'quiz_perfect' ELSE 'quiz_pass' END,
+                NEW.quiz_id,
+                jsonb_build_object('quiz_id', NEW.quiz_id, 'score', NEW.score)
+            );
+        ELSIF TG_OP = 'INSERT' THEN
+            -- Para INSERT, sempre adicionar XP se passed = true
+            -- Pontos base: 50 XP
+            points_to_award := 50;
+            
+            -- Bônus por score perfeito: +25 XP
+            IF NEW.score = 100 THEN
+                points_to_award := points_to_award + 25;
+            END IF;
+            
+            PERFORM public.add_user_points(
+                NEW.user_id,
+                points_to_award,
+                CASE WHEN NEW.score = 100 THEN 'quiz_perfect' ELSE 'quiz_pass' END,
+                NEW.quiz_id,
+                jsonb_build_object('quiz_id', NEW.quiz_id, 'score', NEW.score)
+            );
         END IF;
-        
-        PERFORM public.add_user_points(
-            NEW.user_id,
-            points_to_award,
-            CASE WHEN NEW.score = 100 THEN 'quiz_perfect' ELSE 'quiz_pass' END,
-            NEW.quiz_id,
-            jsonb_build_object('quiz_id', NEW.quiz_id, 'score', NEW.score)
-        );
     END IF;
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS trigger_quiz_attempts_add_xp ON public.quiz_attempts;
 CREATE TRIGGER trigger_quiz_attempts_add_xp
     AFTER INSERT OR UPDATE ON public.quiz_attempts
     FOR EACH ROW
-    WHEN (NEW.passed = true AND (OLD.passed IS NULL OR OLD.passed = false))
+    WHEN (NEW.passed = true)
     EXECUTE FUNCTION public.trigger_add_xp_quiz_pass();
 
 -- Trigger: Log de mudanças em achievements

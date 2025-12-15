@@ -33,16 +33,19 @@ CREATE INDEX IF NOT EXISTS idx_lab_model_recommendations_created_at
 ALTER TABLE lab_model_recommendations_history ENABLE ROW LEVEL SECURITY;
 
 -- Política: usuários podem ver apenas seus próprios dados
+DROP POLICY IF EXISTS "Users can view their own recommendations history" ON lab_model_recommendations_history;
 CREATE POLICY "Users can view their own recommendations history"
   ON lab_model_recommendations_history FOR SELECT
   USING (auth.uid() = user_id);
 
 -- Política: usuários podem inserir seus próprios dados
+DROP POLICY IF EXISTS "Users can insert their own recommendations history" ON lab_model_recommendations_history;
 CREATE POLICY "Users can insert their own recommendations history"
   ON lab_model_recommendations_history FOR INSERT
   WITH CHECK (auth.uid() = user_id);
 
 -- Política: admins podem ver tudo
+DROP POLICY IF EXISTS "Admins can view all recommendations history" ON lab_model_recommendations_history;
 CREATE POLICY "Admins can view all recommendations history"
   ON lab_model_recommendations_history FOR SELECT
   USING (
@@ -72,16 +75,19 @@ CREATE INDEX IF NOT EXISTS idx_lab_user_routing_preferences_user_id
 ALTER TABLE lab_user_routing_preferences ENABLE ROW LEVEL SECURITY;
 
 -- Política: usuários podem ver apenas suas próprias preferências
+DROP POLICY IF EXISTS "Users can view their own routing preferences" ON lab_user_routing_preferences;
 CREATE POLICY "Users can view their own routing preferences"
   ON lab_user_routing_preferences FOR SELECT
   USING (auth.uid() = user_id);
 
 -- Política: usuários podem inserir suas próprias preferências
+DROP POLICY IF EXISTS "Users can insert their own routing preferences" ON lab_user_routing_preferences;
 CREATE POLICY "Users can insert their own routing preferences"
   ON lab_user_routing_preferences FOR INSERT
   WITH CHECK (auth.uid() = user_id);
 
 -- Política: usuários podem atualizar suas próprias preferências
+DROP POLICY IF EXISTS "Users can update their own routing preferences" ON lab_user_routing_preferences;
 CREATE POLICY "Users can update their own routing preferences"
   ON lab_user_routing_preferences FOR UPDATE
   USING (auth.uid() = user_id);
@@ -95,6 +101,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS update_lab_user_routing_preferences_updated_at ON lab_user_routing_preferences;
 CREATE TRIGGER update_lab_user_routing_preferences_updated_at
   BEFORE UPDATE ON lab_user_routing_preferences
   FOR EACH ROW

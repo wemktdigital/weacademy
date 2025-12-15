@@ -30,17 +30,20 @@ ALTER TABLE lab_certificates ENABLE ROW LEVEL SECURITY;
 ALTER TABLE lab_cost_alerts ENABLE ROW LEVEL SECURITY;
 
 -- Políticas RLS para certificados
+DROP POLICY IF EXISTS "Users can view their own certificates" ON lab_certificates;
 CREATE POLICY "Users can view their own certificates"
   ON lab_certificates
   FOR SELECT
   USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can insert their own certificates" ON lab_certificates;
 CREATE POLICY "Users can insert their own certificates"
   ON lab_certificates
   FOR INSERT
   WITH CHECK (auth.uid() = user_id);
 
 -- Políticas RLS para alertas (apenas admin pode ver todos)
+DROP POLICY IF EXISTS "Users can view their own cost alerts" ON lab_cost_alerts;
 CREATE POLICY "Users can view their own cost alerts"
   ON lab_cost_alerts
   FOR SELECT
@@ -53,11 +56,13 @@ CREATE POLICY "Users can view their own cost alerts"
     )
   );
 
+DROP POLICY IF EXISTS "System can insert cost alerts" ON lab_cost_alerts;
 CREATE POLICY "System can insert cost alerts"
   ON lab_cost_alerts
   FOR INSERT
   WITH CHECK (true);
 
+DROP POLICY IF EXISTS "Admins can update cost alerts" ON lab_cost_alerts;
 CREATE POLICY "Admins can update cost alerts"
   ON lab_cost_alerts
   FOR UPDATE

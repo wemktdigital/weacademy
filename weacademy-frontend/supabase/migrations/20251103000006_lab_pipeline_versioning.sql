@@ -350,16 +350,19 @@ ALTER TABLE public.lab_pipeline_release_tags ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.lab_pipeline_version_changes ENABLE ROW LEVEL SECURITY;
 
 -- Políticas para versões
+DROP POLICY IF EXISTS "Anyone can view published versions" ON public.lab_pipeline_versions;
 CREATE POLICY "Anyone can view published versions"
     ON public.lab_pipeline_versions
     FOR SELECT
     USING (status = 'published');
 
+DROP POLICY IF EXISTS "Users can view their own versions" ON public.lab_pipeline_versions;
 CREATE POLICY "Users can view their own versions"
     ON public.lab_pipeline_versions
     FOR SELECT
     USING (created_by = auth.uid());
 
+DROP POLICY IF EXISTS "Admins can view all versions" ON public.lab_pipeline_versions;
 CREATE POLICY "Admins can view all versions"
     ON public.lab_pipeline_versions
     FOR SELECT
@@ -371,17 +374,20 @@ CREATE POLICY "Admins can view all versions"
         )
     );
 
+DROP POLICY IF EXISTS "Users can create versions" ON public.lab_pipeline_versions;
 CREATE POLICY "Users can create versions"
     ON public.lab_pipeline_versions
     FOR INSERT
     WITH CHECK (auth.uid() = created_by);
 
 -- Políticas para tags
+DROP POLICY IF EXISTS "Anyone can view release tags" ON public.lab_pipeline_release_tags;
 CREATE POLICY "Anyone can view release tags"
     ON public.lab_pipeline_release_tags
     FOR SELECT
     USING (true);
 
+DROP POLICY IF EXISTS "Admins can manage release tags" ON public.lab_pipeline_release_tags;
 CREATE POLICY "Admins can manage release tags"
     ON public.lab_pipeline_release_tags
     FOR ALL
@@ -394,6 +400,7 @@ CREATE POLICY "Admins can manage release tags"
     );
 
 -- Políticas para histórico de mudanças
+DROP POLICY IF EXISTS "Anyone can view version changes" ON public.lab_pipeline_version_changes;
 CREATE POLICY "Anyone can view version changes"
     ON public.lab_pipeline_version_changes
     FOR SELECT

@@ -18,6 +18,7 @@ CREATE INDEX IF NOT EXISTS idx_lab_pipelines_last_tested ON lab_agent_pipelines(
 -- (manter políticas existentes, mas adicionar validação)
 
 -- Política adicional para garantir que usuários normais não vejam pipelines draft
+DROP POLICY IF EXISTS "Users can only see non-draft pipelines" ON lab_agent_pipelines;
 CREATE POLICY "Users can only see non-draft pipelines"
   ON lab_agent_pipelines
   FOR SELECT

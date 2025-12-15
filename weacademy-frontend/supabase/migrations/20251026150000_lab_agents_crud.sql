@@ -30,6 +30,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- Trigger para atualizar updated_at
+DROP TRIGGER IF EXISTS update_lab_agents_timestamp_trigger ON lab_agents;
 CREATE TRIGGER update_lab_agents_timestamp_trigger
 BEFORE UPDATE ON lab_agents
 FOR EACH ROW
@@ -39,11 +40,13 @@ EXECUTE FUNCTION update_lab_agents_timestamp();
 ALTER TABLE lab_agents ENABLE ROW LEVEL SECURITY;
 
 -- Políticas RLS
+DROP POLICY IF EXISTS "Anyone can view active agents" ON lab_agents;
 CREATE POLICY "Anyone can view active agents"
   ON lab_agents
   FOR SELECT
   USING (active = true);
 
+DROP POLICY IF EXISTS "Admins can view all agents" ON lab_agents;
 CREATE POLICY "Admins can view all agents"
   ON lab_agents
   FOR SELECT
@@ -55,6 +58,7 @@ CREATE POLICY "Admins can view all agents"
     )
   );
 
+DROP POLICY IF EXISTS "Admins can insert agents" ON lab_agents;
 CREATE POLICY "Admins can insert agents"
   ON lab_agents
   FOR INSERT
@@ -66,6 +70,7 @@ CREATE POLICY "Admins can insert agents"
     )
   );
 
+DROP POLICY IF EXISTS "Admins can update agents" ON lab_agents;
 CREATE POLICY "Admins can update agents"
   ON lab_agents
   FOR UPDATE
@@ -77,6 +82,7 @@ CREATE POLICY "Admins can update agents"
     )
   );
 
+DROP POLICY IF EXISTS "Admins can delete agents" ON lab_agents;
 CREATE POLICY "Admins can delete agents"
   ON lab_agents
   FOR DELETE

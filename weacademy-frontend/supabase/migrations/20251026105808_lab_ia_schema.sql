@@ -37,6 +37,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- Trigger para atualizar updated_at quando uma mensagem é inserida
+DROP TRIGGER IF EXISTS update_lab_conversation_timestamp ON lab_messages;
 CREATE TRIGGER update_lab_conversation_timestamp
 AFTER INSERT ON lab_messages
 FOR EACH ROW
@@ -47,27 +48,32 @@ ALTER TABLE lab_conversations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE lab_messages ENABLE ROW LEVEL SECURITY;
 
 -- Políticas RLS para lab_conversations
+DROP POLICY IF EXISTS "Users can view their own conversations" ON lab_conversations;
 CREATE POLICY "Users can view their own conversations"
   ON lab_conversations
   FOR SELECT
   USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can insert their own conversations" ON lab_conversations;
 CREATE POLICY "Users can insert their own conversations"
   ON lab_conversations
   FOR INSERT
   WITH CHECK (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can update their own conversations" ON lab_conversations;
 CREATE POLICY "Users can update their own conversations"
   ON lab_conversations
   FOR UPDATE
   USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can delete their own conversations" ON lab_conversations;
 CREATE POLICY "Users can delete their own conversations"
   ON lab_conversations
   FOR DELETE
   USING (auth.uid() = user_id);
 
 -- Políticas RLS para lab_messages
+DROP POLICY IF EXISTS "Users can view messages from their conversations" ON lab_messages;
 CREATE POLICY "Users can view messages from their conversations"
   ON lab_messages
   FOR SELECT
@@ -79,6 +85,7 @@ CREATE POLICY "Users can view messages from their conversations"
     )
   );
 
+DROP POLICY IF EXISTS "Users can insert messages to their conversations" ON lab_messages;
 CREATE POLICY "Users can insert messages to their conversations"
   ON lab_messages
   FOR INSERT
@@ -90,6 +97,7 @@ CREATE POLICY "Users can insert messages to their conversations"
     )
   );
 
+DROP POLICY IF EXISTS "Users can update messages from their conversations" ON lab_messages;
 CREATE POLICY "Users can update messages from their conversations"
   ON lab_messages
   FOR UPDATE
@@ -101,6 +109,7 @@ CREATE POLICY "Users can update messages from their conversations"
     )
   );
 
+DROP POLICY IF EXISTS "Users can delete messages from their conversations" ON lab_messages;
 CREATE POLICY "Users can delete messages from their conversations"
   ON lab_messages
   FOR DELETE

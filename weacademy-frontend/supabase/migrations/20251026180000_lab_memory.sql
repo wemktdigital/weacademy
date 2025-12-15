@@ -38,6 +38,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- Trigger para atualizar updated_at
+DROP TRIGGER IF EXISTS update_lab_memory_timestamp_trigger ON lab_agent_memory;
 CREATE TRIGGER update_lab_memory_timestamp_trigger
 BEFORE UPDATE ON lab_agent_memory
 FOR EACH ROW
@@ -48,27 +49,32 @@ ALTER TABLE lab_agent_memory ENABLE ROW LEVEL SECURITY;
 ALTER TABLE lab_conversation_summaries ENABLE ROW LEVEL SECURITY;
 
 -- Políticas RLS - Memória
+DROP POLICY IF EXISTS "Users can view their own memories" ON lab_agent_memory;
 CREATE POLICY "Users can view their own memories"
   ON lab_agent_memory
   FOR SELECT
   USING (user_id = auth.uid());
 
+DROP POLICY IF EXISTS "Users can manage their own memories" ON lab_agent_memory;
 CREATE POLICY "Users can manage their own memories"
   ON lab_agent_memory
   FOR ALL
   USING (user_id = auth.uid());
 
 -- Políticas RLS - Resumos
+DROP POLICY IF EXISTS "Users can view their own summaries" ON lab_conversation_summaries;
 CREATE POLICY "Users can view their own summaries"
   ON lab_conversation_summaries
   FOR SELECT
   USING (user_id = auth.uid());
 
+DROP POLICY IF EXISTS "System can insert summaries" ON lab_conversation_summaries;
 CREATE POLICY "System can insert summaries"
   ON lab_conversation_summaries
   FOR INSERT
   WITH CHECK (true);
 
+DROP POLICY IF EXISTS "Users can delete their own summaries" ON lab_conversation_summaries;
 CREATE POLICY "Users can delete their own summaries"
   ON lab_conversation_summaries
   FOR DELETE

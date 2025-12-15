@@ -28,6 +28,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- Trigger para atualizar updated_at
+DROP TRIGGER IF EXISTS update_lab_agent_templates_timestamp_trigger ON lab_agent_templates;
 CREATE TRIGGER update_lab_agent_templates_timestamp_trigger
 BEFORE UPDATE ON lab_agent_templates
 FOR EACH ROW
@@ -37,11 +38,13 @@ EXECUTE FUNCTION update_lab_agent_templates_timestamp();
 ALTER TABLE lab_agent_templates ENABLE ROW LEVEL SECURITY;
 
 -- Políticas RLS
+DROP POLICY IF EXISTS "Anyone can view templates" ON lab_agent_templates;
 CREATE POLICY "Anyone can view templates"
   ON lab_agent_templates
   FOR SELECT
   USING (true);
 
+DROP POLICY IF EXISTS "Admins can manage templates" ON lab_agent_templates;
 CREATE POLICY "Admins can manage templates"
   ON lab_agent_templates
   FOR ALL

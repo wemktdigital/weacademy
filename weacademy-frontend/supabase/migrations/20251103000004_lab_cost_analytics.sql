@@ -22,12 +22,7 @@ CREATE TABLE IF NOT EXISTS public.lab_pipeline_metrics (
     -- Metadados
     input_message_count INTEGER,
     output_message_count INTEGER,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    
-    -- Índices para queries analíticas
-    created_at_date DATE GENERATED ALWAYS AS (date_trunc('day', created_at)::DATE) STORED,
-    created_at_week DATE GENERATED ALWAYS AS (date_trunc('week', created_at)::DATE) STORED,
-    created_at_month DATE GENERATED ALWAYS AS (date_trunc('month', created_at)::DATE) STORED
+    created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- Tabela de métricas de agentes (para análise individual)
@@ -48,10 +43,7 @@ CREATE TABLE IF NOT EXISTS public.lab_agent_metrics (
     -- Metadados
     success BOOLEAN DEFAULT true,
     error_type TEXT,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    
-    -- Índices para queries analíticas
-    created_at_date DATE GENERATED ALWAYS AS (date_trunc('day', created_at)::DATE) STORED
+    created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- Tabela de estimativas e comparações
@@ -107,13 +99,11 @@ CREATE TABLE IF NOT EXISTS public.lab_cost_limits (
 CREATE INDEX IF NOT EXISTS idx_lab_pipeline_metrics_pipeline_id ON public.lab_pipeline_metrics(pipeline_id);
 CREATE INDEX IF NOT EXISTS idx_lab_pipeline_metrics_user_id ON public.lab_pipeline_metrics(user_id);
 CREATE INDEX IF NOT EXISTS idx_lab_pipeline_metrics_created_at ON public.lab_pipeline_metrics(created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_lab_pipeline_metrics_created_at_date ON public.lab_pipeline_metrics(created_at_date);
 CREATE INDEX IF NOT EXISTS idx_lab_pipeline_metrics_cost ON public.lab_pipeline_metrics(total_cost_usd);
 
 CREATE INDEX IF NOT EXISTS idx_lab_agent_metrics_agent_id ON public.lab_agent_metrics(agent_id);
 CREATE INDEX IF NOT EXISTS idx_lab_agent_metrics_user_id ON public.lab_agent_metrics(user_id);
 CREATE INDEX IF NOT EXISTS idx_lab_agent_metrics_created_at ON public.lab_agent_metrics(created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_lab_agent_metrics_created_at_date ON public.lab_agent_metrics(created_at_date);
 CREATE INDEX IF NOT EXISTS idx_lab_agent_metrics_model ON public.lab_agent_metrics(model_used);
 
 CREATE INDEX IF NOT EXISTS idx_lab_cost_estimates_pipeline_id ON public.lab_cost_estimates(pipeline_id);
@@ -205,6 +195,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS update_lab_cost_limits_updated_at ON public.lab_cost_limits;
 CREATE TRIGGER update_lab_cost_limits_updated_at
     BEFORE UPDATE ON public.lab_cost_limits
     FOR EACH ROW
@@ -217,11 +208,13 @@ ALTER TABLE public.lab_cost_estimates ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.lab_cost_limits ENABLE ROW LEVEL SECURITY;
 
 -- Políticas para lab_pipeline_metrics
+DROP POLICY IF EXISTS "Users can view their own pipeline metrics" ON public.lab_pipeline_metrics;
 CREATE POLICY "Users can view their own pipeline metrics"
     ON public.lab_pipeline_metrics
     FOR SELECT
     USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Admins can view all pipeline metrics" ON public.lab_pipeline_metrics;
 CREATE POLICY "Admins can view all pipeline metrics"
     ON public.lab_pipeline_metrics
     FOR SELECT
@@ -234,11 +227,13 @@ CREATE POLICY "Admins can view all pipeline metrics"
     );
 
 -- Políticas para lab_agent_metrics (similar)
+DROP POLICY IF EXISTS "Users can view their own agent metrics" ON public.lab_agent_metrics;
 CREATE POLICY "Users can view their own agent metrics"
     ON public.lab_agent_metrics
     FOR SELECT
     USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Admins can view all agent metrics" ON public.lab_agent_metrics;
 CREATE POLICY "Admins can view all agent metrics"
     ON public.lab_agent_metrics
     FOR SELECT
@@ -251,11 +246,13 @@ CREATE POLICY "Admins can view all agent metrics"
     );
 
 -- Políticas para lab_cost_estimates
+DROP POLICY IF EXISTS "Users can manage their own cost estimates" ON public.lab_cost_estimates;
 CREATE POLICY "Users can manage their own cost estimates"
     ON public.lab_cost_estimates
     FOR ALL
     USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Admins can view all cost estimates" ON public.lab_cost_estimates;
 CREATE POLICY "Admins can view all cost estimates"
     ON public.lab_cost_estimates
     FOR SELECT
@@ -268,11 +265,13 @@ CREATE POLICY "Admins can view all cost estimates"
     );
 
 -- Políticas para lab_cost_limits
+DROP POLICY IF EXISTS "Users can manage their own cost limits" ON public.lab_cost_limits;
 CREATE POLICY "Users can manage their own cost limits"
     ON public.lab_cost_limits
     FOR ALL
     USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Admins can manage all cost limits" ON public.lab_cost_limits;
 CREATE POLICY "Admins can manage all cost limits"
     ON public.lab_cost_limits
     FOR ALL

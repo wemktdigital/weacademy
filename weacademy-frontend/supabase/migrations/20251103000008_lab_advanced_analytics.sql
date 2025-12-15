@@ -313,6 +313,7 @@ ALTER TABLE public.lab_pipeline_patterns ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.lab_pipeline_bottlenecks ENABLE ROW LEVEL SECURITY;
 
 -- Políticas para insights
+DROP POLICY IF EXISTS "Users can view insights for their pipelines" ON public.lab_pipeline_insights;
 CREATE POLICY "Users can view insights for their pipelines"
     ON public.lab_pipeline_insights
     FOR SELECT
@@ -326,17 +327,20 @@ CREATE POLICY "Users can view insights for their pipelines"
     );
 
 -- Políticas para alertas
+DROP POLICY IF EXISTS "Users can view their own alerts" ON public.lab_pipeline_alerts;
 CREATE POLICY "Users can view their own alerts"
     ON public.lab_pipeline_alerts
     FOR SELECT
     USING (user_id = auth.uid());
 
+DROP POLICY IF EXISTS "Users can manage their own alerts" ON public.lab_pipeline_alerts;
 CREATE POLICY "Users can manage their own alerts"
     ON public.lab_pipeline_alerts
     FOR ALL
     USING (user_id = auth.uid());
 
 -- Políticas para otimizações
+DROP POLICY IF EXISTS "Users can view optimizations for their pipelines" ON public.lab_pipeline_optimizations;
 CREATE POLICY "Users can view optimizations for their pipelines"
     ON public.lab_pipeline_optimizations
     FOR SELECT
@@ -350,6 +354,7 @@ CREATE POLICY "Users can view optimizations for their pipelines"
     );
 
 -- Políticas para padrões
+DROP POLICY IF EXISTS "Users can view patterns for their pipelines" ON public.lab_pipeline_patterns;
 CREATE POLICY "Users can view patterns for their pipelines"
     ON public.lab_pipeline_patterns
     FOR SELECT
@@ -363,6 +368,7 @@ CREATE POLICY "Users can view patterns for their pipelines"
     );
 
 -- Políticas para gargalos
+DROP POLICY IF EXISTS "Users can view bottlenecks for their pipelines" ON public.lab_pipeline_bottlenecks;
 CREATE POLICY "Users can view bottlenecks for their pipelines"
     ON public.lab_pipeline_bottlenecks
     FOR SELECT

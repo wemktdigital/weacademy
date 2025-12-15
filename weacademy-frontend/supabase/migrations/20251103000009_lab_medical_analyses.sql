@@ -45,18 +45,21 @@ CREATE INDEX IF NOT EXISTS idx_lab_medical_analyses_created_at ON public.lab_med
 ALTER TABLE public.lab_medical_analyses ENABLE ROW LEVEL SECURITY;
 
 -- Usuários podem ver apenas suas próprias análises
+DROP POLICY IF EXISTS "Users can view their own medical analyses" ON public.lab_medical_analyses;
 CREATE POLICY "Users can view their own medical analyses"
   ON public.lab_medical_analyses
   FOR SELECT
   USING (auth.uid() = user_id);
 
 -- Usuários podem inserir suas próprias análises
+DROP POLICY IF EXISTS "Users can insert their own medical analyses" ON public.lab_medical_analyses;
 CREATE POLICY "Users can insert their own medical analyses"
   ON public.lab_medical_analyses
   FOR INSERT
   WITH CHECK (auth.uid() = user_id);
 
 -- Admins podem ver todas as análises
+DROP POLICY IF EXISTS "Admins can view all medical analyses" ON public.lab_medical_analyses;
 CREATE POLICY "Admins can view all medical analyses"
   ON public.lab_medical_analyses
   FOR SELECT
@@ -77,6 +80,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS update_lab_medical_analyses_updated_at ON public.lab_medical_analyses;
 CREATE TRIGGER update_lab_medical_analyses_updated_at
   BEFORE UPDATE ON public.lab_medical_analyses
   FOR EACH ROW

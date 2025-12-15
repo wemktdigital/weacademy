@@ -255,6 +255,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS update_lab_cost_alerts_updated_at ON public.lab_pipeline_cost_alerts;
 CREATE TRIGGER update_lab_cost_alerts_updated_at
     BEFORE UPDATE ON public.lab_pipeline_cost_alerts
     FOR EACH ROW
@@ -266,12 +267,14 @@ ALTER TABLE public.lab_pipeline_cost_estimates ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.lab_pipeline_cost_alerts ENABLE ROW LEVEL SECURITY;
 
 -- Políticas para lab_pipeline_step_metrics (acesso público para leitura, apenas sistema escreve)
+DROP POLICY IF EXISTS "Anyone can view step metrics" ON public.lab_pipeline_step_metrics;
 CREATE POLICY "Anyone can view step metrics"
     ON public.lab_pipeline_step_metrics
     FOR SELECT
     USING (true);
 
 -- Políticas para lab_pipeline_cost_estimates
+DROP POLICY IF EXISTS "Users can view their own estimates" ON public.lab_pipeline_cost_estimates;
 CREATE POLICY "Users can view their own estimates"
     ON public.lab_pipeline_cost_estimates
     FOR SELECT
@@ -280,12 +283,14 @@ CREATE POLICY "Users can view their own estimates"
         user_id IS NULL -- Estimativas públicas
     );
 
+DROP POLICY IF EXISTS "Users can create their own estimates" ON public.lab_pipeline_cost_estimates;
 CREATE POLICY "Users can create their own estimates"
     ON public.lab_pipeline_cost_estimates
     FOR INSERT
     WITH CHECK (auth.uid() = user_id OR user_id IS NULL);
 
 -- Admins podem ver todas as estimativas
+DROP POLICY IF EXISTS "Admins can view all estimates" ON public.lab_pipeline_cost_estimates;
 CREATE POLICY "Admins can view all estimates"
     ON public.lab_pipeline_cost_estimates
     FOR SELECT
@@ -298,11 +303,13 @@ CREATE POLICY "Admins can view all estimates"
     );
 
 -- Políticas para lab_pipeline_cost_alerts
+DROP POLICY IF EXISTS "Users can manage their own alerts" ON public.lab_pipeline_cost_alerts;
 CREATE POLICY "Users can manage their own alerts"
     ON public.lab_pipeline_cost_alerts
     FOR ALL
     USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Admins can view all alerts" ON public.lab_pipeline_cost_alerts;
 CREATE POLICY "Admins can view all alerts"
     ON public.lab_pipeline_cost_alerts
     FOR SELECT

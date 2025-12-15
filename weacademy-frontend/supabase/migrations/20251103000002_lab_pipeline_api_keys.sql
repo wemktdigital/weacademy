@@ -57,11 +57,7 @@ CREATE TABLE IF NOT EXISTS public.lab_pipeline_api_usage (
     user_agent TEXT,
     
     -- Timestamp
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    
-    -- Índice para queries por período
-    created_at_hour TIMESTAMPTZ GENERATED ALWAYS AS (date_trunc('hour', created_at)) STORED,
-    created_at_day DATE GENERATED ALWAYS AS (date_trunc('day', created_at)::DATE) STORED
+    created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- Índices para performance
@@ -74,8 +70,9 @@ CREATE INDEX IF NOT EXISTS idx_lab_pipeline_api_keys_expires_at ON public.lab_pi
 CREATE INDEX IF NOT EXISTS idx_lab_pipeline_api_usage_api_key_id ON public.lab_pipeline_api_usage(api_key_id);
 CREATE INDEX IF NOT EXISTS idx_lab_pipeline_api_usage_pipeline_id ON public.lab_pipeline_api_usage(pipeline_id);
 CREATE INDEX IF NOT EXISTS idx_lab_pipeline_api_usage_created_at ON public.lab_pipeline_api_usage(created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_lab_pipeline_api_usage_created_at_hour ON public.lab_pipeline_api_usage(created_at_hour);
-CREATE INDEX IF NOT EXISTS idx_lab_pipeline_api_usage_created_at_day ON public.lab_pipeline_api_usage(created_at_day);
+-- Nota: Índices funcionais por hora/dia foram removidos devido a limitações do PostgreSQL
+-- O índice em created_at DESC já cobre a maioria das queries de período
+-- Se necessário, índices específicos podem ser criados posteriormente usando expressões imutáveis
 
 -- Função para gerar API key
 CREATE OR REPLACE FUNCTION generate_api_key(prefix TEXT DEFAULT 'wak_')
@@ -110,6 +107,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS update_lab_pipeline_api_keys_updated_at ON public.lab_pipeline_api_keys;
 CREATE TRIGGER update_lab_pipeline_api_keys_updated_at
     BEFORE UPDATE ON public.lab_pipeline_api_keys
     FOR EACH ROW
@@ -121,12 +119,14 @@ ALTER TABLE public.lab_pipeline_api_usage ENABLE ROW LEVEL SECURITY;
 
 -- Políticas para lab_pipeline_api_keys
 -- Usuários podem ver suas próprias API keys
+DROP POLICY IF EXISTS "Users can view their own API keys" ON public.lab_pipeline_api_keys;
 CREATE POLICY "Users can view their own API keys"
     ON public.lab_pipeline_api_keys
     FOR SELECT
     USING (auth.uid() = user_id);
 
 -- Admins podem ver todas as API keys
+DROP POLICY IF EXISTS "Admins can view all API keys" ON public.lab_pipeline_api_keys;
 CREATE POLICY "Admins can view all API keys"
     ON public.lab_pipeline_api_keys
     FOR SELECT
@@ -139,24 +139,28 @@ CREATE POLICY "Admins can view all API keys"
     );
 
 -- Usuários podem criar suas próprias API keys
+DROP POLICY IF EXISTS "Users can create their own API keys" ON public.lab_pipeline_api_keys;
 CREATE POLICY "Users can create their own API keys"
     ON public.lab_pipeline_api_keys
     FOR INSERT
     WITH CHECK (auth.uid() = user_id);
 
 -- Usuários podem atualizar suas próprias API keys
+DROP POLICY IF EXISTS "Users can update their own API keys" ON public.lab_pipeline_api_keys;
 CREATE POLICY "Users can update their own API keys"
     ON public.lab_pipeline_api_keys
     FOR UPDATE
     USING (auth.uid() = user_id);
 
 -- Usuários podem deletar suas próprias API keys
+DROP POLICY IF EXISTS "Users can delete their own API keys" ON public.lab_pipeline_api_keys;
 CREATE POLICY "Users can delete their own API keys"
     ON public.lab_pipeline_api_keys
     FOR DELETE
     USING (auth.uid() = user_id);
 
 -- Admins podem gerenciar todas as API keys
+DROP POLICY IF EXISTS "Admins can manage all API keys" ON public.lab_pipeline_api_keys;
 CREATE POLICY "Admins can manage all API keys"
     ON public.lab_pipeline_api_keys
     FOR ALL
@@ -170,6 +174,7 @@ CREATE POLICY "Admins can manage all API keys"
 
 -- Políticas para lab_pipeline_api_usage
 -- Usuários podem ver uso de suas próprias API keys
+DROP POLICY IF EXISTS "Users can view usage of their API keys" ON public.lab_pipeline_api_usage;
 CREATE POLICY "Users can view usage of their API keys"
     ON public.lab_pipeline_api_usage
     FOR SELECT
@@ -182,6 +187,7 @@ CREATE POLICY "Users can view usage of their API keys"
     );
 
 -- Admins podem ver todo o uso
+DROP POLICY IF EXISTS "Admins can view all API usage" ON public.lab_pipeline_api_usage;
 CREATE POLICY "Admins can view all API usage"
     ON public.lab_pipeline_api_usage
     FOR SELECT

@@ -23,12 +23,14 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS trg_lab_workflow_blueprints_updated ON public.lab_workflow_blueprints;
 CREATE TRIGGER trg_lab_workflow_blueprints_updated
   BEFORE UPDATE ON public.lab_workflow_blueprints
   FOR EACH ROW EXECUTE FUNCTION update_lab_workflow_blueprints_updated_at();
 
 ALTER TABLE public.lab_workflow_blueprints ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Owners can manage their blueprints" ON public.lab_workflow_blueprints;
 CREATE POLICY "Owners can manage their blueprints"
   ON public.lab_workflow_blueprints
   FOR ALL

@@ -55,6 +55,7 @@ CREATE INDEX IF NOT EXISTS idx_waitlist_position ON public.waitlist(position);
 CREATE INDEX IF NOT EXISTS idx_enrollments_cohort ON public.enrollments(cohort_id);
 
 -- Triggers
+DROP TRIGGER IF EXISTS update_cohorts_updated_at ON public.cohorts;
 CREATE TRIGGER update_cohorts_updated_at 
     BEFORE UPDATE ON public.cohorts 
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
@@ -64,10 +65,12 @@ ALTER TABLE public.cohorts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.waitlist ENABLE ROW LEVEL SECURITY;
 
 -- Políticas para cohorts
+DROP POLICY IF EXISTS "Anyone can view open cohorts" ON public.cohorts;
 CREATE POLICY "Anyone can view open cohorts"
     ON public.cohorts FOR SELECT 
     USING (status IN ('open', 'closed', 'completed'));
 
+DROP POLICY IF EXISTS "Instructors can manage cohorts of their courses" ON public.cohorts;
 CREATE POLICY "Instructors can manage cohorts of their courses"
     ON public.cohorts FOR ALL 
     USING (
@@ -79,14 +82,17 @@ CREATE POLICY "Instructors can manage cohorts of their courses"
     );
 
 -- Políticas para waitlist
+DROP POLICY IF EXISTS "Users can view their own waitlist entries" ON public.waitlist;
 CREATE POLICY "Users can view their own waitlist entries"
     ON public.waitlist FOR SELECT 
     USING (user_id = auth.uid());
 
+DROP POLICY IF EXISTS "Users can add themselves to waitlist" ON public.waitlist;
 CREATE POLICY "Users can add themselves to waitlist"
     ON public.waitlist FOR INSERT 
     WITH CHECK (user_id = auth.uid());
 
+DROP POLICY IF EXISTS "Users can remove themselves from waitlist" ON public.waitlist;
 CREATE POLICY "Users can remove themselves from waitlist"
     ON public.waitlist FOR DELETE 
     USING (user_id = auth.uid());
@@ -111,6 +117,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- Trigger para INSERT (quando cohort_id não é null)
+DROP TRIGGER IF EXISTS update_enrolled_count_on_insert ON public.enrollments;
 CREATE TRIGGER update_enrolled_count_on_insert
     AFTER INSERT ON public.enrollments
     FOR EACH ROW 
@@ -118,6 +125,7 @@ CREATE TRIGGER update_enrolled_count_on_insert
     EXECUTE FUNCTION update_cohort_enrolled_count();
 
 -- Trigger para DELETE (quando cohort_id não é null)
+DROP TRIGGER IF EXISTS update_enrolled_count_on_delete ON public.enrollments;
 CREATE TRIGGER update_enrolled_count_on_delete
     AFTER DELETE ON public.enrollments
     FOR EACH ROW 
@@ -172,6 +180,7 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- Trigger para gerenciar lista de espera
+DROP TRIGGER IF EXISTS manage_waitlist_on_enrollment_change ON public.enrollments;
 CREATE TRIGGER manage_waitlist_on_enrollment_change
     AFTER UPDATE ON public.enrollments
     FOR EACH ROW

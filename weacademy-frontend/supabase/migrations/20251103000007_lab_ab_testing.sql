@@ -349,6 +349,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS update_lab_ab_metrics_updated_at ON public.lab_pipeline_ab_metrics;
 CREATE TRIGGER update_lab_ab_metrics_updated_at
     BEFORE UPDATE ON public.lab_pipeline_ab_metrics
     FOR EACH ROW
@@ -360,16 +361,19 @@ ALTER TABLE public.lab_pipeline_ab_executions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.lab_pipeline_ab_metrics ENABLE ROW LEVEL SECURITY;
 
 -- Políticas para experimentos
+DROP POLICY IF EXISTS "Users can view their own experiments" ON public.lab_pipeline_ab_experiments;
 CREATE POLICY "Users can view their own experiments"
     ON public.lab_pipeline_ab_experiments
     FOR SELECT
     USING (created_by = auth.uid());
 
+DROP POLICY IF EXISTS "Users can manage their own experiments" ON public.lab_pipeline_ab_experiments;
 CREATE POLICY "Users can manage their own experiments"
     ON public.lab_pipeline_ab_experiments
     FOR ALL
     USING (created_by = auth.uid());
 
+DROP POLICY IF EXISTS "Admins can view all experiments" ON public.lab_pipeline_ab_experiments;
 CREATE POLICY "Admins can view all experiments"
     ON public.lab_pipeline_ab_experiments
     FOR SELECT
@@ -382,17 +386,20 @@ CREATE POLICY "Admins can view all experiments"
     );
 
 -- Políticas para execuções
+DROP POLICY IF EXISTS "Users can view their own executions" ON public.lab_pipeline_ab_executions;
 CREATE POLICY "Users can view their own executions"
     ON public.lab_pipeline_ab_executions
     FOR SELECT
     USING (user_id = auth.uid() OR user_id IS NULL);
 
+DROP POLICY IF EXISTS "System can insert executions" ON public.lab_pipeline_ab_executions;
 CREATE POLICY "System can insert executions"
     ON public.lab_pipeline_ab_executions
     FOR INSERT
     WITH CHECK (true);
 
 -- Políticas para métricas
+DROP POLICY IF EXISTS "Anyone can view aggregated metrics" ON public.lab_pipeline_ab_metrics;
 CREATE POLICY "Anyone can view aggregated metrics"
     ON public.lab_pipeline_ab_metrics
     FOR SELECT

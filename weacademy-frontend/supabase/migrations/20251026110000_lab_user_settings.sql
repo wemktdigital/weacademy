@@ -23,6 +23,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- Trigger para atualizar updated_at
+DROP TRIGGER IF EXISTS update_lab_user_settings_updated_at ON lab_user_settings;
 CREATE TRIGGER update_lab_user_settings_updated_at
 BEFORE UPDATE ON lab_user_settings
 FOR EACH ROW
@@ -32,21 +33,25 @@ EXECUTE FUNCTION update_lab_user_settings_timestamp();
 ALTER TABLE lab_user_settings ENABLE ROW LEVEL SECURITY;
 
 -- Políticas RLS
+DROP POLICY IF EXISTS "Users can view their own settings" ON lab_user_settings;
 CREATE POLICY "Users can view their own settings"
   ON lab_user_settings
   FOR SELECT
   USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can insert their own settings" ON lab_user_settings;
 CREATE POLICY "Users can insert their own settings"
   ON lab_user_settings
   FOR INSERT
   WITH CHECK (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can update their own settings" ON lab_user_settings;
 CREATE POLICY "Users can update their own settings"
   ON lab_user_settings
   FOR UPDATE
   USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can delete their own settings" ON lab_user_settings;
 CREATE POLICY "Users can delete their own settings"
   ON lab_user_settings
   FOR DELETE

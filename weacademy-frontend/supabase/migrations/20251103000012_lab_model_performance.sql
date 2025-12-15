@@ -36,16 +36,19 @@ CREATE INDEX IF NOT EXISTS idx_lab_model_performance_user_id
 ALTER TABLE lab_model_performance ENABLE ROW LEVEL SECURITY;
 
 -- Política: usuários podem ver apenas seus próprios dados
+DROP POLICY IF EXISTS "Users can view their own model performance" ON lab_model_performance;
 CREATE POLICY "Users can view their own model performance"
   ON lab_model_performance FOR SELECT
   USING (auth.uid() = user_id);
 
 -- Política: usuários podem inserir seus próprios dados
+DROP POLICY IF EXISTS "Users can insert their own model performance" ON lab_model_performance;
 CREATE POLICY "Users can insert their own model performance"
   ON lab_model_performance FOR INSERT
   WITH CHECK (auth.uid() = user_id);
 
 -- Política: admins podem ver tudo
+DROP POLICY IF EXISTS "Admins can view all model performance" ON lab_model_performance;
 CREATE POLICY "Admins can view all model performance"
   ON lab_model_performance FOR SELECT
   USING (
