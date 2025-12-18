@@ -24,10 +24,10 @@ const mediaLabels: Record<MediaType, string> = {
   video: 'Vídeo',
 }
 
-export function ModelCapabilitiesBadge({ 
-  capabilities, 
+export function ModelCapabilitiesBadge({
+  capabilities,
   size = 'sm',
-  className 
+  className
 }: ModelCapabilitiesBadgeProps) {
   if (!capabilities) return null
 
@@ -37,8 +37,8 @@ export function ModelCapabilitiesBadge({
   }
 
   return (
-    <div 
-      className={cn("flex items-center gap-1.5", className)} 
+    <div
+      className={cn("flex items-center gap-1.5", className)}
       title={`Aceita: ${capabilities.input.map(t => mediaLabels[t]).join(', ')} | Retorna: ${capabilities.output.map(t => mediaLabels[t]).join(', ')}`}
     >
       <div className="flex items-center gap-1">
@@ -48,7 +48,6 @@ export function ModelCapabilitiesBadge({
             <Icon
               key={type}
               className={cn("text-muted-foreground", sizeClasses[size])}
-              title={`Aceita ${mediaLabels[type]}`}
             />
           )
         })}
@@ -61,7 +60,6 @@ export function ModelCapabilitiesBadge({
             <Icon
               key={type}
               className={cn("text-muted-foreground", sizeClasses[size])}
-              title={`Retorna ${mediaLabels[type]}`}
             />
           )
         })}
@@ -70,8 +68,8 @@ export function ModelCapabilitiesBadge({
   )
 }
 
-export function ModelCapabilitiesTooltip({ 
-  capabilities 
+export function ModelCapabilitiesTooltip({
+  capabilities
 }: { capabilities?: ModelCapabilities }) {
   if (!capabilities) return null
 

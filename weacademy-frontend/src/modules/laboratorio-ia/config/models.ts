@@ -18,6 +18,26 @@ export interface LLMModel {
 export const AVAILABLE_MODELS: LLMModel[] = [
   {
     provider: 'OpenAI',
+    model: 'gpt-5.2',
+    displayName: 'GPT-5.2',
+    icon: '🤖',
+    capabilities: {
+      input: ['text', 'image'],
+      output: ['text'],
+    },
+  },
+  {
+    provider: 'OpenAI',
+    model: 'gpt-5.1',
+    displayName: 'GPT-5.1',
+    icon: '🚀',
+    capabilities: {
+      input: ['text', 'image'],
+      output: ['text'],
+    },
+  },
+  {
+    provider: 'OpenAI',
     model: 'gpt-5',
     displayName: 'GPT-5',
     icon: '🤖',
@@ -47,20 +67,40 @@ export const AVAILABLE_MODELS: LLMModel[] = [
     },
   },
   {
-    provider: 'PubMed',
-    model: 'pubmed-search',
-    displayName: 'PubMed Search',
-    icon: '🔬',
+    provider: 'OpenAI',
+    model: 'gpt-image-1.5',
+    displayName: 'GPT-Image-1.5',
+    icon: '🖼️',
     capabilities: {
-      input: ['text'],
-      output: ['text'],
+      input: ['text', 'image'],
+      output: ['image'],
     },
   },
   {
     provider: 'OpenAI',
-    model: 'gpt-5.1',
-    displayName: 'GPT-5.1',
-    icon: '🚀',
+    model: 'gpt-image-1',
+    displayName: 'GPT-Image-1',
+    icon: '🖼️',
+    capabilities: {
+      input: ['text', 'image'],
+      output: ['image'],
+    },
+  },
+  {
+    provider: 'OpenAI',
+    model: 'gpt-image-1-mini',
+    displayName: 'GPT-Image-1 Mini',
+    icon: '🖼️',
+    capabilities: {
+      input: ['text', 'image'],
+      output: ['image'],
+    },
+  },
+  {
+    provider: 'OpenAI',
+    model: 'o1-mini',
+    displayName: 'o1-mini',
+    icon: '🧠',
     capabilities: {
       input: ['text', 'image'],
       output: ['text'],
@@ -68,31 +108,41 @@ export const AVAILABLE_MODELS: LLMModel[] = [
   },
   {
     provider: 'OpenAI',
-    model: 'gpt-4o-mini-transcribe',
-    displayName: 'GPT-4o Mini Transcribe',
-    icon: '🎤',
+    model: 'o3-mini',
+    displayName: 'o3-mini',
+    icon: '🧠',
     capabilities: {
-      input: ['audio'],
+      input: ['text', 'image'],
       output: ['text'],
     },
   },
   {
     provider: 'OpenAI',
-    model: 'gpt-4o-transcribe',
-    displayName: 'GPT-4o Transcribe',
-    icon: '🎙️',
+    model: 'o4-mini',
+    displayName: 'o4-mini',
+    icon: '🧠',
     capabilities: {
-      input: ['audio'],
+      input: ['text', 'image'],
       output: ['text'],
     },
   },
   {
     provider: 'OpenAI',
-    model: 'gpt-4o-transcribe-diarize',
-    displayName: 'GPT-4o Transcribe Diarize',
-    icon: '👥',
+    model: 'o4-mini-deep-research',
+    displayName: 'o4-mini (Deep Research)',
+    icon: '🔬',
     capabilities: {
-      input: ['audio'],
+      input: ['text', 'image'],
+      output: ['text'],
+    },
+  },
+  {
+    provider: 'OpenAI',
+    model: 'o3',
+    displayName: 'o3',
+    icon: '🧠',
+    capabilities: {
+      input: ['text', 'image'],
       output: ['text'],
     },
   },
@@ -118,38 +168,38 @@ export const AVAILABLE_MODELS: LLMModel[] = [
   },
   {
     provider: 'OpenAI',
-    model: 'gpt-image-1',
-    displayName: 'GPT-Image-1',
-    icon: '🖼️',
+    model: 'gpt-4o-mini-tts',
+    displayName: 'GPT-4o Mini TTS',
+    icon: '🗣️',
     capabilities: {
-      input: ['text', 'image'],
-      output: ['image'],
+      input: ['text'],
+      output: ['audio'],
     },
   },
   {
     provider: 'OpenAI',
-    model: 'gpt-image-1-mini',
-    displayName: 'GPT-Image-1 Mini',
-    icon: '🖼️',
+    model: 'gpt-4o-transcribe',
+    displayName: 'GPT-4o Transcribe',
+    icon: '🎙️',
     capabilities: {
-      input: ['text', 'image'],
-      output: ['image'],
+      input: ['audio'],
+      output: ['text'],
     },
   },
   {
-    provider: 'Google',
-    model: 'gemini-2.5-flash',
-    displayName: 'Gemini 2.5 Flash',
-    icon: '✨',
+    provider: 'PubMed',
+    model: 'pubmed-search',
+    displayName: 'PubMed Search',
+    icon: '🔬',
     capabilities: {
-      input: ['text', 'image', 'audio', 'video'],
+      input: ['text'],
       output: ['text'],
     },
   },
   {
     provider: 'Google',
-    model: 'gemini-3-pro-preview-high',
-    displayName: 'Gemini 3 Pro (High Thinking)',
+    model: 'gemini-3-pro-preview',
+    displayName: 'Gemini 3 Pro Preview',
     icon: '🧠',
     capabilities: {
       input: ['text', 'image', 'audio', 'video'],
@@ -158,12 +208,12 @@ export const AVAILABLE_MODELS: LLMModel[] = [
   },
   {
     provider: 'Google',
-    model: 'gemini-3-pro-preview-low',
-    displayName: 'Gemini 3 Pro (Low Thinking)',
-    icon: '⚡🧠',
+    model: 'gemini-3-pro-image-preview',
+    displayName: 'Gemini 3 Pro Image',
+    icon: '🎨',
     capabilities: {
-      input: ['text', 'image', 'audio', 'video'],
-      output: ['text'],
+      input: ['text', 'image'],
+      output: ['image'],
     },
   },
   {
@@ -178,22 +228,12 @@ export const AVAILABLE_MODELS: LLMModel[] = [
   },
   {
     provider: 'Google',
-    model: 'gemini-2.5-flash-lite',
-    displayName: 'Gemini 2.5 Flash Lite',
+    model: 'gemini-2.5-flash',
+    displayName: 'Gemini 2.5 Flash',
     icon: '⚡',
     capabilities: {
-      input: ['text', 'image'],
+      input: ['text', 'image', 'audio', 'video'],
       output: ['text'],
-    },
-  },
-  {
-    provider: 'Google',
-    model: 'gemini-2.5-flash-image',
-    displayName: 'Nano Banana',
-    icon: '🍌',
-    capabilities: {
-      input: ['text', 'image'],
-      output: ['image'],
     },
   },
   {
@@ -248,8 +288,18 @@ export const AVAILABLE_MODELS: LLMModel[] = [
   },
   {
     provider: 'Grok',
-    model: 'grok-4-fast',
-    displayName: 'Grok-4 Fast',
+    model: 'grok-4-1-fast-reasoning',
+    displayName: 'Grok 4.1 Fast Reasoning',
+    icon: '⚡🧠',
+    capabilities: {
+      input: ['text', 'image'],
+      output: ['text'],
+    },
+  },
+  {
+    provider: 'Grok',
+    model: 'grok-4-1-fast-non-reasoning',
+    displayName: 'Grok 4.1 Fast',
     icon: '⚡',
     capabilities: {
       input: ['text', 'image'],
@@ -258,17 +308,17 @@ export const AVAILABLE_MODELS: LLMModel[] = [
   },
   {
     provider: 'Grok',
-    model: 'grok-4-fast-reasoning',
-    displayName: 'Grok-4 Fast Reasoning',
-    icon: '🧪',
+    model: 'grok-2-image-1212',
+    displayName: 'Grok 2 Image',
+    icon: '🖼️',
     capabilities: {
-      input: ['text', 'image'],
-      output: ['text'],
+      input: ['text'],
+      output: ['image'],
     },
   },
   {
     provider: 'Anthropic',
-    model: 'claude-3-5-sonnet-20241022',
+    model: 'claude-4-5-sonnet-latest',
     displayName: 'Claude Sonnet 4.5',
     icon: '🎯',
     capabilities: {
@@ -278,7 +328,37 @@ export const AVAILABLE_MODELS: LLMModel[] = [
   },
   {
     provider: 'Anthropic',
-    model: 'claude-3-5-haiku-20241022',
+    model: 'claude-4-sonnet-latest',
+    displayName: 'Claude Sonnet 4',
+    icon: '🎯',
+    capabilities: {
+      input: ['text', 'image'],
+      output: ['text'],
+    },
+  },
+  {
+    provider: 'Anthropic',
+    model: 'claude-4-5-opus-latest',
+    displayName: 'Claude Opus 4.5',
+    icon: '🧠',
+    capabilities: {
+      input: ['text', 'image'],
+      output: ['text'],
+    },
+  },
+  {
+    provider: 'Anthropic',
+    model: 'claude-4-1-opus-latest',
+    displayName: 'Claude Opus 4.1',
+    icon: '🧠',
+    capabilities: {
+      input: ['text', 'image'],
+      output: ['text'],
+    },
+  },
+  {
+    provider: 'Anthropic',
+    model: 'claude-4-5-haiku-latest',
     displayName: 'Claude Haiku 4.5',
     icon: '🚀',
     capabilities: {
@@ -288,8 +368,38 @@ export const AVAILABLE_MODELS: LLMModel[] = [
   },
   {
     provider: 'Anthropic',
+    model: 'claude-3-5-haiku-20241022',
+    displayName: 'Claude Haiku 3.5',
+    icon: '🚀',
+    capabilities: {
+      input: ['text', 'image'],
+      output: ['text'],
+    },
+  },
+  {
+    provider: 'Anthropic',
+    model: 'claude-3-haiku-20240307',
+    displayName: 'Claude Haiku 3',
+    icon: '💨',
+    capabilities: {
+      input: ['text', 'image'],
+      output: ['text'],
+    },
+  },
+  {
+    provider: 'Anthropic',
+    model: 'claude-3-5-sonnet-20240620',
+    displayName: 'Claude 3.5 Sonnet (Legacy)',
+    icon: '🎯',
+    capabilities: {
+      input: ['text', 'image'],
+      output: ['text'],
+    },
+  },
+  {
+    provider: 'Anthropic',
     model: 'claude-3-opus-20240229',
-    displayName: 'Claude Opus 4.1',
+    displayName: 'Claude 3 Opus (Legacy)',
     icon: '🧠',
     capabilities: {
       input: ['text', 'image'],

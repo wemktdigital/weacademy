@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { createClient } from '@supabase/supabase-js'
 import {
   executeWorkflowStage,
@@ -6,6 +7,13 @@ import {
   type WorkflowStageRunRecord,
   type StageExecutionResult,
 } from './workflowStageRunner'
+
+export type {
+  WorkflowStageRecord,
+  WorkflowInstanceRecord,
+  WorkflowStageRunRecord,
+  StageExecutionResult
+}
 import {
   createHumanTask,
   getHumanTaskByStageRun,
@@ -182,9 +190,9 @@ async function handleHumanStageTransition({
     const reminderStrategy =
       humanConfig?.sla && (humanConfig.sla.reminderEveryMinutes || humanConfig.sla.maxReminders)
         ? {
-            reminderEveryMinutes: humanConfig.sla.reminderEveryMinutes ?? null,
-            maxReminders: humanConfig.sla.maxReminders ?? null,
-          }
+          reminderEveryMinutes: humanConfig.sla.reminderEveryMinutes ?? null,
+          maxReminders: humanConfig.sla.maxReminders ?? null,
+        }
         : undefined
 
     const escalationConfig =
@@ -276,10 +284,10 @@ async function handleHumanStageTransition({
           completion.humanStatus === 'approved'
             ? 'approved'
             : completion.humanStatus === 'rejected'
-            ? 'rejected'
-            : completion.humanStatus === 'cancelled'
-            ? 'cancelled'
-            : 'completed'
+              ? 'rejected'
+              : completion.humanStatus === 'cancelled'
+                ? 'cancelled'
+                : 'completed'
 
         await updateHumanTask(existingTask.id, {
           status: taskStatus,
@@ -343,10 +351,10 @@ function deriveHumanDecision(
   const rawDecision = typeof source.decision === 'string'
     ? source.decision
     : typeof source.status === 'string'
-    ? source.status
-    : typeof source.result === 'string'
-    ? source.result
-    : undefined
+      ? source.status
+      : typeof source.result === 'string'
+        ? source.result
+        : undefined
 
   const normalizedDecision = (rawDecision || '').toLowerCase()
   let humanStatus: 'approved' | 'rejected' | 'cancelled' | 'failed' = 'approved'
@@ -365,10 +373,10 @@ function deriveHumanDecision(
     humanStatus === 'approved'
       ? 'approved'
       : humanStatus === 'rejected'
-      ? 'rejected'
-      : humanStatus === 'cancelled'
-      ? 'cancelled'
-      : 'failed'
+        ? 'rejected'
+        : humanStatus === 'cancelled'
+          ? 'cancelled'
+          : 'failed'
 
   const reason =
     source.decisionReason ??

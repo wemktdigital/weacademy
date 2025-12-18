@@ -8,12 +8,12 @@ export const dynamic = "force-dynamic"
 
 export async function POST(
   request: Request,
-  { params }: { params: Promise<{ id: string }> | { id: string } }
+  props: { params: Promise<{ id: string }> }
 ) {
   try {
     // Resolver params (pode ser Promise no Next.js 15+)
-    const resolvedParams = params instanceof Promise ? await params : params
-    const pipelineId = resolvedParams.id
+    const params = await props.params
+    const pipelineId = params.id
 
     console.log('[API][pipelines/test] POST - Pipeline ID recebido:', pipelineId)
 
@@ -112,10 +112,10 @@ export async function POST(
         errorCode: pipelineError?.code,
       })
       return NextResponse.json(
-        { 
+        {
           error: 'Pipeline não encontrado',
           details: pipelineError?.message || 'Nenhum pipeline encontrado com o ID fornecido',
-          success: false 
+          success: false
         },
         { status: 404 }
       )
@@ -158,7 +158,7 @@ export async function POST(
 
           // Executar o pipeline
           console.log(`[API][pipelines/test] Executando teste do pipeline ${pipelineId}`)
-          
+
           const messages = [
             {
               role: 'user' as const,
@@ -236,7 +236,7 @@ export async function POST(
           controller.close()
         } catch (error: any) {
           console.error('[API][pipelines/test] Erro no stream:', error)
-          
+
           // Enviar evento de erro
           const sendSSE = (chunk: string) => {
             return new TextEncoder().encode(`data: ${chunk}\n\n`)
@@ -267,8 +267,8 @@ export async function POST(
   } catch (error: any) {
     console.error('Error testing pipeline:', error)
     return NextResponse.json(
-      { 
-        error: 'Internal server error', 
+      {
+        error: 'Internal server error',
         details: error.message,
         success: false,
       },

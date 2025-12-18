@@ -114,7 +114,7 @@ export async function processImageWithModel(
   try {
     const replicate = getReplicateInstance()
 
-    const output = await replicate.run(model, { input }) as any
+    const output = await replicate.run(model as `${string}/${string}`, { input }) as any
 
     const processingTime = Date.now() - startTime
 

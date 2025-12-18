@@ -1,8 +1,10 @@
 'use client'
 
-import { useState } from 'react'
+export const dynamic = 'force-dynamic'
+
+import { useState, Suspense } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -11,7 +13,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { BookOpen, Mail, Lock, Eye, EyeOff, User } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 
-export default function RegisterPage() {
+function RegisterPageInner() {
   const [formData, setFormData] = useState({
     fullName: '',
     email: '',
@@ -22,9 +24,11 @@ export default function RegisterPage() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
-  
+
   const { signUp } = useAuth()
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const planId = searchParams.get('plan')
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData(prev => ({
@@ -52,7 +56,7 @@ export default function RegisterPage() {
 
     try {
       const { data, error } = await signUp(formData.email, formData.password, formData.fullName)
-      
+
       if (error) {
         setError(error.message)
       } else if (data) {
@@ -62,7 +66,12 @@ export default function RegisterPage() {
         if (data.session) {
           // Sessão criada automaticamente - aguardar contexto atualizar e redirecionar
           await new Promise(resolve => setTimeout(resolve, 500))
-          router.push('/?message=Conta criada com sucesso! Bem-vindo à WE Academy.')
+
+          if (planId) {
+            router.push(`/pricing?auto_checkout=${planId}`)
+          } else {
+            router.push('/?message=Conta criada com sucesso! Bem-vindo à WE Academy.')
+          }
         } else {
           // Precisa confirmar email ou fazer login manual
           router.push('/auth/login?message=Conta criada com sucesso! Faça login para continuar.')
@@ -233,5 +242,17 @@ export default function RegisterPage() {
         </Card>
       </div>
     </div>
+  )
+}
+
+export default function RegisterPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center h-screen">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      </div>
+    }>
+      <RegisterPageInner />
+    </Suspense>
   )
 }

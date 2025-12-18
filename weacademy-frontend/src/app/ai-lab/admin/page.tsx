@@ -285,7 +285,7 @@ export default function LabAdminDashboard() {
                     cx="50%"
                     cy="50%"
                     labelLine={false}
-                    label={({ provider, cost }) => `${provider}: $${cost.toFixed(2)}`}
+                    label={({ name, value }: any) => `${name}: $${value.toFixed(2)}`}
                     outerRadius={80}
                     fill="#8884d8"
                     dataKey="cost"

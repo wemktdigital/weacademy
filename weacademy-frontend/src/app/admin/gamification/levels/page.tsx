@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { LevelsTable } from '@/components/admin/gamification/LevelsTable'
+import { LevelsTable, Level as TableLevel } from '@/components/admin/gamification/LevelsTable'
 import { LevelForm, Level } from '@/components/admin/gamification/LevelForm'
 import {
   Dialog,
@@ -23,7 +23,7 @@ export default function LevelsAdminPage() {
   const { user, isAdmin, loading: authLoading } = useAuth()
   const router = useRouter()
   const [loading, setLoading] = useState(true)
-  const [levels, setLevels] = useState<Level[]>([])
+  const [levels, setLevels] = useState<TableLevel[]>([])
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingLevel, setEditingLevel] = useState<Level | null>(null)
 
@@ -60,7 +60,13 @@ export default function LevelsAdminPage() {
       }
 
       const data = await response.json()
-      setLevels(data.levels || [])
+
+      const formattedLevels: any[] = (data.levels || []).map((item: any) => ({
+        ...item,
+        id: item.id || '',
+      }))
+
+      setLevels(formattedLevels)
     } catch (error: any) {
       console.error('Error loading levels:', error)
       toast.error(error.message || 'Erro ao carregar níveis')
@@ -118,7 +124,7 @@ export default function LevelsAdminPage() {
       const url = editingLevel
         ? `/api/admin/gamification/levels/${editingLevel.id}`
         : '/api/admin/gamification/levels'
-      
+
       const method = editingLevel ? 'PUT' : 'POST'
 
       const response = await fetch(url, {

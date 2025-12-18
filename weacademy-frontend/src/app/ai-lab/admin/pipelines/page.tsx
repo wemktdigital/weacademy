@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, Suspense } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -44,7 +44,7 @@ import { PipelineTester } from '@/modules/laboratorio-ia/components/PipelineTest
 import { DebugModePanel } from '@/modules/laboratorio-ia/components/DebugModePanel'
 import { PipelineVersionsPanel } from '@/modules/laboratorio-ia/components/PipelineVersionsPanel'
 
-export default function PipelinesPage() {
+function PipelinesPageInner() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [pipelines, setPipelines] = useState<Pipeline[]>([])
@@ -139,7 +139,7 @@ export default function PipelinesPage() {
       }
 
       const template = await response.json()
-      
+
       // Garantir que template.steps seja um array
       if (!Array.isArray(template.steps) || template.steps.length === 0) {
         setFormData({
@@ -153,37 +153,37 @@ export default function PipelinesPage() {
         toast.warning(`Template "${template.name}" carregado, mas não há etapas configuradas no template.`)
         return
       }
-      
+
       // Converter steps do template para formato do pipeline
       // O template tem agent_name, mas precisamos encontrar os agent_id correspondentes
       const steps: PipelineStep[] = template.steps.map((step: any, index: number) => {
         const agentName = step.agent_name || step.name || ''
-        
+
         // Tentar encontrar o agente pelo nome (busca mais flexível)
         const agent = agents.find(a => {
           if (!agentName) return false
-          
+
           const agentNameLower = a.name.toLowerCase().trim()
           const stepNameLower = agentName.toLowerCase().trim()
-          
+
           // Match exato (case-insensitive)
           if (agentNameLower === stepNameLower) return true
-          
+
           // Match parcial (um contém o outro)
           if (agentNameLower.includes(stepNameLower) || stepNameLower.includes(agentNameLower)) return true
-          
+
           // Match por palavras-chave comuns
           const stopWords = ['de', 'em', 'para', 'com', 'por', 'ao', 'da', 'do', 'no', 'na']
-          const agentKeywords = agentNameLower.split(/\s+/).filter(k => k.length > 2 && !stopWords.includes(k))
-          const stepKeywords = stepNameLower.split(/\s+/).filter(k => k.length > 2 && !stopWords.includes(k))
+          const agentKeywords = agentNameLower.split(/\s+/).filter((k: string) => k.length > 2 && !stopWords.includes(k))
+          const stepKeywords = stepNameLower.split(/\s+/).filter((k: string) => k.length > 2 && !stopWords.includes(k))
           const commonKeywords = agentKeywords.filter(k => stepKeywords.includes(k))
-          
+
           // Se houver pelo menos 2 palavras-chave em comum, considera match
           if (commonKeywords.length >= 2) return true
-          
+
           return false
         })
-        
+
         return {
           order: step.order || index + 1,
           agent_id: agent?.id || '',
@@ -201,7 +201,7 @@ export default function PipelinesPage() {
       })
 
       setOpenDialog(true)
-      
+
       if (steps.length === 0) {
         toast.warning(`Template "${template.name}" não tem etapas configuradas.`)
       } else if (stepsWithAgents.length === steps.length) {
@@ -240,7 +240,7 @@ export default function PipelinesPage() {
       const headers: HeadersInit = {
         'Content-Type': 'application/json',
       }
-      
+
       if (token) {
         headers['Authorization'] = `Bearer ${token}`
       }
@@ -551,7 +551,7 @@ export default function PipelinesPage() {
                   <Button
                     variant="destructive"
                     size="sm"
-                    onClick={() => setDeletePipelineId(pipeline.id)}
+                    onClick={() => setDeletePipelineId(pipeline.id || null)}
                     className="flex-shrink-0"
                   >
                     Excluir
@@ -729,5 +729,17 @@ export default function PipelinesPage() {
         )}
       </div>
     </div>
+  )
+}
+
+export default function PipelinesPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center h-screen">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      </div>
+    }>
+      <PipelinesPageInner />
+    </Suspense>
   )
 }

@@ -8,6 +8,7 @@ import { useToast } from '@/hooks/use-toast'
 import { supabase } from '@/lib/supabase'
 import { AVAILABLE_MODELS } from '@/modules/laboratorio-ia/config/models'
 import Image from 'next/image'
+import { cn } from '@/lib/utils'
 
 export interface Attachment {
   url: string
@@ -30,9 +31,9 @@ interface ChatInputProps {
   onModelChange?: (provider: string, model: string) => void  // Callback para mudança automática de modelo
 }
 
-export function ChatInput({ 
-  onSend, 
-  loading = false, 
+export function ChatInput({
+  onSend,
+  loading = false,
   disabled = false,
   provider = 'OpenAI',
   model = 'gpt-5-nano',
@@ -62,51 +63,51 @@ export function ChatInput({
     // Preferir modelos que também suportam imagem (melhor para PDFs)
     if (fileType === 'document') {
       // Primeiro tentar encontrar modelo que suporta texto E imagem (melhor para PDFs)
-      let compatibleModel = AVAILABLE_MODELS.find(m => 
+      let compatibleModel = AVAILABLE_MODELS.find(m =>
         m.capabilities?.input.includes('text') && m.capabilities?.input.includes('image')
       )
       // Se não encontrar, usar qualquer modelo que suporta texto
       if (!compatibleModel) {
-        compatibleModel = AVAILABLE_MODELS.find(m => 
+        compatibleModel = AVAILABLE_MODELS.find(m =>
           m.capabilities?.input.includes('text')
         )
       }
       return compatibleModel ? { provider: compatibleModel.provider, model: compatibleModel.model } : null
     }
-    
+
     // Para outros tipos, encontrar modelo que suporta o tipo específico
     // Priorizar modelos mais adequados para cada tipo
     let compatibleModel = null
-    
+
     if (fileType === 'image') {
       // Para imagens, preferir modelos que suportam texto E imagem (multimodal)
-      compatibleModel = AVAILABLE_MODELS.find(m => 
+      compatibleModel = AVAILABLE_MODELS.find(m =>
         m.capabilities?.input.includes('image') && m.capabilities?.input.includes('text')
       )
       // Se não encontrar multimodal, usar qualquer que suporte imagem
       if (!compatibleModel) {
-        compatibleModel = AVAILABLE_MODELS.find(m => 
+        compatibleModel = AVAILABLE_MODELS.find(m =>
           m.capabilities?.input.includes('image')
         )
       }
     } else if (fileType === 'video') {
       // Para vídeos, procurar modelos que suportam vídeo
-      compatibleModel = AVAILABLE_MODELS.find(m => 
+      compatibleModel = AVAILABLE_MODELS.find(m =>
         m.capabilities?.input.includes('video')
       )
     } else if (fileType === 'audio') {
       // Para áudio, procurar modelos especializados em transcrição primeiro
-      compatibleModel = AVAILABLE_MODELS.find(m => 
+      compatibleModel = AVAILABLE_MODELS.find(m =>
         m.model.includes('transcribe') || m.model.includes('transcription')
       )
       // Se não encontrar especializado, usar qualquer que suporte áudio
       if (!compatibleModel) {
-        compatibleModel = AVAILABLE_MODELS.find(m => 
+        compatibleModel = AVAILABLE_MODELS.find(m =>
           m.capabilities?.input.includes('audio')
         )
       }
     }
-    
+
     return compatibleModel ? { provider: compatibleModel.provider, model: compatibleModel.model } : null
   }
 
@@ -157,7 +158,7 @@ export function ChatInput({
 
       // Determinar tipo de arquivo
       let fileType: 'image' | 'video' | 'audio' | 'document' | null = null
-      
+
       if (file.type.startsWith('image/')) {
         fileType = 'image'
       } else if (file.type.startsWith('video/')) {
@@ -179,14 +180,14 @@ export function ChatInput({
 
       // Sempre encontrar o modelo mais adequado para o tipo de arquivo
       const compatibleModel = findCompatibleModel(fileType)
-      
+
       console.log('[ChatInput] Arquivo detectado:', {
         fileName: file.name,
         fileType,
         currentModel: `${provider}:${model}`,
         compatibleModel: compatibleModel ? `${compatibleModel.provider}:${compatibleModel.model}` : null,
       })
-      
+
       if (!compatibleModel) {
         toast({
           title: 'Tipo não suportado',
@@ -197,14 +198,14 @@ export function ChatInput({
       }
 
       // Verificar se o modelo atual suporta este tipo
-      const currentModelSupports = 
+      const currentModelSupports =
         (fileType === 'image' && modelSupportsImage) ||
         (fileType === 'video' && modelSupportsVideo) ||
         (fileType === 'audio' && modelSupportsAudio) ||
         (fileType === 'document' && modelSupportsText)
 
       // Verificar se precisa mudar (se o modelo atual não suporta OU se encontramos um modelo melhor)
-      const needsModelChange = !currentModelSupports || 
+      const needsModelChange = !currentModelSupports ||
         (compatibleModel.provider !== provider || compatibleModel.model !== model)
 
       console.log('[ChatInput] Verificação de mudança de modelo:', {
@@ -222,20 +223,20 @@ export function ChatInput({
         const modelDisplayName = AVAILABLE_MODELS.find(
           m => m.provider === compatibleModel.provider && m.model === compatibleModel.model
         )?.displayName || compatibleModel.model
-        
+
         console.log('[ChatInput] Mudando modelo para:', {
           provider: compatibleModel.provider,
           model: compatibleModel.model,
           displayName: modelDisplayName,
         })
-        
+
         onModelChange(compatibleModel.provider, compatibleModel.model)
-        
-        const fileTypeLabel = fileType === 'image' ? 'imagens' 
-          : fileType === 'video' ? 'vídeos' 
-          : fileType === 'audio' ? 'áudio' 
-          : 'documentos'
-        
+
+        const fileTypeLabel = fileType === 'image' ? 'imagens'
+          : fileType === 'video' ? 'vídeos'
+            : fileType === 'audio' ? 'áudio'
+              : 'documentos'
+
         toast({
           title: 'Modelo alterado automaticamente',
           description: `Mudando para ${compatibleModel.provider} - ${modelDisplayName} para processar ${fileTypeLabel}.`,
@@ -243,10 +244,10 @@ export function ChatInput({
       }
 
       validFiles.push(file)
-      
+
       // Criar preview local imediatamente (apenas para imagens)
       const previewUrl = fileType === 'image' ? URL.createObjectURL(file) : undefined
-      
+
       tempAttachments.push({
         url: '', // Será preenchido após upload
         type: fileType,
@@ -278,13 +279,13 @@ export function ChatInput({
       for (let i = 0; i < validFiles.length; i++) {
         const file = validFiles[i]
         const tempAttachment = tempAttachments[i]
-        
+
         const formDataObj = new FormData()
         formDataObj.append('file', file)
 
         // Atualizar progresso durante upload
         const xhr = new XMLHttpRequest()
-        
+
         // Criar Promise para upload com progresso
         const uploadPromise = new Promise<{ url: string; name: string; size: number }>((resolve, reject) => {
           xhr.upload.addEventListener('progress', (e) => {
@@ -325,12 +326,12 @@ export function ChatInput({
         })
 
         const result = await uploadPromise
-        
+
         // Limpar preview local
         if (tempAttachment.previewUrl) {
           URL.revokeObjectURL(tempAttachment.previewUrl)
         }
-        
+
         uploadedAttachments.push({
           url: result.url,
           type: tempAttachment.type,
@@ -354,14 +355,14 @@ export function ChatInput({
         })
         return newAttachments
       })
-      
+
       toast({
         title: 'Arquivo(s) anexado(s)',
         description: `${uploadedAttachments.length} arquivo(s) pronto(s) para enviar.`,
       })
     } catch (error: any) {
       console.error('Erro ao fazer upload:', error)
-      
+
       // Remover previews temporários em caso de erro
       setAttachments((prev) => {
         const newAttachments = [...prev]
@@ -372,7 +373,7 @@ export function ChatInput({
         })
         return newAttachments.slice(0, -tempAttachments.length)
       })
-      
+
       toast({
         title: 'Erro ao fazer upload',
         description: error.message || 'Não foi possível anexar o arquivo.',
@@ -391,7 +392,7 @@ export function ChatInput({
 
       if (item.type.startsWith('image/')) {
         e.preventDefault()
-        
+
         if (!modelSupportsImage) {
           // Tentar encontrar modelo compatível
           const compatibleModel = findCompatibleModel('image')
@@ -441,7 +442,7 @@ export function ChatInput({
 
           const fileList = new DataTransfer()
           fileList.items.add(file)
-          
+
           const formDataObj = new FormData()
           formDataObj.append('file', file)
 
@@ -459,10 +460,10 @@ export function ChatInput({
           }
 
           const result = await response.json()
-          
+
           // Limpar preview local
           URL.revokeObjectURL(previewUrl)
-          
+
           // Substituir preview temporário pela URL real
           setAttachments((prev) => {
             const newAttachments = [...prev]
@@ -479,20 +480,20 @@ export function ChatInput({
             }
             return newAttachments
           })
-          
+
           toast({
             title: 'Imagem anexada',
             description: 'Imagem pronta para enviar.',
           })
         } catch (error: any) {
           console.error('Erro ao fazer upload:', error)
-          
+
           // Remover preview temporário em caso de erro
           setAttachments((prev) => {
             URL.revokeObjectURL(previewUrl)
             return prev.filter(a => a.previewUrl !== previewUrl || a.uploading)
           })
-          
+
           toast({
             title: 'Erro ao fazer upload',
             description: error.message || 'Não foi possível anexar a imagem.',
@@ -513,7 +514,7 @@ export function ChatInput({
   const handleDrop = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault()
     e.stopPropagation()
-    
+
     const files = e.dataTransfer.files
     if (files.length > 0) {
       handleFileSelect(files)
@@ -533,16 +534,16 @@ export function ChatInput({
 
   const handleSubmit = (e?: React.FormEvent) => {
     e?.preventDefault()
-    
+
     if ((!message.trim() && attachments.length === 0) || loading || disabled) return
-    
+
     // Limpar previews locais antes de enviar
     attachments.forEach(attachment => {
       if (attachment.previewUrl) {
         URL.revokeObjectURL(attachment.previewUrl)
       }
     })
-    
+
     onSend(message.trim(), attachments.length > 0 ? attachments : undefined)
     setMessage('')
     setAttachments([])
@@ -556,7 +557,7 @@ export function ChatInput({
   }
 
   return (
-    <div 
+    <div
       className="border-t bg-background"
       onDragOver={handleDragOver}
       onDrop={handleDrop}
@@ -578,19 +579,19 @@ export function ChatInput({
                   <div className="absolute inset-0 bg-background/90 flex flex-col items-center justify-center z-10 rounded-lg p-2">
                     <Loader2 className="h-6 w-6 animate-spin text-primary mb-2" />
                     <span className="text-xs font-medium text-foreground mb-1">
-                      {attachment.uploadProgress !== undefined 
-                        ? `${attachment.uploadProgress}%` 
+                      {attachment.uploadProgress !== undefined
+                        ? `${attachment.uploadProgress}%`
                         : 'Enviando...'}
                     </span>
                     {attachment.uploadProgress !== undefined && (
-                      <Progress 
-                        value={attachment.uploadProgress} 
+                      <Progress
+                        value={attachment.uploadProgress}
                         className="w-full h-1.5 max-w-[80px]"
                       />
                     )}
                   </div>
                 )}
-                
+
                 {attachment.type === 'image' && (
                   <div className="relative w-24 h-24">
                     <Image
@@ -680,8 +681,8 @@ export function ChatInput({
                 loading
                   ? "Aguardando resposta..."
                   : attachments.length > 0
-                  ? "Digite sua mensagem... (Enter para enviar, Shift+Enter para nova linha)"
-                  : "Digite sua mensagem... (Enter para enviar, Shift+Enter para nova linha)"
+                    ? "Digite sua mensagem... (Enter para enviar, Shift+Enter para nova linha)"
+                    : "Digite sua mensagem... (Enter para enviar, Shift+Enter para nova linha)"
               }
               rows={1}
               disabled={loading || disabled || uploading}

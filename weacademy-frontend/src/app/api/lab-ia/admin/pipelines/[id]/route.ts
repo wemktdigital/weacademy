@@ -6,8 +6,9 @@ import { createClient } from '@supabase/supabase-js'
 
 export async function PUT(
   request: Request,
-  { params }: { params: { id: string } }
+  props: { params: Promise<{ id: string }> }
 ) {
+  const params = await props.params
   try {
     // Tentar autenticar via Authorization: Bearer <token>
     const authHeader = request.headers.get('authorization')
@@ -103,10 +104,10 @@ export async function PUT(
     return NextResponse.json(pipeline)
   } catch (error) {
     console.error('Error updating pipeline:', error)
-    
+
     if (error instanceof z.ZodError) {
       return NextResponse.json(
-        { error: 'Validation error', details: error.errors },
+        { error: 'Validation error', details: (error as any).errors },
         { status: 400 }
       )
     }
@@ -120,8 +121,9 @@ export async function PUT(
 
 export async function DELETE(
   request: Request,
-  { params }: { params: { id: string } }
+  props: { params: Promise<{ id: string }> }
 ) {
+  const params = await props.params
   try {
     // Tentar Authorization header
     const authHeader = request.headers.get('authorization')
@@ -129,7 +131,7 @@ export async function DELETE(
 
     let user: any = null
     let authError: any = null
-    
+
     if (token) {
       const supabaseWithToken = createClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,

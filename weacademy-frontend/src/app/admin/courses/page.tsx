@@ -6,13 +6,13 @@ import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { 
-  Table, 
-  TableBody, 
-  TableCell, 
-  TableHead, 
-  TableHeader, 
-  TableRow 
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow
 } from '@/components/ui/table'
 import {
   Select,
@@ -21,16 +21,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { 
-  Plus, 
-  Search, 
-  Edit, 
-  Trash2, 
-  Eye, 
+import {
+  Plus,
+  Search,
+  Edit,
+  Trash2,
+  Eye,
   Filter,
   BookOpen,
   Users,
-  TrendingUp
+  TrendingUp,
+  ExternalLink
 } from 'lucide-react'
 import { toast } from '@/hooks/use-toast'
 import { supabase } from '@/lib/supabase'
@@ -63,7 +64,7 @@ export default function AdminCoursesPage() {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [levelFilter, setLevelFilter] = useState<string>('all')
-  const [deleteDialog, setDeleteDialog] = useState<{open: boolean, courseId: string | null}>({
+  const [deleteDialog, setDeleteDialog] = useState<{ open: boolean, courseId: string | null }>({
     open: false,
     courseId: null
   })
@@ -81,7 +82,7 @@ export default function AdminCoursesPage() {
   const loadCourses = async () => {
     try {
       setLoading(true)
-      
+
       let query = supabase
         .from('courses')
         .select('*, category:categories(id, name)')
@@ -103,7 +104,7 @@ export default function AdminCoursesPage() {
       if (error) throw error
       setCourses(data || [])
     } catch (error: any) {
-      showActionableError(error, { action: 'carregar cursos', entity: 'cursos' }, toast)
+      showActionableError(error, { action: 'Tentar novamente', message: 'Erro ao carregar cursos' }, toast)
     } finally {
       setLoading(false)
     }
@@ -145,7 +146,7 @@ export default function AdminCoursesPage() {
       setDeleteDialog({ open: false, courseId: null })
       loadCourses()
     } catch (error: any) {
-      showActionableError(error, { action: 'deletar curso', entity: 'curso' }, toast)
+      showActionableError(error, { action: 'Tentar novamente', message: 'Erro ao deletar curso' }, toast)
     } finally {
       setIsDeleting(false)
     }
@@ -301,8 +302,8 @@ export default function AdminCoursesPage() {
                         course.status === 'published'
                           ? 'default'
                           : course.status === 'archived'
-                          ? 'destructive'
-                          : 'secondary'
+                            ? 'destructive'
+                            : 'secondary'
                       }
                     >
                       {course.status === 'published' ? 'Publicado' : course.status === 'draft' ? 'Rascunho' : 'Arquivado'}
@@ -318,6 +319,15 @@ export default function AdminCoursesPage() {
                       <Button
                         variant="ghost"
                         size="icon"
+                        title="Ver como aluno"
+                        onClick={() => window.open(`/courses/${course.slug}`, '_blank')}
+                      >
+                        <ExternalLink className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        title="Detalhes"
                         onClick={() => router.push(`/admin/courses/${course.id}`)}
                       >
                         <Eye className="h-4 w-4" />
@@ -325,6 +335,7 @@ export default function AdminCoursesPage() {
                       <Button
                         variant="ghost"
                         size="icon"
+                        title="Editar"
                         onClick={() => router.push(`/admin/courses/${course.id}/edit`)}
                       >
                         <Edit className="h-4 w-4" />
@@ -332,6 +343,7 @@ export default function AdminCoursesPage() {
                       <Button
                         variant="ghost"
                         size="icon"
+                        title="Excluir"
                         onClick={() => handleDelete(course.id)}
                       >
                         <Trash2 className="h-4 w-4 text-destructive" />

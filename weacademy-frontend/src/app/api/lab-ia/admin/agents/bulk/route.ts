@@ -20,7 +20,7 @@ export async function PATCH(request: NextRequest) {
     // Verificar autenticação via header Authorization
     const authHeader = request.headers.get('authorization')
     const token = authHeader?.replace('Bearer ', '')
-    
+
     let user = null
 
     // Tentar autenticar via token primeiro
@@ -53,13 +53,13 @@ export async function PATCH(request: NextRequest) {
           auth: {
             storage: {
               getItem: async (key: string) => cookieStore.get(key)?.value || null,
-              setItem: async (key: string, value: string) => {},
-              removeItem: async (key: string) => {},
+              setItem: async (key: string, value: string) => { },
+              removeItem: async (key: string) => { },
             },
           },
         }
       )
-      
+
       const { data: { user: cookieUser }, error: authError } = await supabase.auth.getUser()
       if (!authError && cookieUser) {
         user = cookieUser
@@ -114,10 +114,10 @@ export async function PATCH(request: NextRequest) {
     })
   } catch (error) {
     console.error('Error updating agents in bulk:', error)
-    
+
     if (error instanceof z.ZodError) {
       return NextResponse.json(
-        { error: 'Validation error', details: error.errors },
+        { error: 'Validation error', details: (error as any).errors },
         { status: 400 }
       )
     }
@@ -134,7 +134,7 @@ export async function DELETE(request: NextRequest) {
     // Verificar autenticação via header Authorization
     const authHeader = request.headers.get('authorization')
     const token = authHeader?.replace('Bearer ', '')
-    
+
     let user = null
 
     // Tentar autenticar via token primeiro
@@ -167,13 +167,13 @@ export async function DELETE(request: NextRequest) {
           auth: {
             storage: {
               getItem: async (key: string) => cookieStore.get(key)?.value || null,
-              setItem: async (key: string, value: string) => {},
-              removeItem: async (key: string) => {},
+              setItem: async (key: string, value: string) => { },
+              removeItem: async (key: string) => { },
             },
           },
         }
       )
-      
+
       const { data: { user: cookieUser }, error: authError } = await supabase.auth.getUser()
       if (!authError && cookieUser) {
         user = cookieUser
@@ -228,10 +228,10 @@ export async function DELETE(request: NextRequest) {
     })
   } catch (error) {
     console.error('Error deleting agents in bulk:', error)
-    
+
     if (error instanceof z.ZodError) {
       return NextResponse.json(
-        { error: 'Validation error', details: error.errors },
+        { error: 'Validation error', details: (error as any).errors },
         { status: 400 }
       )
     }

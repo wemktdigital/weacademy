@@ -8,7 +8,11 @@ function parseHistorySettings(settings: any) {
   return { notes, tags }
 }
 
-export async function GET(_request: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(
+  request: NextRequest,
+  props: { params: Promise<{ id: string }> }
+) {
+  const params = await props.params
   try {
     const supabase = await supabaseServer()
     const {
@@ -60,27 +64,27 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
 
     const { data: stageAgg } = versionIds.length
       ? await supabase
-          .from('lab_workflow_stages')
-          .select('workflow_version_id, id')
-          .in('workflow_version_id', versionIds)
+        .from('lab_workflow_stages')
+        .select('workflow_version_id, id')
+        .in('workflow_version_id', versionIds)
       : { data: [] }
 
     const { data: edgeAgg } = versionIds.length
       ? await supabase
-          .from('lab_workflow_edges')
-          .select('workflow_version_id, id')
-          .in('workflow_version_id', versionIds)
+        .from('lab_workflow_edges')
+        .select('workflow_version_id, id')
+        .in('workflow_version_id', versionIds)
       : { data: [] }
 
     const stageByVersion = new Map<string, number>()
-    ;(stageAgg || []).forEach((row: any) => {
-      stageByVersion.set(row.workflow_version_id, (stageByVersion.get(row.workflow_version_id) ?? 0) + 1)
-    })
+      ; (stageAgg || []).forEach((row: any) => {
+        stageByVersion.set(row.workflow_version_id, (stageByVersion.get(row.workflow_version_id) ?? 0) + 1)
+      })
 
     const edgeByVersion = new Map<string, number>()
-    ;(edgeAgg || []).forEach((row: any) => {
-      edgeByVersion.set(row.workflow_version_id, (edgeByVersion.get(row.workflow_version_id) ?? 0) + 1)
-    })
+      ; (edgeAgg || []).forEach((row: any) => {
+        edgeByVersion.set(row.workflow_version_id, (edgeByVersion.get(row.workflow_version_id) ?? 0) + 1)
+      })
 
     const enriched = (versions || []).map((version) => {
       const extracted = parseHistorySettings(version.settings)

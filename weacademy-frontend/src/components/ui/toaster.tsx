@@ -17,7 +17,7 @@ export function Toaster() {
   React.useEffect(() => {
     // Auto-dismiss toasts after 5 seconds
     const timers: NodeJS.Timeout[] = []
-    
+
     toasts.forEach((toast) => {
       if (toast.open !== false) {
         const timer = setTimeout(() => {
@@ -26,7 +26,7 @@ export function Toaster() {
         timers.push(timer)
       }
     })
-    
+
     return () => {
       timers.forEach(timer => clearTimeout(timer))
     }
@@ -37,11 +37,11 @@ export function Toaster() {
       <ToastViewport />
       {toasts.map(function ({ id, title, description, action, open, ...props }) {
         if (open === false) return null
-        
+
         return (
           <Toast
             key={id}
-            variant={props.variant || 'default'}
+            variant={(props.variant || 'default') as any}
             {...props}
           >
             <div className="grid gap-1">

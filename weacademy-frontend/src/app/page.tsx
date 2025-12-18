@@ -1,6 +1,8 @@
 'use client'
 
-import { useEffect } from 'react'
+export const dynamic = 'force-dynamic'
+
+import { useEffect, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { toast } from 'sonner'
 import Link from 'next/link'
@@ -26,7 +28,7 @@ import {
   Target
 } from 'lucide-react'
 
-export default function HomePage() {
+function HomePageInner() {
   const searchParams = useSearchParams()
 
   useEffect(() => {
@@ -412,5 +414,17 @@ export default function HomePage() {
         </div>
       </section>
     </div>
+  )
+}
+
+export default function HomePage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center h-screen">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      </div>
+    }>
+      <HomePageInner />
+    </Suspense>
   )
 }

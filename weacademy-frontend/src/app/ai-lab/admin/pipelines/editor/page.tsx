@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { PipelineEditor } from '@/modules/laboratorio-ia/components/PipelineEditor'
 import type { Pipeline } from '@/lib/validations/pipeline.schema'
@@ -9,11 +9,11 @@ import { supabase } from '@/lib/supabase'
 import { toast } from 'sonner'
 import { Loader2 } from 'lucide-react'
 
-export default function PipelineEditorPage() {
+function PipelineEditorPageInner() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const pipelineId = searchParams?.get('id')
-  
+
   const [agents, setAgents] = useState<Agent[]>([])
   const [pipeline, setPipeline] = useState<Pipeline | null>(null)
   const [loading, setLoading] = useState(true)
@@ -55,7 +55,7 @@ export default function PipelineEditorPage() {
 
       const data = await response.json()
       const foundPipeline = data.pipelines?.find((p: Pipeline) => p.id === id)
-      
+
       if (foundPipeline) {
         setPipeline(foundPipeline)
       } else {
@@ -98,7 +98,7 @@ export default function PipelineEditorPage() {
       }
 
       const savedPipeline = await response.json()
-      
+
       toast.success(
         pipelineId
           ? 'Pipeline atualizado com sucesso!'
@@ -135,6 +135,18 @@ export default function PipelineEditorPage() {
         onCancel={handleCancel}
       />
     </div>
+  )
+}
+
+export default function PipelineEditorPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center h-screen">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    }>
+      <PipelineEditorPageInner />
+    </Suspense>
   )
 }
 

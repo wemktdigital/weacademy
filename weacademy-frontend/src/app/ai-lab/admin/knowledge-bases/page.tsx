@@ -347,7 +347,7 @@ export default function KnowledgeBasesPage() {
               <div>
                 <Label htmlFor="agent_id">Agente</Label>
                 <Select
-                  value={formData.agent_id}
+                  value={formData.agent_id || undefined}
                   onValueChange={(value) => setFormData({ ...formData, agent_id: value })}
                 >
                   <SelectTrigger>

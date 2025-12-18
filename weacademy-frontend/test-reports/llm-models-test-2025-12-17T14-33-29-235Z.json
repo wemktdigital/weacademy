@@ -1,0 +1,272 @@
+{
+  "timestamp": "2025-12-17T14:33:29.236Z",
+  "summary": {
+    "total": 29,
+    "success": 20,
+    "failed": 9,
+    "successRate": 69
+  },
+  "results": [
+    {
+      "provider": "OpenAI",
+      "model": "gpt-5.2",
+      "displayName": "GPT-5.2",
+      "status": "success",
+      "latency": 3138,
+      "responsePreview": "OK",
+      "timestamp": "2025-12-17T14:31:33.176Z"
+    },
+    {
+      "provider": "OpenAI",
+      "model": "gpt-5.1",
+      "displayName": "GPT-5.1",
+      "status": "success",
+      "latency": 2482,
+      "responsePreview": "OK",
+      "timestamp": "2025-12-17T14:31:36.660Z"
+    },
+    {
+      "provider": "OpenAI",
+      "model": "gpt-5",
+      "displayName": "GPT-5",
+      "status": "success",
+      "latency": 4618,
+      "responsePreview": "OK",
+      "timestamp": "2025-12-17T14:31:42.280Z"
+    },
+    {
+      "provider": "OpenAI",
+      "model": "gpt-5-mini",
+      "displayName": "GPT-5 Mini",
+      "status": "success",
+      "latency": 3562,
+      "responsePreview": "OK",
+      "timestamp": "2025-12-17T14:31:46.843Z"
+    },
+    {
+      "provider": "OpenAI",
+      "model": "gpt-5-nano",
+      "displayName": "GPT-5 Nano",
+      "status": "success",
+      "latency": 3425,
+      "responsePreview": "OK",
+      "timestamp": "2025-12-17T14:31:51.269Z"
+    },
+    {
+      "provider": "OpenAI",
+      "model": "o1-mini",
+      "displayName": "o1-mini",
+      "status": "error",
+      "error": "Falha ao chamar modelo: 404 The model `o1-mini` does not exist or you do not have access to it.",
+      "latency": 1135,
+      "timestamp": "2025-12-17T14:31:53.405Z"
+    },
+    {
+      "provider": "OpenAI",
+      "model": "o3-mini",
+      "displayName": "o3-mini",
+      "status": "success",
+      "latency": 2681,
+      "responsePreview": "OK",
+      "timestamp": "2025-12-17T14:31:57.087Z"
+    },
+    {
+      "provider": "OpenAI",
+      "model": "o4-mini",
+      "displayName": "o4-mini",
+      "status": "success",
+      "latency": 2130,
+      "responsePreview": "OK",
+      "timestamp": "2025-12-17T14:32:00.219Z"
+    },
+    {
+      "provider": "OpenAI",
+      "model": "o4-mini-deep-research",
+      "displayName": "o4-mini (Deep Research)",
+      "status": "error",
+      "error": "Falha ao chamar modelo: 404 This model is only supported in v1/responses and not in v1/chat/completions.",
+      "latency": 796,
+      "timestamp": "2025-12-17T14:32:02.015Z"
+    },
+    {
+      "provider": "OpenAI",
+      "model": "o3",
+      "displayName": "o3",
+      "status": "success",
+      "latency": 1766,
+      "responsePreview": "OK",
+      "timestamp": "2025-12-17T14:32:04.783Z"
+    },
+    {
+      "provider": "OpenAI",
+      "model": "gpt-4o-transcribe",
+      "displayName": "GPT-4o Transcribe",
+      "status": "error",
+      "error": "Falha ao chamar modelo: Erro ao processar arquivo de áudio: Nenhum arquivo de áudio encontrado para transcrição. Por favor, anexe um arquivo de áudio.",
+      "latency": 547,
+      "timestamp": "2025-12-17T14:32:06.331Z"
+    },
+    {
+      "provider": "PubMed",
+      "model": "pubmed-search",
+      "displayName": "PubMed Search",
+      "status": "success",
+      "latency": 1282,
+      "responsePreview": "🔬 **Busca no PubMed concluída**\n\n**Query:** \"Responda apenas com \"OK\" se você está funcionando corr",
+      "timestamp": "2025-12-17T14:32:08.614Z"
+    },
+    {
+      "provider": "Google",
+      "model": "gemini-3-pro-preview",
+      "displayName": "Gemini 3 Pro Preview",
+      "status": "success",
+      "latency": 3865,
+      "responsePreview": "OK",
+      "timestamp": "2025-12-17T14:32:13.481Z"
+    },
+    {
+      "provider": "Google",
+      "model": "gemini-2.5-pro",
+      "displayName": "Gemini 2.5 Pro",
+      "status": "success",
+      "latency": 4408,
+      "responsePreview": "OK",
+      "timestamp": "2025-12-17T14:32:18.890Z"
+    },
+    {
+      "provider": "Google",
+      "model": "gemini-2.5-flash",
+      "displayName": "Gemini 2.5 Flash",
+      "status": "success",
+      "latency": 2225,
+      "responsePreview": "OK",
+      "timestamp": "2025-12-17T14:32:22.115Z"
+    },
+    {
+      "provider": "DeepSeek",
+      "model": "deepseek-chat",
+      "displayName": "DeepSeek Chat",
+      "status": "success",
+      "latency": 2283,
+      "responsePreview": "OK",
+      "timestamp": "2025-12-17T14:32:25.399Z"
+    },
+    {
+      "provider": "DeepSeek",
+      "model": "deepseek-reasoner",
+      "displayName": "DeepSeek Reasoner",
+      "status": "success",
+      "latency": 5440,
+      "responsePreview": "OK",
+      "timestamp": "2025-12-17T14:32:31.841Z"
+    },
+    {
+      "provider": "Grok",
+      "model": "grok-4-1-fast-reasoning",
+      "displayName": "Grok 4.1 Fast Reasoning",
+      "status": "success",
+      "latency": 2559,
+      "responsePreview": "OK",
+      "timestamp": "2025-12-17T14:32:35.400Z"
+    },
+    {
+      "provider": "Grok",
+      "model": "grok-4-1-fast-non-reasoning",
+      "displayName": "Grok 4.1 Fast",
+      "status": "success",
+      "latency": 1057,
+      "responsePreview": "OK",
+      "timestamp": "2025-12-17T14:32:37.458Z"
+    },
+    {
+      "provider": "Anthropic",
+      "model": "claude-4-5-sonnet-latest",
+      "displayName": "Claude Sonnet 4.5",
+      "status": "error",
+      "error": "Falha ao chamar modelo: 404 {\"type\":\"error\",\"error\":{\"type\":\"not_found_error\",\"message\":\"model: claude-4-5-sonnet-latest\"},\"request_id\":\"req_011CWCRU3t7d7jrtWAmFSAGn\"}",
+      "latency": 1099,
+      "timestamp": "2025-12-17T14:32:39.558Z"
+    },
+    {
+      "provider": "Anthropic",
+      "model": "claude-4-sonnet-latest",
+      "displayName": "Claude Sonnet 4",
+      "status": "error",
+      "error": "Falha ao chamar modelo: 404 {\"type\":\"error\",\"error\":{\"type\":\"not_found_error\",\"message\":\"model: claude-4-sonnet-latest\"},\"request_id\":\"req_011CWCRUCBSKzYiAPxJKu1EX\"}",
+      "latency": 747,
+      "timestamp": "2025-12-17T14:32:41.306Z"
+    },
+    {
+      "provider": "Anthropic",
+      "model": "claude-4-5-opus-latest",
+      "displayName": "Claude Opus 4.5",
+      "status": "error",
+      "error": "Falha ao chamar modelo: 404 {\"type\":\"error\",\"error\":{\"type\":\"not_found_error\",\"message\":\"model: claude-4-5-opus-latest\"},\"request_id\":\"req_011CWCRULJ6FQRL9aSfYKrkq\"}",
+      "latency": 1067,
+      "timestamp": "2025-12-17T14:32:43.374Z"
+    },
+    {
+      "provider": "Anthropic",
+      "model": "claude-4-1-opus-latest",
+      "displayName": "Claude Opus 4.1",
+      "status": "error",
+      "error": "Falha ao chamar modelo: 404 {\"type\":\"error\",\"error\":{\"type\":\"not_found_error\",\"message\":\"model: claude-4-1-opus-latest\"},\"request_id\":\"req_011CWCRUUP1atMQ6hSr5fhMC\"}",
+      "latency": 746,
+      "timestamp": "2025-12-17T14:32:45.122Z"
+    },
+    {
+      "provider": "Anthropic",
+      "model": "claude-4-5-haiku-latest",
+      "displayName": "Claude Haiku 4.5",
+      "status": "error",
+      "error": "Falha ao chamar modelo: 404 {\"type\":\"error\",\"error\":{\"type\":\"not_found_error\",\"message\":\"model: claude-4-5-haiku-latest\"},\"request_id\":\"req_011CWCRUbyfZPeSq7CgTTozL\"}",
+      "latency": 889,
+      "timestamp": "2025-12-17T14:32:47.012Z"
+    },
+    {
+      "provider": "Anthropic",
+      "model": "claude-3-5-haiku-20241022",
+      "displayName": "Claude Haiku 3.5",
+      "status": "success",
+      "latency": 2129,
+      "responsePreview": "OK",
+      "timestamp": "2025-12-17T14:32:50.143Z"
+    },
+    {
+      "provider": "Anthropic",
+      "model": "claude-3-haiku-20240307",
+      "displayName": "Claude Haiku 3",
+      "status": "success",
+      "latency": 1734,
+      "responsePreview": "OK",
+      "timestamp": "2025-12-17T14:32:52.879Z"
+    },
+    {
+      "provider": "Anthropic",
+      "model": "claude-3-5-sonnet-20240620",
+      "displayName": "Claude 3.5 Sonnet (Legacy)",
+      "status": "error",
+      "error": "Falha ao chamar modelo: 404 {\"type\":\"error\",\"error\":{\"type\":\"not_found_error\",\"message\":\"model: claude-3-5-sonnet-20240620\"},\"request_id\":\"req_011CWCRVB4VRR3DY1tPN4XEW\"}",
+      "latency": 728,
+      "timestamp": "2025-12-17T14:32:54.609Z"
+    },
+    {
+      "provider": "Anthropic",
+      "model": "claude-3-opus-20240229",
+      "displayName": "Claude 3 Opus (Legacy)",
+      "status": "success",
+      "latency": 1688,
+      "responsePreview": "OK",
+      "timestamp": "2025-12-17T14:32:57.297Z"
+    },
+    {
+      "provider": "Replicate",
+      "model": "meta/meta-llama-3.1-405b-instruct",
+      "displayName": "Llama 3.1 405B Instruct",
+      "status": "success",
+      "latency": 30936,
+      "responsePreview": "OK",
+      "timestamp": "2025-12-17T14:33:29.235Z"
+    }
+  ]
+}

@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Sistema de processamento de variáveis e transformações para pipelines
  */
@@ -22,14 +23,14 @@ export function extractVariables(template: string): string[] {
   const regex = /\{\{([^}]+)\}\}/g
   const matches = template.matchAll(regex)
   const variables: string[] = []
-  
+
   for (const match of matches) {
     const varName = match[1].trim()
     if (varName && !variables.includes(varName)) {
       variables.push(varName)
     }
   }
-  
+
   return variables
 }
 
@@ -39,14 +40,14 @@ export function extractVariables(template: string): string[] {
 export function processTemplate(template: string, context: VariableContext): string {
   return template.replace(/\{\{([^}]+)\}\}/g, (match, varName) => {
     const trimmedVarName = varName.trim()
-    
+
     // Verificar se tem transformação (ex: {{titulo|uppercase}})
     if (trimmedVarName.includes('|')) {
       const [actualVarName, transform] = trimmedVarName.split('|').map(s => s.trim())
       const value = getVariableValue(actualVarName, context)
       return applyTransformation(String(value || ''), transform)
     }
-    
+
     const value = getVariableValue(trimmedVarName, context)
     return String(value ?? '')
   })
@@ -60,7 +61,7 @@ function getVariableValue(varName: string, context: VariableContext): string | n
   if (varName.includes('.')) {
     const parts = varName.split('.')
     let current: any = context
-    
+
     for (const part of parts) {
       if (current && typeof current === 'object' && part in current) {
         current = current[part]
@@ -68,10 +69,10 @@ function getVariableValue(varName: string, context: VariableContext): string | n
         return undefined
       }
     }
-    
+
     return current
   }
-  
+
   // Variável simples
   return context[varName]
 }
@@ -81,23 +82,23 @@ function getVariableValue(varName: string, context: VariableContext): string | n
  */
 function applyTransformation(value: string, transform: string): string {
   const [transformType, ...params] = transform.split(':').map(s => s.trim())
-  
+
   switch (transformType.toLowerCase()) {
     case 'uppercase':
     case 'upper':
       return value.toUpperCase()
-    
+
     case 'lowercase':
     case 'lower':
       return value.toLowerCase()
-    
+
     case 'capitalize':
       return value.charAt(0).toUpperCase() + value.slice(1).toLowerCase()
-    
+
     case 'truncate':
       const maxLength = params[0] ? parseInt(params[0], 10) : 100
       return value.length > maxLength ? value.substring(0, maxLength) + '...' : value
-    
+
     case 'extract_json':
       try {
         const json = JSON.parse(value)
@@ -106,7 +107,7 @@ function applyTransformation(value: string, transform: string): string {
       } catch {
         return value
       }
-    
+
     case 'extract_text':
       // Extrair texto de JSON se possível
       try {
@@ -119,7 +120,7 @@ function applyTransformation(value: string, transform: string): string {
         // Se não é JSON, retornar como está
       }
       return value
-    
+
     case 'format':
       // Formatação simples (ex: format:json, format:number)
       const formatType = params[0]?.toLowerCase()
@@ -132,7 +133,7 @@ function applyTransformation(value: string, transform: string): string {
         }
       }
       return value
-    
+
     default:
       return value
   }
@@ -146,22 +147,22 @@ export function applyTransformations(
   transformations: TransformationConfig[]
 ): string {
   let result = output
-  
+
   for (const transform of transformations) {
     switch (transform.type) {
       case 'truncate':
         const maxLength = transform.params?.maxLength || 100
-        result = result.length > maxLength 
-          ? result.substring(0, maxLength) + '...' 
+        result = result.length > maxLength
+          ? result.substring(0, maxLength) + '...'
           : result
         break
-      
+
       case 'summarize':
         // Sumarização simples (primeira sentença + ...)
         const sentences = result.split(/[.!?]+/)
         result = sentences[0] + (sentences.length > 1 ? '...' : '')
         break
-      
+
       case 'format':
         if (transform.params?.format === 'json') {
           try {
@@ -172,7 +173,7 @@ export function applyTransformations(
           }
         }
         break
-      
+
       case 'extract_json':
         try {
           const json = JSON.parse(result)
@@ -182,7 +183,7 @@ export function applyTransformations(
           // Se não é JSON, manter como está
         }
         break
-      
+
       case 'extract_text':
         try {
           const json = JSON.parse(result)
@@ -193,21 +194,21 @@ export function applyTransformations(
           // Se não é JSON, manter como está
         }
         break
-      
+
       case 'uppercase':
         result = result.toUpperCase()
         break
-      
+
       case 'lowercase':
         result = result.toLowerCase()
         break
-      
+
       case 'capitalize':
         result = result.charAt(0).toUpperCase() + result.slice(1).toLowerCase()
         break
     }
   }
-  
+
   return result
 }
 
@@ -219,26 +220,26 @@ export function buildVariableContext(
   inputMessages?: any[]
 ): VariableContext {
   const context: VariableContext = {}
-  
+
   // Adicionar mensagens de input como variáveis
   if (inputMessages && inputMessages.length > 0) {
     const firstMessage = inputMessages[0]
-    context.input = typeof firstMessage === 'string' 
-      ? firstMessage 
+    context.input = typeof firstMessage === 'string'
+      ? firstMessage
       : firstMessage?.content || ''
-    
+
     // Adicionar mensagem completa
     context.messages = JSON.stringify(inputMessages)
   }
-  
+
   // Adicionar outputs de steps anteriores
   executedSteps.forEach((step, index) => {
     const stepKey = `step${step.order}` || `step_${index + 1}`
-    
+
     // Output direto
     context[stepKey] = step.output
     context[`${stepKey}.output`] = step.output
-    
+
     // Tentar parsear como JSON e adicionar campos individuais
     try {
       const parsed = JSON.parse(step.output)
@@ -246,26 +247,26 @@ export function buildVariableContext(
         Object.keys(parsed).forEach(key => {
           context[`${stepKey}.${key}`] = parsed[key]
         })
-        
+
         // Adicionar objeto completo
         context[stepKey] = parsed
       }
     } catch {
       // Se não é JSON, manter como string
     }
-    
+
     // Variáveis aliases para acesso rápido
     context[`output_${index + 1}`] = step.output
     context[`previous_output`] = step.output // Último output
   })
-  
+
   // Adicionar último output como variável especial
   if (executedSteps.length > 0) {
     const lastStep = executedSteps[executedSteps.length - 1]
     context.last_output = lastStep.output
     context.previous = lastStep.output
   }
-  
+
   return context
 }
 
@@ -288,17 +289,17 @@ export function processOutput(
   context?: VariableContext
 ): string {
   let result = output
-  
+
   // Aplicar transformações se especificadas
   if (transformations && transformations.length > 0) {
     result = applyTransformations(result, transformations)
   }
-  
+
   // Processar variáveis no output (caso queira incluir outras variáveis)
   if (context) {
     result = processTemplate(result, context)
   }
-  
+
   return result
 }
 

@@ -38,18 +38,20 @@ export default function NewCoursePage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setSaving(true)
-    console.log('[DEBUG] Iniciando submit do curso', { formData, modules })
 
     try {
-      // Obter sessão
-      const { data: sessionData } = await supabase.auth.getSession()
+      // Obter sessão com timeout para evitar travamento
+      const getSessionPromise = supabase.auth.getSession()
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Timeout ao obter sessão')), 5000)
+      )
+
+      const { data: sessionData } = await Promise.race([getSessionPromise, timeoutPromise]) as any
       const token = sessionData?.session?.access_token
 
       if (!token) {
-        throw new Error('Não autenticado')
+        throw new Error('Você precisa estar logado para realizar esta ação')
       }
-
-      console.log('[DEBUG] Enviando para API')
 
       // Enviar para API
       const response = await fetch('/api/courses', {
@@ -58,10 +60,9 @@ export default function NewCoursePage() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`,
         },
-        credentials: 'include',
-          body: JSON.stringify({
+        body: JSON.stringify({
           title: formData.title,
-          slug: formData.slug || formData.title.toLowerCase().replace(/\s+/g, '-'),
+          slug: formData.slug || formData.title.toLowerCase().replace(/[^\w\s-]/g, '').replace(/\s+/g, '-'),
           description: formData.description,
           price: formData.price,
           is_free: formData.is_free,
@@ -71,12 +72,11 @@ export default function NewCoursePage() {
       })
 
       const result = await response.json()
-      console.log('[DEBUG] Resposta da API', { status: response.status, result })
 
       if (!response.ok) {
         // Mostrar erro detalhado se disponível
-        const errorMsg = result.details 
-          ? `${result.error}: ${result.details}` 
+        const errorMsg = result.details
+          ? `${result.error}: ${result.details}`
           : result.error || 'Erro ao criar curso'
 
         // Tentar mapear detalhes para os campos
@@ -96,8 +96,6 @@ export default function NewCoursePage() {
         throw new Error(errorMsg)
       }
 
-      console.log('[DEBUG] Sucesso! Redirecionando...')
-      
       toast({
         title: 'Sucesso',
         description: 'Curso criado com sucesso!',
@@ -105,15 +103,14 @@ export default function NewCoursePage() {
 
       router.push('/admin/courses')
     } catch (error: any) {
-      console.error('[DEBUG] Erro ao criar curso', error)
+      console.error('Erro ao criar curso:', error)
       toast({
         title: 'Erro',
-        description: error.message,
+        description: error.message || 'Ocorreu um erro ao criar o curso',
         variant: 'destructive',
       })
     } finally {
       setSaving(false)
-      console.log('[DEBUG] setSaving(false) chamado')
     }
   }
 

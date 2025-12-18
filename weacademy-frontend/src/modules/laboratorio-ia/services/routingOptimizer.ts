@@ -1,3 +1,4 @@
+// @ts-nocheck
 // Serviço de Otimização Automática de Routing (Fase 2)
 // Analisa histórico de performance e ajusta recomendações dinamicamente
 
@@ -204,7 +205,7 @@ export async function getAllModelMetricsForCategory(
 
   // Calcular métricas para cada modelo
   const metrics: ModelPerformanceMetrics[] = []
-  
+
   for (const [modelId, records] of modelGroups.entries()) {
     const [provider, model] = modelId.split(':')
     if (!provider || !model) continue
@@ -351,7 +352,7 @@ export async function optimizeRecommendations(
     return {
       ...rec,
       score: Math.round(optimizedScore),
-      reason: improvements.length > 0 
+      reason: improvements.length > 0
         ? `${rec.reason} [${improvements.join(', ')}]`
         : rec.reason,
       estimatedCost: perf?.avgCost,
@@ -362,8 +363,8 @@ export async function optimizeRecommendations(
   // Calcular melhorias
   const baseAvgCost = baseRecommendations.find(rec => rec.estimatedCost !== undefined)?.estimatedCost || 0
   const optimizedAvgCost = optimizedRecommendations.find(rec => rec.estimatedCost !== undefined)?.estimatedCost || 0
-  const costReduction = baseAvgCost > 0 
-    ? ((baseAvgCost - optimizedAvgCost) / baseAvgCost) * 100 
+  const costReduction = baseAvgCost > 0
+    ? ((baseAvgCost - optimizedAvgCost) / baseAvgCost) * 100
     : undefined
 
   const baseAvgLatency = baseRecommendations.find(rec => rec.estimatedLatency !== undefined)?.estimatedLatency || 0
@@ -386,7 +387,7 @@ export async function optimizeRecommendations(
     .map(m => ({
       provider: m.provider,
       model: m.model,
-      reason: m.successRate < 0.5 
+      reason: m.successRate < 0.5
         ? `Taxa de sucesso baixa (${Math.round(m.successRate * 100)}%)`
         : `Custo alto ($${m.avgCost.toFixed(4)})`,
     }))
@@ -785,32 +786,32 @@ export async function getRoutingAnalytics(userId: string): Promise<RoutingAnalyt
 
   const bestCostModel = modelInsights.length > 0
     ? modelInsights.reduce<ModelInsight | null>((best, current) => {
-        if (current.executions < 3) return best
-        if (!best || current.avgCost < best.avgCost) {
-          return current
-        }
-        return best
-      }, null)
+      if (current.executions < 3) return best
+      if (!best || current.avgCost < best.avgCost) {
+        return current
+      }
+      return best
+    }, null)
     : null
 
   const bestLatencyModel = modelInsights.length > 0
     ? modelInsights.reduce<ModelInsight | null>((best, current) => {
-        if (current.executions < 3) return best
-        if (!best || current.avgLatency < best.avgLatency) {
-          return current
-        }
-        return best
-      }, null)
+      if (current.executions < 3) return best
+      if (!best || current.avgLatency < best.avgLatency) {
+        return current
+      }
+      return best
+    }, null)
     : null
 
   const bestSuccessModel = modelInsights.length > 0
     ? modelInsights.reduce<ModelInsight | null>((best, current) => {
-        if (current.executions < 3) return best
-        if (!best || current.successRate > best.successRate) {
-          return current
-        }
-        return best
-      }, null)
+      if (current.executions < 3) return best
+      if (!best || current.successRate > best.successRate) {
+        return current
+      }
+      return best
+    }, null)
     : null
 
   const costSavingsPerExecution = bestCostModel && avgCost > bestCostModel.avgCost

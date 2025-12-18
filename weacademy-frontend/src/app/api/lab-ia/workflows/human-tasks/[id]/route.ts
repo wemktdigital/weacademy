@@ -15,7 +15,7 @@ const patchSchema = z.object({
   due_at: z.string().optional().nullable(),
   decision: z.string().optional().nullable(),
   decision_reason: z.string().optional().nullable(),
-  metadata: z.record(z.any()).optional(),
+  metadata: z.record(z.string(), z.any()).optional(),
 })
 
 async function getAuthenticatedUser(request: NextRequest) {
@@ -41,8 +41,9 @@ async function getAuthenticatedUser(request: NextRequest) {
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  props: { params: Promise<{ id: string }> }
 ) {
+  const params = await props.params
   try {
     const user = await getAuthenticatedUser(request)
     if (!user) {
@@ -70,8 +71,9 @@ export async function GET(
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  props: { params: Promise<{ id: string }> }
 ) {
+  const params = await props.params
   try {
     const user = await getAuthenticatedUser(request)
     if (!user) {

@@ -74,7 +74,7 @@ export async function GET(
     // Buscar métricas e análise se estiver rodando
     let metrics = null
     let analysis = null
-    let executions = []
+    let executions: any[] = []
 
     if (experiment.status === 'running') {
       try {

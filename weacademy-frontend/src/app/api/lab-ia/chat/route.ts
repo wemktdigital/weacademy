@@ -6,6 +6,7 @@ import { processKnowledgeFiles, enhancePromptWithKnowledge } from '@/modules/lab
 import { recallGlobal, recallProfile, getRecentSummaries, formatMemoriesForContext, remember } from '@/modules/laboratorio-ia/services/memory'
 import { extractMemoriesFromConversation, shouldExtractMemories } from '@/modules/laboratorio-ia/services/memoryExtractor'
 import { trackAILabUsage } from '@/lib/analytics'
+import { checkUsageLimit, incrementUsage } from '@/lib/subscription-limits'
 
 /**
  * Extrai e salva memórias de forma assíncrona
@@ -21,17 +22,17 @@ async function extractMemoriesAndSave(
     const existingMemories = agentId
       ? (await recallProfile({ userId, agentId })).agent
       : await recallGlobal(userId)
-    
+
     // Extrair novas memórias
     const newMemories = await extractMemoriesFromConversation({
       userId,
       messages,
       existingMemories,
     })
-    
+
     if (newMemories.length > 0) {
       console.log('[LAB-IA][API] Extraídas', newMemories.length, 'novas memórias')
-      
+
       // Salvar cada nova memória
       for (const memory of newMemories) {
         await remember({
@@ -42,13 +43,13 @@ async function extractMemoriesAndSave(
           importance: memory.importance,
         })
       }
-      
+
       console.log('[LAB-IA][API] Memórias salvas com sucesso')
-      
+
       // Retornar chaves das novas memórias para notificação
       return newMemories.map(m => m.key)
     }
-    
+
     return []
   } catch (error) {
     console.error('[LAB-IA][API] Erro ao extrair e salvar memórias:', error)
@@ -60,14 +61,14 @@ async function extractMemoriesAndSave(
 export async function POST(request: NextRequest) {
   try {
     console.log('[LAB-IA][API] Iniciando requisição de chat')
-    
+
     // Verificar autenticação via header Authorization (padrão usado no frontend)
     const authHeader = request.headers.get('authorization')
     const token = authHeader?.replace('Bearer ', '')
-    
+
     let user = null
     let error = null
-    
+
     if (token) {
       console.log('[LAB-IA][API] Tentando autenticar com token do header')
       const { data: { user: tokenUser }, error: tokenError } = await supabase.auth.getUser(token)
@@ -77,18 +78,18 @@ export async function POST(request: NextRequest) {
         error = tokenError
       }
     }
-    
+
     // Fallback para verificação de sessão
     if (!user) {
       console.log('[LAB-IA][API] Tentando autenticar via sessão')
-      const { data: { user: sessionUser } } = await supabase.auth.getSession()
-      if (sessionUser?.session) {
-        user = sessionUser.user
+      const { data: { session } } = await supabase.auth.getSession()
+      if (session) {
+        user = session.user
       }
     }
-    
+
     console.log('[LAB-IA][API] User:', user?.id)
-    
+
     if (!user) {
       console.log('[LAB-IA][API] Usuário não autenticado')
       return NextResponse.json(
@@ -112,9 +113,12 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { 
-      messages, 
-      provider = 'OpenAI', 
+
+
+
+    const {
+      messages,
+      provider = 'OpenAI',
       model = 'gpt-5-nano',
       agentId,
       enableIntelligentRouting = false,
@@ -126,15 +130,32 @@ export async function POST(request: NextRequest) {
       messageId,
     } = await request.json()
 
-    console.log('[LAB-IA][API] Parâmetros:', { 
-      provider, 
-      model, 
-      agentId, 
+    console.log('[LAB-IA][API] Parâmetros:', {
+      provider,
+      model,
+      agentId,
       messagesCount: messages?.length,
       enableIntelligentRouting,
       enableFallback,
       enableCache,
     })
+
+    // [NOVO] INÍCIO DO CONTROLE DE ACESSO
+    const usageCheck = await checkUsageLimit(user.id, model)
+    if (!usageCheck.allowed) {
+      console.warn(`[LAB-IA][API] Bloqueado por limite: ${usageCheck.reason} (${usageCheck.planName})`)
+      return NextResponse.json(
+        {
+          error: 'Limite de uso atingido',
+          details: usageCheck.reason === 'limit_exceeded'
+            ? `Você atingiu o limite do plano ${usageCheck.planName}.`
+            : 'Seu plano não permite usar este modelo.',
+          upgrade_url: '/pricing'
+        },
+        { status: 403 }
+      )
+    }
+    // FIM DO CONTROLE DE ACESSO
 
     // Validar mensagens
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
@@ -160,28 +181,28 @@ export async function POST(request: NextRequest) {
     let formattedMessages = [...messages]
     let finalProvider = provider
     let finalModel = model
-    
+
     // Carregar memórias se estiver habilitado
     let memoryContext = ''
     const usedMemoryKeys: string[] = [] // Inicializar array para chaves de memórias usadas
-    
+
     if (memoryEnabled) {
       try {
         console.log('[LAB-IA][API] Carregando memórias do usuário...')
-        
+
         // Buscar memórias globais
         const globalMemories = await recallGlobal(user.id)
-        
+
         // Se há agentId, buscar memórias do agente também
         let agentMemories: any[] = []
         if (agentId) {
           const profile = await recallProfile({ userId: user.id, agentId })
           agentMemories = profile.agent
         }
-        
+
         // Combinar memórias (globais + agente)
         const allMemories = [...globalMemories, ...agentMemories]
-        
+
         if (allMemories.length > 0) {
           // Formatar memórias respeitando limite de tokens
           // formatMemoriesForContext pode preencher usedMemoryKeys com as chaves usadas
@@ -190,7 +211,7 @@ export async function POST(request: NextRequest) {
           allMemories.forEach(m => usedMemoryKeys.push(m.key))
           console.log('[LAB-IA][API] Memórias carregadas:', allMemories.length)
         }
-        
+
         // Se memory_reference_history estiver habilitado, buscar resumos recentes
         if (memoryReferenceHistory) {
           const recentSummaries = await getRecentSummaries({
@@ -198,7 +219,7 @@ export async function POST(request: NextRequest) {
             agentId,
             limit: 2,
           })
-          
+
           if (recentSummaries.length > 0) {
             const summariesText = recentSummaries.map((s, i) => `${i + 1}. ${s}`).join('\n')
             if (memoryContext) {
@@ -214,7 +235,7 @@ export async function POST(request: NextRequest) {
         // Continuar sem memórias se houver erro
       }
     }
-    
+
     if (agentId) {
       // Buscar agente do banco de dados
       const serviceRoleSupabase = createClient(
@@ -264,7 +285,7 @@ export async function POST(request: NextRequest) {
         if (memoryContext) {
           enhancedPrompt = `${enhancedPrompt}\n\n${memoryContext}`
         }
-        
+
         // Inserir system prompt no início
         formattedMessages.unshift({
           role: 'system',
@@ -272,7 +293,7 @@ export async function POST(request: NextRequest) {
         })
       } else {
         console.warn('[LAB-IA][API] Agente não encontrado ou inativo:', agentId)
-        
+
         // Se não há agente, adicionar memórias como system prompt separado
         if (memoryContext) {
           formattedMessages.unshift({
@@ -317,9 +338,9 @@ export async function POST(request: NextRequest) {
     })
 
     const latency = Date.now() - startTime
-    
+
     console.log('[LAB-IA][API] LLM Router retornou, latency:', latency, 'ms')
-    
+
     // Rastrear uso do AI Lab
     try {
       await trackAILabUsage('chat_message', agentId || undefined, {
@@ -329,14 +350,19 @@ export async function POST(request: NextRequest) {
         has_memories: usedMemoryKeys.length > 0,
         memory_count: usedMemoryKeys.length
       })
+
+      // 2. Billing (Incrementar uso no plano)
+      // Usamos o modelo retornado (response.model) ou o solicitado (model)
+      await incrementUsage(user.id, response.model || model)
+
     } catch (error) {
       // Ignorar erros de tracking para não bloquear a resposta
       console.warn('[LAB-IA][API] Erro ao rastrear uso:', error)
     }
-    
+
     // Verificar se o modelo foi alterado pelo routing inteligente
-    const modelWasAutoSelected = enableIntelligentRouting && 
-      !agentId && 
+    const modelWasAutoSelected = enableIntelligentRouting &&
+      !agentId &&
       (response.provider !== provider || response.model !== model)
 
     // Log de agente se aplicável
@@ -359,11 +385,11 @@ export async function POST(request: NextRequest) {
 
     if (response.stream) {
       console.log('[LAB-IA][API] Retornando stream de resposta')
-      
+
       // Criar stream wrapper que adiciona metadados no início e converte para SSE
       const encoder = new TextEncoder()
       const originalStream = response.stream
-      
+
       // Criar novo stream que adiciona metadados primeiro e converte texto para SSE
       const wrappedStream = new ReadableStream({
         async start(controller) {
@@ -384,7 +410,7 @@ export async function POST(request: NextRequest) {
               }
               controller.enqueue(encoder.encode(`data: ${JSON.stringify(metadata)}\n\n`))
             }
-            
+
             // Extrair memórias de forma assíncrona e enviar notificação via SSE quando prontas
             if (memoryEnabled && memoryAutoExtract && shouldExtractMemories(messages.length)) {
               // Executar extração em background
@@ -413,7 +439,7 @@ export async function POST(request: NextRequest) {
                   console.error('[LAB-IA][API] Erro ao extrair memórias:', err)
                 })
             }
-            
+
             // Depois enviar o stream original convertendo para SSE
             const reader = originalStream.getReader()
             const decoder = new TextDecoder()
@@ -421,133 +447,133 @@ export async function POST(request: NextRequest) {
             let isInBase64Url = false // Flag para indicar que estamos no meio de uma URL base64
             let isInHttpUrl = false // Flag para indicar que estamos no meio de uma URL HTTP (Replicate)
             try {
-            while (true) {
-              const { done, value } = await reader.read()
-              if (done) {
-                // Processar buffer final
-                if (buffer.trim()) {
-                  if (isInBase64Url || isInHttpUrl || buffer.includes('base64,') || buffer.includes('data:image') || 
+              while (true) {
+                const { done, value } = await reader.read()
+                if (done) {
+                  // Processar buffer final
+                  if (buffer.trim()) {
+                    if (isInBase64Url || isInHttpUrl || buffer.includes('base64,') || buffer.includes('data:image') ||
                       (buffer.includes('![Imagem') && (buffer.includes('https://') || buffer.includes('http://'))) ||
                       (buffer.includes('![Vídeo') && (buffer.includes('https://') || buffer.includes('http://')))) {
-                    // Enviar buffer completo como um único evento SSE
-                    controller.enqueue(encoder.encode(`data: ${buffer}\n\n`))
-                  } else {
-                    // Enviar linhas normalmente
-                    const lines = buffer.split('\n')
-                    for (const line of lines) {
-                      if (line.trim()) {
-                        controller.enqueue(encoder.encode(`data: ${line}\n\n`))
-                      }
-                    }
-                  }
-                }
-                break
-              }
-              
-              // Converter chunks de texto para formato SSE
-              const text = decoder.decode(value, { stream: true })
-              if (text) {
-                // Acumular no buffer
-                buffer += text
-                
-                // Verificar se estamos no meio ou início de uma URL base64 (imagem ou vídeo)
-                const hasImageStartBase64 = buffer.includes('![Imagem gerada](data:') || buffer.includes('![Imagemgerada](data:')
-                const hasVideoStartBase64 = buffer.includes('![Vídeo gerado](data:') || buffer.includes('![Vídeogerado](data:')
-                const hasBase64Start = buffer.includes('base64,')
-                const hasImageEndBase64 = buffer.match(/!\[Imagem\s?gerada\]\(data:[^)]+\)/) ||
-                                        buffer.match(/!\[Imagemgerada\]\(data:[^)]+\)/)
-                const hasVideoEndBase64 = buffer.match(/!\[Vídeo\s?gerado\]\(data:video\/[^)]+\)/) ||
-                                        buffer.match(/!\[Vídeogerado\]\(data:video\/[^)]+\)/)
-                
-                // Verificar se estamos no meio ou início de uma URL HTTP (Replicate) - imagens ou vídeos
-                const hasImageStartHttp = buffer.includes('![Imagem gerada](https://') || 
-                                          buffer.includes('![Imagemgerada](https://') ||
-                                          buffer.includes('![Imagem gerada](http://') ||
-                                          buffer.includes('![Imagemgerada](http://') ||
-                                          (buffer.includes('![Imagem') && (buffer.includes('https://') || buffer.includes('http://')))
-                const hasImageEndHttp = buffer.match(/!\[Imagem\s?gerada\]\(https?:\/\/[^)]+\)/) ||
-                                       buffer.match(/!\[Imagem\s?\d+\]\(https?:\/\/[^)]+\)/)
-                
-                // Verificar se estamos no meio ou início de uma URL HTTP de vídeo (Replicate)
-                const hasVideoStartHttp = buffer.includes('![Vídeo gerado](https://') || 
-                                          buffer.includes('![Vídeogerado](https://') ||
-                                          buffer.includes('![Vídeo gerado](http://') ||
-                                          buffer.includes('![Vídeogerado](http://') ||
-                                          (buffer.includes('![Vídeo') && (buffer.includes('https://') || buffer.includes('http://')))
-                const hasVideoEndHttp = buffer.match(/!\[Vídeo\s?gerado\]\(https?:\/\/[^)]+\)/) ||
-                                       buffer.match(/!\[Vídeo\s?\d+\]\(https?:\/\/[^)]+\)/)
-                
-                // Se encontramos início de URL base64 (imagem ou vídeo) mas não o fechamento, estamos acumulando
-                if ((hasImageStartBase64 || hasVideoStartBase64) && hasBase64Start && !hasImageEndBase64 && !hasVideoEndBase64) {
-                  isInBase64Url = true
-                  isInHttpUrl = false
-                  // Continuar acumulando até encontrar o fechamento
-                  continue
-                } else if (hasImageEndBase64 || hasVideoEndBase64) {
-                  // Encontramos o fechamento base64 (imagem ou vídeo), enviar tudo como um único evento SSE
-                  isInBase64Url = false
-                  isInHttpUrl = false
-                  controller.enqueue(encoder.encode(`data: ${buffer}\n\n`))
-                  buffer = ''
-                } else if (isInBase64Url) {
-                  // Ainda acumulando base64, continuar
-                  continue
-                } else if ((hasImageStartHttp && !hasImageEndHttp) || (hasVideoStartHttp && !hasVideoEndHttp)) {
-                  // Encontramos início de URL HTTP (imagem ou vídeo) mas não o fechamento, estamos acumulando
-                  isInHttpUrl = true
-                  isInBase64Url = false
-                  // Continuar acumulando até encontrar o fechamento
-                  continue
-                } else if (hasImageEndHttp || hasVideoEndHttp) {
-                  // Encontramos o fechamento HTTP (imagem ou vídeo), enviar tudo como um único evento SSE
-                  isInHttpUrl = false
-                  isInBase64Url = false
-                  controller.enqueue(encoder.encode(`data: ${buffer}\n\n`))
-                  buffer = ''
-                } else if (isInHttpUrl) {
-                  // Ainda acumulando HTTP, continuar
-                  continue
-                } else {
-                  // Não é base64 nem HTTP, processar normalmente
-                  // Se já está no formato SSE, enviar direto
-                  if (buffer.includes('data: ')) {
-                    controller.enqueue(encoder.encode(buffer))
-                    buffer = ''
-                  } else {
-                    // Verificar se o buffer contém uma linha completa (terminada com \n)
-                    const lastNewlineIndex = buffer.lastIndexOf('\n')
-                    if (lastNewlineIndex !== -1) {
-                      // Enviar linhas completas
-                      const completeLines = buffer.substring(0, lastNewlineIndex + 1)
-                      const lines = completeLines.split('\n')
+                      // Enviar buffer completo como um único evento SSE
+                      controller.enqueue(encoder.encode(`data: ${buffer}\n\n`))
+                    } else {
+                      // Enviar linhas normalmente
+                      const lines = buffer.split('\n')
                       for (const line of lines) {
-                        if (line.trim() && !line.includes('base64,') && !line.includes('data:image') &&
-                            !(line.includes('![Imagem') && (line.includes('https://') || line.includes('http://'))) &&
-                            !(line.includes('![Vídeo') && (line.includes('https://') || line.includes('http://')))) {
+                        if (line.trim()) {
                           controller.enqueue(encoder.encode(`data: ${line}\n\n`))
                         }
                       }
-                      // Manter resto no buffer
-                      buffer = buffer.substring(lastNewlineIndex + 1)
+                    }
+                  }
+                  break
+                }
+
+                // Converter chunks de texto para formato SSE
+                const text = decoder.decode(value, { stream: true })
+                if (text) {
+                  // Acumular no buffer
+                  buffer += text
+
+                  // Verificar se estamos no meio ou início de uma URL base64 (imagem ou vídeo)
+                  const hasImageStartBase64 = buffer.includes('![Imagem gerada](data:') || buffer.includes('![Imagemgerada](data:')
+                  const hasVideoStartBase64 = buffer.includes('![Vídeo gerado](data:') || buffer.includes('![Vídeogerado](data:')
+                  const hasBase64Start = buffer.includes('base64,')
+                  const hasImageEndBase64 = buffer.match(/!\[Imagem\s?gerada\]\(data:[^)]+\)/) ||
+                    buffer.match(/!\[Imagemgerada\]\(data:[^)]+\)/)
+                  const hasVideoEndBase64 = buffer.match(/!\[Vídeo\s?gerado\]\(data:video\/[^)]+\)/) ||
+                    buffer.match(/!\[Vídeogerado\]\(data:video\/[^)]+\)/)
+
+                  // Verificar se estamos no meio ou início de uma URL HTTP (Replicate) - imagens ou vídeos
+                  const hasImageStartHttp = buffer.includes('![Imagem gerada](https://') ||
+                    buffer.includes('![Imagemgerada](https://') ||
+                    buffer.includes('![Imagem gerada](http://') ||
+                    buffer.includes('![Imagemgerada](http://') ||
+                    (buffer.includes('![Imagem') && (buffer.includes('https://') || buffer.includes('http://')))
+                  const hasImageEndHttp = buffer.match(/!\[Imagem\s?gerada\]\(https?:\/\/[^)]+\)/) ||
+                    buffer.match(/!\[Imagem\s?\d+\]\(https?:\/\/[^)]+\)/)
+
+                  // Verificar se estamos no meio ou início de uma URL HTTP de vídeo (Replicate)
+                  const hasVideoStartHttp = buffer.includes('![Vídeo gerado](https://') ||
+                    buffer.includes('![Vídeogerado](https://') ||
+                    buffer.includes('![Vídeo gerado](http://') ||
+                    buffer.includes('![Vídeogerado](http://') ||
+                    (buffer.includes('![Vídeo') && (buffer.includes('https://') || buffer.includes('http://')))
+                  const hasVideoEndHttp = buffer.match(/!\[Vídeo\s?gerado\]\(https?:\/\/[^)]+\)/) ||
+                    buffer.match(/!\[Vídeo\s?\d+\]\(https?:\/\/[^)]+\)/)
+
+                  // Se encontramos início de URL base64 (imagem ou vídeo) mas não o fechamento, estamos acumulando
+                  if ((hasImageStartBase64 || hasVideoStartBase64) && hasBase64Start && !hasImageEndBase64 && !hasVideoEndBase64) {
+                    isInBase64Url = true
+                    isInHttpUrl = false
+                    // Continuar acumulando até encontrar o fechamento
+                    continue
+                  } else if (hasImageEndBase64 || hasVideoEndBase64) {
+                    // Encontramos o fechamento base64 (imagem ou vídeo), enviar tudo como um único evento SSE
+                    isInBase64Url = false
+                    isInHttpUrl = false
+                    controller.enqueue(encoder.encode(`data: ${buffer}\n\n`))
+                    buffer = ''
+                  } else if (isInBase64Url) {
+                    // Ainda acumulando base64, continuar
+                    continue
+                  } else if ((hasImageStartHttp && !hasImageEndHttp) || (hasVideoStartHttp && !hasVideoEndHttp)) {
+                    // Encontramos início de URL HTTP (imagem ou vídeo) mas não o fechamento, estamos acumulando
+                    isInHttpUrl = true
+                    isInBase64Url = false
+                    // Continuar acumulando até encontrar o fechamento
+                    continue
+                  } else if (hasImageEndHttp || hasVideoEndHttp) {
+                    // Encontramos o fechamento HTTP (imagem ou vídeo), enviar tudo como um único evento SSE
+                    isInHttpUrl = false
+                    isInBase64Url = false
+                    controller.enqueue(encoder.encode(`data: ${buffer}\n\n`))
+                    buffer = ''
+                  } else if (isInHttpUrl) {
+                    // Ainda acumulando HTTP, continuar
+                    continue
+                  } else {
+                    // Não é base64 nem HTTP, processar normalmente
+                    // Se já está no formato SSE, enviar direto
+                    if (buffer.includes('data: ')) {
+                      controller.enqueue(encoder.encode(buffer))
+                      buffer = ''
+                    } else {
+                      // Verificar se o buffer contém uma linha completa (terminada com \n)
+                      const lastNewlineIndex = buffer.lastIndexOf('\n')
+                      if (lastNewlineIndex !== -1) {
+                        // Enviar linhas completas
+                        const completeLines = buffer.substring(0, lastNewlineIndex + 1)
+                        const lines = completeLines.split('\n')
+                        for (const line of lines) {
+                          if (line.trim() && !line.includes('base64,') && !line.includes('data:image') &&
+                            !(line.includes('![Imagem') && (line.includes('https://') || line.includes('http://'))) &&
+                            !(line.includes('![Vídeo') && (line.includes('https://') || line.includes('http://')))) {
+                            controller.enqueue(encoder.encode(`data: ${line}\n\n`))
+                          }
+                        }
+                        // Manter resto no buffer
+                        buffer = buffer.substring(lastNewlineIndex + 1)
+                      }
                     }
                   }
                 }
               }
+            } catch (innerError: any) {
+              console.error('[LAB-IA][API] Erro ao ler stream:', innerError)
+              // Tentar enviar erro através do stream
+              try {
+                const errorMessage = `❌ Erro ao processar stream: ${innerError.message || innerError}`
+                controller.enqueue(encoder.encode(`data: ${errorMessage}\n\n`))
+              } catch (e) {
+                // Se não conseguir enviar, apenas logar
+                console.error('[LAB-IA][API] Erro ao enviar mensagem de erro:', e)
+              }
+            } finally {
+              reader.releaseLock()
+              controller.close()
             }
-          } catch (innerError: any) {
-            console.error('[LAB-IA][API] Erro ao ler stream:', innerError)
-            // Tentar enviar erro através do stream
-            try {
-              const errorMessage = `❌ Erro ao processar stream: ${innerError.message || innerError}`
-              controller.enqueue(encoder.encode(`data: ${errorMessage}\n\n`))
-            } catch (e) {
-              // Se não conseguir enviar, apenas logar
-              console.error('[LAB-IA][API] Erro ao enviar mensagem de erro:', e)
-            }
-          } finally {
-            reader.releaseLock()
-            controller.close()
-          }
           } catch (outerError: any) {
             console.error('[LAB-IA][API] Erro no stream wrapper:', outerError)
             // Tentar enviar erro através do stream
@@ -563,7 +589,7 @@ export async function POST(request: NextRequest) {
           }
         },
       })
-      
+
       // Extrair memórias de forma assíncrona (não bloquear resposta)
       if (memoryEnabled && memoryAutoExtract && shouldExtractMemories(messages.length)) {
         // Executar extração em background
@@ -571,37 +597,37 @@ export async function POST(request: NextRequest) {
           console.error('[LAB-IA][API] Erro ao extrair memórias:', err)
         })
       }
-      
+
       // Adicionar XP para uso do Lab IA (1 XP por mensagem do usuário, máximo 5 por dia)
       const serviceRoleSupabase = createClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
         process.env.SUPABASE_SERVICE_ROLE_KEY!
       )
-      
+
       try {
         // Contar mensagens do usuário na requisição atual
         const userMessagesCount = messages.filter(m => m.role === 'user').length
-        
+
         if (userMessagesCount > 0) {
           // Verificar se já recebeu XP do Lab IA hoje
           const today = new Date()
           today.setHours(0, 0, 0, 0)
           const todayISO = today.toISOString()
-          
+
           const { data: todayPoints } = await serviceRoleSupabase
             .from('user_points')
             .select('points')
             .eq('user_id', user.id)
             .eq('source_type', 'lab_ia_usage')
             .gte('created_at', todayISO)
-          
+
           const todayTotalXP = todayPoints?.reduce((sum, p) => sum + p.points, 0) || 0
           const maxDailyXP = 5 // Máximo 5 XP por dia do Lab IA
-          
+
           if (todayTotalXP < maxDailyXP) {
             // Adicionar XP (1 por mensagem, até o máximo diário)
             const xpToAdd = Math.min(userMessagesCount, maxDailyXP - todayTotalXP)
-            
+
             if (xpToAdd > 0) {
               await serviceRoleSupabase.rpc('add_user_points', {
                 p_user_id: user.id,
@@ -613,12 +639,12 @@ export async function POST(request: NextRequest) {
                   messages_count: userMessagesCount,
                 },
               })
-              
+
               // Atualizar streak
               await serviceRoleSupabase.rpc('update_user_streak', {
                 p_user_id: user.id,
               })
-              
+
               // Verificar achievements (apenas se ainda não verificou hoje)
               const { data: lastCheck } = await serviceRoleSupabase
                 .from('user_achievements')
@@ -626,7 +652,7 @@ export async function POST(request: NextRequest) {
                 .eq('user_id', user.id)
                 .gte('unlocked_at', todayISO)
                 .limit(1)
-              
+
               if (!lastCheck || lastCheck.length === 0) {
                 await serviceRoleSupabase.rpc('check_and_unlock_achievements', {
                   p_user_id: user.id,
@@ -639,7 +665,7 @@ export async function POST(request: NextRequest) {
         // Ignorar erros de gamificação para não bloquear o Lab IA
         console.error('[LAB-IA][API] Erro ao adicionar XP:', error)
       }
-      
+
       // Retornar stream
       return new Response(wrappedStream, {
         headers: {
@@ -650,7 +676,7 @@ export async function POST(request: NextRequest) {
       })
     } else {
       console.log('[LAB-IA][API] Retornando resposta completa (não-stream)')
-      
+
       // Extrair memórias de forma assíncrona (não bloquear resposta)
       let newMemoryKeys: string[] = []
       if (memoryEnabled && memoryAutoExtract && shouldExtractMemories(messages.length)) {
@@ -661,7 +687,7 @@ export async function POST(request: NextRequest) {
         })
         newMemoryKeys = keys
       }
-      
+
       // Retornar resposta completa
       return NextResponse.json({
         content: response.content,
@@ -669,7 +695,7 @@ export async function POST(request: NextRequest) {
         model: response.model,
         latency: response.latency,
         cost: response.cost,
-          taskCategory: response.taskCategory || null,
+        taskCategory: response.taskCategory || null,
         metadata: {
           ...(modelWasAutoSelected ? {
             autoSelected: true,

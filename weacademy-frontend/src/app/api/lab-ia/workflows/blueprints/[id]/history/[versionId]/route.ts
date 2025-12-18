@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 
 import { supabaseServer } from '@/lib/supabaseServer'
 
-type Params = { params: { id: string; versionId: string } }
+type Params = { params: Promise<{ id: string; versionId: string }> }
 
 function mapStageToNode(stage: any, index: number) {
   const orderHint = stage.order_hint ?? index
@@ -34,10 +34,10 @@ function mapStageToNode(stage: any, index: number) {
       humanConfig:
         stage.type === 'human'
           ? {
-              assignment: assignment ?? '',
-              instructions: instructions ?? '',
-              formSchema: formSchema ?? null,
-            }
+            assignment: assignment ?? '',
+            instructions: instructions ?? '',
+            formSchema: formSchema ?? null,
+          }
           : {},
       stageConditions: stage.entry_conditions ?? {},
       outputTransforms: stage.exit_actions ?? [],
@@ -65,7 +65,8 @@ function mapEdgeToConnection(edge: any, stageKeyMap: Map<string, string>) {
   }
 }
 
-export async function GET(_request: NextRequest, { params }: Params) {
+export async function GET(_request: NextRequest, props: Params) {
+  const params = await props.params
   try {
     const supabase = await supabaseServer()
     const {

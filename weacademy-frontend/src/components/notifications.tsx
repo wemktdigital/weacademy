@@ -126,12 +126,12 @@ export function Notifications() {
 
     // Carregar imediatamente
     fetchNotifications()
-    
+
     // Polling: atualizar notificações a cada 30 segundos
     const interval = setInterval(() => {
       fetchNotifications()
     }, 30000)
-    
+
     // Escutar mudanças em tempo real usando Supabase Realtime
     const channel = supabase
       .channel(`notifications:${user.id}`)
@@ -308,16 +308,22 @@ function NotificationItem({ notification, onMarkAsRead, isMarkingRead }: Notific
     >
       {/* Left border indicator */}
       <div
-        className={`absolute left-0 top-0 bottom-0 w-1 ${
-          notification.read ? 'bg-transparent' : getTypeStyles().split(' ')[0]
-        }`}
+        className={`absolute left-0 top-0 bottom-0 w-1 ${notification.read ? 'bg-transparent' : getTypeStyles().split(' ')[0]
+          }`}
       />
 
       {/* Content */}
-      <button
+      <div
+        role="button"
+        tabIndex={0}
         onClick={handleClick}
-        disabled={isMarkingRead}
-        className="w-full text-left p-4 pr-12 relative"
+        className={`w-full text-left p-4 pr-12 relative cursor-pointer ${isMarkingRead ? 'pointer-events-none opacity-50' : ''}`}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            handleClick()
+          }
+        }}
       >
         <div className="flex items-start space-x-3">
           <div className={`flex-1 min-w-0 ${notification.read ? 'opacity-60' : ''}`}>
@@ -357,7 +363,7 @@ function NotificationItem({ notification, onMarkAsRead, isMarkingRead }: Notific
         {!notification.read && (
           <div className="absolute left-0 top-1/2 -translate-y-1/2 w-2 h-2 bg-primary rounded-full animate-pulse" />
         )}
-      </button>
+      </div>
     </div>
   )
 }

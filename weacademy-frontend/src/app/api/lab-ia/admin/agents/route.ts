@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
     // Verificar autenticação via header Authorization
     const authHeader = request.headers.get('authorization')
     const token = authHeader?.replace('Bearer ', '')
-    
+
     let user = null
 
     // Tentar autenticar via token primeiro
@@ -55,7 +55,7 @@ export async function GET(request: NextRequest) {
           },
         }
       )
-      
+
       const { data: { user: cookieUser }, error: authError } = await supabase.auth.getUser()
       if (!authError && cookieUser) {
         user = cookieUser
@@ -128,7 +128,7 @@ export async function POST(request: NextRequest) {
     // Verificar autenticação via header Authorization
     const authHeader = request.headers.get('authorization')
     const token = authHeader?.replace('Bearer ', '')
-    
+
     let user = null
 
     // Tentar autenticar via token primeiro
@@ -171,7 +171,7 @@ export async function POST(request: NextRequest) {
           },
         }
       )
-      
+
       const { data: { user: cookieUser }, error: authError } = await supabase.auth.getUser()
       if (!authError && cookieUser) {
         user = cookieUser
@@ -229,10 +229,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(agent, { status: 201 })
   } catch (error) {
     console.error('Error creating agent:', error)
-    
+
     if (error instanceof z.ZodError) {
       return NextResponse.json(
-        { error: 'Validation error', details: error.errors },
+        { error: 'Validation error', details: (error as any).errors },
         { status: 400 }
       )
     }

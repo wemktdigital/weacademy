@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Obter recomendações usando routing inteligente com preferências
-    const routingResult = intelligentRoute(
+    const routingResult = await intelligentRoute(
       promptText,
       messages,
       preferences ? {

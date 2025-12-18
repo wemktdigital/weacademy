@@ -38,10 +38,10 @@ function mapStageToNode(stage: any, index: number) {
       humanConfig:
         stage.type === 'human'
           ? {
-              assignment: assignment ?? '',
-              instructions: instructions ?? '',
-              formSchema: formSchema ?? null,
-            }
+            assignment: assignment ?? '',
+            instructions: instructions ?? '',
+            formSchema: formSchema ?? null,
+          }
           : {},
       stageConditions: stage.entry_conditions ?? {},
       outputTransforms: stage.exit_actions ?? [],
@@ -69,7 +69,8 @@ function mapEdgeToConnection(edge: any, stageKeyMap: Map<string, string>) {
   }
 }
 
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params
   try {
     const json = await request.json()
     const { versionId, updateDraft } = bodySchema.parse(json)
@@ -151,9 +152,9 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
         .eq('workflow_version_id', versionId)
 
       const stageKeyMap = new Map<string, string>()
-      ;(stages || []).forEach((stage: any) => {
-        stageKeyMap.set(stage.id, stage.stage_key)
-      })
+        ; (stages || []).forEach((stage: any) => {
+          stageKeyMap.set(stage.id, stage.stage_key)
+        })
 
       const nodes = (stages || []).map(mapStageToNode)
       const connections = (edges || [])

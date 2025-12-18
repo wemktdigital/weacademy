@@ -83,7 +83,7 @@ export async function analyzePipelinePatterns(
   try {
     // Buscar métricas históricas
     const periodStart = new Date(Date.now() - periodDays * 24 * 60 * 60 * 1000).toISOString()
-    
+
     const { data: logs } = await serviceSupabase
       .from('lab_pipeline_logs')
       .select('*')
@@ -401,7 +401,7 @@ export async function checkAndCreateAlerts(
   try {
     // Verificar anomalias de custo
     const costAnomalies = await detectCostAnomalies(pipelineId, periodDays, 2.0)
-    
+
     for (const anomaly of costAnomalies) {
       if (anomaly.difference_percent && Math.abs(anomaly.difference_percent) > 100) {
         const alert = await createAlert(
@@ -423,7 +423,7 @@ export async function checkAndCreateAlerts(
 
     // Verificar gargalos
     const bottlenecks = await detectBottlenecks(pipelineId, periodDays)
-    
+
     for (const bottleneck of bottlenecks) {
       if (bottleneck.impact_on_total_latency_percent && bottleneck.impact_on_total_latency_percent > 50) {
         const alert = await createAlert(
@@ -452,7 +452,7 @@ export async function checkAndCreateAlerts(
 
 function analyzeCostTrend(logs: any[]): any {
   const dailyCosts = new Map<string, number[]>()
-  
+
   for (const log of logs) {
     const date = new Date(log.created_at).toISOString().split('T')[0]
     if (!dailyCosts.has(date)) {
@@ -471,7 +471,7 @@ function analyzeCostTrend(logs: any[]): any {
 
   return {
     trend,
-    direction: trend.length > 1 
+    direction: trend.length > 1
       ? (trend[trend.length - 1].avg_cost > trend[0].avg_cost ? 'increasing' : 'decreasing')
       : 'stable',
   }
@@ -479,7 +479,7 @@ function analyzeCostTrend(logs: any[]): any {
 
 function analyzeLatencyTrend(logs: any[]): any {
   const dailyLatencies = new Map<string, number[]>()
-  
+
   for (const log of logs) {
     const date = new Date(log.created_at).toISOString().split('T')[0]
     if (!dailyLatencies.has(date)) {
@@ -498,7 +498,7 @@ function analyzeLatencyTrend(logs: any[]): any {
 
   return {
     trend,
-    direction: trend.length > 1 
+    direction: trend.length > 1
       ? (trend[trend.length - 1].avg_latency > trend[0].avg_latency ? 'increasing' : 'decreasing')
       : 'stable',
   }
@@ -506,7 +506,7 @@ function analyzeLatencyTrend(logs: any[]): any {
 
 function analyzeStepPerformance(stepMetrics: any[]): any {
   const stepPerformance = new Map<number, any>()
-  
+
   for (const metric of stepMetrics) {
     const order = metric.step_order || 0
     if (!stepPerformance.has(order)) {
@@ -525,22 +525,22 @@ function analyzeStepPerformance(stepMetrics: any[]): any {
   return Array.from(stepPerformance.values()).map(step => ({
     step_order: step.step_order,
     agent_id: step.agent_id,
-    avg_latency: step.latencies.reduce((a, b) => a + b, 0) / step.latencies.length,
-    avg_cost: step.costs.reduce((a, b) => a + b, 0) / step.costs.length,
-    p95_latency: step.latencies.sort((a, b) => b - a)[Math.floor(step.latencies.length * 0.05)],
-    p99_latency: step.latencies.sort((a, b) => b - a)[Math.floor(step.latencies.length * 0.01)],
+    avg_latency: step.latencies.reduce((a: number, b: number) => a + b, 0) / step.latencies.length,
+    avg_cost: step.costs.reduce((a: number, b: number) => a + b, 0) / step.costs.length,
+    p95_latency: step.latencies.sort((a: number, b: number) => b - a)[Math.floor(step.latencies.length * 0.05)],
+    p99_latency: step.latencies.sort((a: number, b: number) => b - a)[Math.floor(step.latencies.length * 0.01)],
   }))
 }
 
 function analyzeTimePatterns(logs: any[]): any {
   const hourlyUsage = new Map<number, number>()
   const dayOfWeekUsage = new Map<number, number>()
-  
+
   for (const log of logs) {
     const date = new Date(log.created_at)
     const hour = date.getHours()
     const dayOfWeek = date.getDay()
-    
+
     hourlyUsage.set(hour, (hourlyUsage.get(hour) || 0) + 1)
     dayOfWeekUsage.set(dayOfWeek, (dayOfWeekUsage.get(dayOfWeek) || 0) + 1)
   }

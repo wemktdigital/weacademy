@@ -8,7 +8,7 @@ const templateSchema = agentSchema
 export async function GET(request: Request) {
   try {
     const supabase = await createClient()
-    
+
     // Buscar parâmetros
     const { searchParams } = new URL(request.url)
     const page = parseInt(searchParams.get('page') || '1')
@@ -62,7 +62,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const supabase = await createClient()
-    
+
     // Verificar autenticação
     const {
       data: { user },
@@ -108,10 +108,10 @@ export async function POST(request: Request) {
     return NextResponse.json(template, { status: 201 })
   } catch (error) {
     console.error('Error creating template:', error)
-    
+
     if (error instanceof z.ZodError) {
       return NextResponse.json(
-        { error: 'Validation error', details: error.errors },
+        { error: 'Validation error', details: (error as any).errors },
         { status: 400 }
       )
     }

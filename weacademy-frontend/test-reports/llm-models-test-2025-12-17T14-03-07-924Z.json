@@ -1,0 +1,200 @@
+{
+  "timestamp": "2025-12-17T14:03:07.924Z",
+  "summary": {
+    "total": 21,
+    "success": 17,
+    "failed": 4,
+    "successRate": 81
+  },
+  "results": [
+    {
+      "provider": "OpenAI",
+      "model": "gpt-5",
+      "displayName": "GPT-5",
+      "status": "success",
+      "latency": 7423,
+      "responsePreview": "OK",
+      "timestamp": "2025-12-17T14:01:53.825Z"
+    },
+    {
+      "provider": "OpenAI",
+      "model": "gpt-5-mini",
+      "displayName": "GPT-5 Mini",
+      "status": "success",
+      "latency": 3481,
+      "responsePreview": "OK",
+      "timestamp": "2025-12-17T14:01:58.309Z"
+    },
+    {
+      "provider": "OpenAI",
+      "model": "gpt-5-nano",
+      "displayName": "GPT-5 Nano",
+      "status": "success",
+      "latency": 5290,
+      "responsePreview": "OK",
+      "timestamp": "2025-12-17T14:02:04.600Z"
+    },
+    {
+      "provider": "PubMed",
+      "model": "pubmed-search",
+      "displayName": "PubMed Search",
+      "status": "success",
+      "latency": 1444,
+      "responsePreview": "🔬 **Busca no PubMed concluída**\n\n**Query:** \"Responda apenas com \"OK\" se você está funcionando corr",
+      "timestamp": "2025-12-17T14:02:07.045Z"
+    },
+    {
+      "provider": "OpenAI",
+      "model": "gpt-5.1",
+      "displayName": "GPT-5.1",
+      "status": "success",
+      "latency": 2720,
+      "responsePreview": "OK",
+      "timestamp": "2025-12-17T14:02:10.767Z"
+    },
+    {
+      "provider": "OpenAI",
+      "model": "gpt-4o-mini-transcribe",
+      "displayName": "GPT-4o Mini Transcribe",
+      "status": "error",
+      "error": "Falha ao chamar modelo: Erro ao processar arquivo de áudio: Nenhum arquivo de áudio encontrado para transcrição. Por favor, anexe um arquivo de áudio.",
+      "latency": 842,
+      "timestamp": "2025-12-17T14:02:12.617Z"
+    },
+    {
+      "provider": "OpenAI",
+      "model": "gpt-4o-transcribe",
+      "displayName": "GPT-4o Transcribe",
+      "status": "error",
+      "error": "Falha ao chamar modelo: Erro ao processar arquivo de áudio: Nenhum arquivo de áudio encontrado para transcrição. Por favor, anexe um arquivo de áudio.",
+      "latency": 588,
+      "timestamp": "2025-12-17T14:02:14.207Z"
+    },
+    {
+      "provider": "OpenAI",
+      "model": "gpt-4o-transcribe-diarize",
+      "displayName": "GPT-4o Transcribe Diarize",
+      "status": "error",
+      "error": "Falha ao chamar modelo: Erro ao processar arquivo de áudio: Nenhum arquivo de áudio encontrado para transcrição. Por favor, anexe um arquivo de áudio.",
+      "latency": 669,
+      "timestamp": "2025-12-17T14:02:15.877Z"
+    },
+    {
+      "provider": "Google",
+      "model": "gemini-2.5-flash",
+      "displayName": "Gemini 2.5 Flash",
+      "status": "success",
+      "latency": 1791,
+      "responsePreview": "OK",
+      "timestamp": "2025-12-17T14:02:18.669Z"
+    },
+    {
+      "provider": "Google",
+      "model": "gemini-3-pro-preview-high",
+      "displayName": "Gemini 3 Pro (High Thinking)",
+      "status": "success",
+      "latency": 3494,
+      "responsePreview": "OK",
+      "timestamp": "2025-12-17T14:02:23.164Z"
+    },
+    {
+      "provider": "Google",
+      "model": "gemini-3-pro-preview-low",
+      "displayName": "Gemini 3 Pro (Low Thinking)",
+      "status": "success",
+      "latency": 3266,
+      "responsePreview": "OK",
+      "timestamp": "2025-12-17T14:02:27.432Z"
+    },
+    {
+      "provider": "Google",
+      "model": "gemini-2.5-pro",
+      "displayName": "Gemini 2.5 Pro",
+      "status": "success",
+      "latency": 4700,
+      "responsePreview": "OK",
+      "timestamp": "2025-12-17T14:02:33.134Z"
+    },
+    {
+      "provider": "Google",
+      "model": "gemini-2.5-flash-lite",
+      "displayName": "Gemini 2.5 Flash Lite",
+      "status": "success",
+      "latency": 1304,
+      "responsePreview": "OK",
+      "timestamp": "2025-12-17T14:02:35.439Z"
+    },
+    {
+      "provider": "DeepSeek",
+      "model": "deepseek-chat",
+      "displayName": "DeepSeek Chat",
+      "status": "success",
+      "latency": 4203,
+      "responsePreview": "OK",
+      "timestamp": "2025-12-17T14:02:40.644Z"
+    },
+    {
+      "provider": "DeepSeek",
+      "model": "deepseek-reasoner",
+      "displayName": "DeepSeek Reasoner",
+      "status": "success",
+      "latency": 5188,
+      "responsePreview": "OK",
+      "timestamp": "2025-12-17T14:02:46.834Z"
+    },
+    {
+      "provider": "Grok",
+      "model": "grok-4-fast",
+      "displayName": "Grok-4 Fast",
+      "status": "success",
+      "latency": 3343,
+      "responsePreview": "OK",
+      "timestamp": "2025-12-17T14:02:51.178Z"
+    },
+    {
+      "provider": "Grok",
+      "model": "grok-4-fast-reasoning",
+      "displayName": "Grok-4 Fast Reasoning",
+      "status": "success",
+      "latency": 2946,
+      "responsePreview": "OK",
+      "timestamp": "2025-12-17T14:02:55.126Z"
+    },
+    {
+      "provider": "Anthropic",
+      "model": "claude-3-5-sonnet-20240620",
+      "displayName": "Claude 3.5 Sonnet",
+      "status": "error",
+      "error": "Falha ao chamar modelo: 404 {\"type\":\"error\",\"error\":{\"type\":\"not_found_error\",\"message\":\"model: claude-3-5-sonnet-20240620\"},\"request_id\":\"req_011CWCPCfu8HarVfBJbBnHdv\"}",
+      "latency": 1272,
+      "timestamp": "2025-12-17T14:02:57.400Z"
+    },
+    {
+      "provider": "Anthropic",
+      "model": "claude-3-5-haiku-20241022",
+      "displayName": "Claude Haiku 4.5",
+      "status": "success",
+      "latency": 2147,
+      "responsePreview": "OK",
+      "timestamp": "2025-12-17T14:03:00.548Z"
+    },
+    {
+      "provider": "Anthropic",
+      "model": "claude-3-opus-20240229",
+      "displayName": "Claude Opus 4.1",
+      "status": "success",
+      "latency": 2499,
+      "responsePreview": "OK",
+      "timestamp": "2025-12-17T14:03:04.049Z"
+    },
+    {
+      "provider": "Replicate",
+      "model": "meta/meta-llama-3.1-405b-instruct",
+      "displayName": "Llama 3.1 405B Instruct",
+      "status": "success",
+      "latency": 2873,
+      "responsePreview": "OK",
+      "timestamp": "2025-12-17T14:03:07.923Z"
+    }
+  ]
+}

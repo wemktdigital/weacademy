@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { useState, useEffect, useMemo } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import remarkBreaks from 'remark-breaks'
 import Image from 'next/image'
 import { Attachment } from './ChatInput'
 
@@ -42,13 +43,13 @@ interface MessageBubbleProps {
   isRegenerating?: boolean
 }
 
-export function MessageBubble({ 
-  id, 
-  role, 
-  content, 
+export function MessageBubble({
+  id,
+  role,
+  content,
   timestamp,
   metadata,
-  isFavorite = false, 
+  isFavorite = false,
   onToggleFavorite,
   attachments,
   onProvideFeedback,
@@ -78,7 +79,7 @@ export function MessageBubble({
       /!\[Imagemgerada\]\((https?:\/\/[^)]+)\)/g,     // HTTP/HTTPS sem espaço (Replicate)
       /!\[Imagem\s?\d+\]\((https?:\/\/[^)]+)\)/g,     // Múltiplas imagens (Replicate)
     ]
-    
+
     // Tentar encontrar todas as URLs de vídeo (suporta base64 e HTTP/HTTPS)
     const videoPatterns = [
       /!\[Vídeo\s?gerado\]\((data:video\/[^)]+)\)/g,  // Base64 (VEO 3.1)
@@ -87,11 +88,11 @@ export function MessageBubble({
       /!\[Vídeogerado\]\((https?:\/\/[^)]+)\)/g,     // HTTP/HTTPS sem espaço (Replicate)
       /!\[Vídeo\s?\d+\]\((https?:\/\/[^)]+)\)/g,     // Múltiplos vídeos (Replicate)
     ]
-    
+
     let allImageMatches: string[] = []
     let allVideoMatches: string[] = []
     let contentWithoutMedia = content
-    
+
     // Testar todos os padrões de imagem para capturar todas as imagens
     for (const pattern of imagePatterns) {
       const matches = content.matchAll(pattern)
@@ -135,13 +136,13 @@ export function MessageBubble({
           })),
         },
       })
-      
+
       return { imageUrls: allImageMatches, videoUrls: allVideoMatches, contentWithoutMedia }
     }
 
     return { imageUrls: [], videoUrls: [], contentWithoutMedia: content }
   }, [content, role])
-  
+
   // Para compatibilidade, usar primeira imagem como imageUrl
   const imageUrl = imageUrls.length > 0 ? imageUrls[0] : null
 
@@ -149,7 +150,7 @@ export function MessageBubble({
   // URLs HTTP não precisam de Blob URL, podem ser usadas diretamente
   useEffect(() => {
     let currentBlobUrl: string | null = null
-    
+
     // Apenas criar Blob URL para data URLs muito grandes
     if (imageUrl && imageUrl.startsWith('data:') && imageUrl.length > 1000000) {
       console.log('[MessageBubble] Criando Blob URL para imagem base64 grande...')
@@ -199,7 +200,7 @@ export function MessageBubble({
   }
 
   const isUser = role === 'user'
-  
+
   // Determinar qual URL usar para renderização
   const finalImageUrl = blobUrl || imageUrl
 
@@ -216,7 +217,7 @@ export function MessageBubble({
           </div>
         )}
       </div>
-      
+
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-1">
           <span className="text-sm font-semibold">
@@ -234,8 +235,8 @@ export function MessageBubble({
             </Badge>
           )}
           {metadata?.memoriesUsed && metadata.memoriesUsed.length > 0 && (
-            <Badge 
-              variant="secondary" 
+            <Badge
+              variant="secondary"
               className="text-xs gap-1"
               title={`Memórias usadas: ${metadata.memoriesUsed.join(', ')}`}
             >
@@ -299,7 +300,7 @@ export function MessageBubble({
             ))}
           </div>
         )}
-        
+
         <div className="prose prose-sm dark:prose-invert max-w-none">
           {isUser ? (
             <p className="whitespace-pre-wrap">{content}</p>
@@ -313,7 +314,7 @@ export function MessageBubble({
                     const isDataUrl = url.startsWith('data:')
                     const isLargeBase64 = isDataUrl && url.length > 1000000
                     const useBlobUrl = index === 0 && blobUrl && isLargeBase64 // Apenas primeira imagem usa blobUrl se disponível
-                    
+
                     return (
                       <div key={index} className="relative w-full max-w-2xl mx-auto rounded-lg overflow-hidden border border-border">
                         {useBlobUrl ? (
@@ -394,7 +395,7 @@ export function MessageBubble({
                   })}
                 </div>
               )}
-              
+
               {/* Renderizar vídeos diretamente se encontrados */}
               {videoUrls.length > 0 && (
                 <div className="my-4 space-y-4">
@@ -421,185 +422,176 @@ export function MessageBubble({
                   ))}
                 </div>
               )}
-              
+
               <ReactMarkdown
-                remarkPlugins={[remarkGfm]}
+                remarkPlugins={[remarkGfm, remarkBreaks]}
                 rehypePlugins={[]}
                 components={{
-                  // Customizar renderização de imagens no markdown (caso alguma não tenha sido extraída)
-                  img: ({node, src, alt, ...props}: any) => {
-                    // Se já renderizamos esta imagem/vídeo diretamente, não renderizar novamente
-                    if (src && (imageUrls.includes(src) || videoUrls.includes(src))) {
-                      return null
+                  // Headers
+                  h1: ({ node, ...props }) => <h1 className="text-2xl font-bold mb-3 mt-4 first:mt-0" {...props} />,
+                  h2: ({ node, ...props }) => <h2 className="text-xl font-bold mb-2 mt-3 first:mt-0" {...props} />,
+                  h3: ({ node, ...props }) => <h3 className="text-lg font-semibold mb-2 mt-2 first:mt-0" {...props} />,
+                  h4: ({ node, ...props }) => <h4 className="text-base font-semibold mb-1 mt-2 first:mt-0" {...props} />,
+                  // Paragraphs - customizado para permitir divs dentro quando há imagens
+                  p: ({ node, children, ...props }: any) => {
+                    // Verificar se há uma imagem dentro deste parágrafo
+                    const hasImage = node?.children?.some((child: any) => child.tagName === 'img')
+                    if (hasImage) {
+                      // Se tem imagem, renderizar sem o <p> wrapper para permitir divs
+                      return <div className="mb-3 text-[0.9375rem] leading-6 last:mb-0" {...props}>{children}</div>
                     }
-                    // Renderizar imagem normalmente se não foi extraída
-                    return <img src={src} alt={alt} className="max-w-full h-auto rounded-lg" {...props} />
+                    return <p className="mb-3 text-[0.9375rem] leading-6 last:mb-0" {...props}>{children}</p>
                   },
-                // Headers
-                h1: ({node, ...props}) => <h1 className="text-2xl font-bold mb-3 mt-4 first:mt-0" {...props} />,
-                h2: ({node, ...props}) => <h2 className="text-xl font-bold mb-2 mt-3 first:mt-0" {...props} />,
-                h3: ({node, ...props}) => <h3 className="text-lg font-semibold mb-2 mt-2 first:mt-0" {...props} />,
-                h4: ({node, ...props}) => <h4 className="text-base font-semibold mb-1 mt-2 first:mt-0" {...props} />,
-                // Paragraphs - customizado para permitir divs dentro quando há imagens
-                p: ({node, children, ...props}: any) => {
-                  // Verificar se há uma imagem dentro deste parágrafo
-                  const hasImage = node?.children?.some((child: any) => child.tagName === 'img')
-                  if (hasImage) {
-                    // Se tem imagem, renderizar sem o <p> wrapper para permitir divs
-                    return <div className="mb-3 text-[0.9375rem] leading-6 last:mb-0" {...props}>{children}</div>
-                  }
-                  return <p className="mb-3 text-[0.9375rem] leading-6 last:mb-0" {...props}>{children}</p>
-                },
-                // Lists
-                ul: ({node, ...props}) => <ul className="list-disc list-inside mb-3 space-y-1" {...props} />,
-                ol: ({node, ...props}) => <ol className="list-decimal list-inside mb-3 space-y-1" {...props} />,
-                li: ({node, ...props}) => <li className="ml-4 mb-1" {...props} />,
-                // Bold, italic
-                strong: ({node, ...props}) => <strong className="font-semibold" {...props} />,
-                em: ({node, ...props}) => <em className="italic" {...props} />,
-                // Links
-                a: ({node, ...props}) => <a className="text-primary hover:underline" target="_blank" rel="noopener noreferrer" {...props} />,
-                // Code blocks
-                code: ({ node, inline, className, children, ...props }: any) => {
-                  const match = /language-(\w+)/.exec(className || '')
-                  return !inline && match ? (
-                    <pre className="bg-muted p-4 rounded-lg overflow-x-auto mb-3">
-                      <code className={className} {...props}>
+                  // Lists
+                  ul: ({ node, ...props }) => <ul className="list-disc list-inside mb-3 space-y-1" {...props} />,
+                  ol: ({ node, ...props }) => <ol className="list-decimal list-inside mb-3 space-y-1" {...props} />,
+                  li: ({ node, ...props }) => <li className="ml-4 mb-1" {...props} />,
+                  // Bold, italic
+                  strong: ({ node, ...props }) => <strong className="font-semibold" {...props} />,
+                  em: ({ node, ...props }) => <em className="italic" {...props} />,
+                  // Links
+                  a: ({ node, ...props }) => <a className="text-primary hover:underline" target="_blank" rel="noopener noreferrer" {...props} />,
+                  // Code blocks
+                  code: ({ node, inline, className, children, ...props }: any) => {
+                    const match = /language-(\w+)/.exec(className || '')
+                    return !inline && match ? (
+                      <pre className="bg-muted p-4 rounded-lg overflow-x-auto mb-3">
+                        <code className={className} {...props}>
+                          {children}
+                        </code>
+                      </pre>
+                    ) : (
+                      <code className="bg-muted px-1.5 py-0.5 rounded text-sm font-mono" {...props}>
                         {children}
                       </code>
-                    </pre>
-                  ) : (
-                    <code className="bg-muted px-1.5 py-0.5 rounded text-sm font-mono" {...props}>
-                      {children}
-                    </code>
-                  )
-                },
-                // Blockquotes
-                blockquote: ({node, ...props}) => (
-                  <blockquote className="border-l-4 border-primary pl-4 my-3 italic text-muted-foreground" {...props} />
-                ),
-                // Horizontal rule
-                hr: ({node, ...props}) => <hr className="my-4 border-muted" {...props} />,
-                // Tables
-                table: ({node, ...props}) => (
-                  <div className="overflow-x-auto my-3">
-                    <table className="min-w-full border border-muted rounded" {...props} />
-                  </div>
-                ),
-                th: ({node, ...props}) => (
-                  <th className="border border-muted px-4 py-2 font-semibold bg-muted" {...props} />
-                ),
-                td: ({node, ...props}) => (
-                  <td className="border border-muted px-4 py-2" {...props} />
-                ),
-                // Images - renderizar imagens geradas
-                img: ({node, src, alt, ...props}: any) => {
-                  if (!src) return null
-                  
-                  console.log('[MessageBubble] Tentando renderizar imagem:', {
-                    srcLength: src?.length,
-                    srcStart: src?.substring(0, 100),
-                    srcEnd: src?.substring(Math.max(0, src.length - 50)),
-                    isDataUrl: src?.startsWith('data:'),
-                    isHttp: src?.startsWith('http'),
-                  })
-                  
-                  // Validar URL antes de tentar renderizar
-                  let isValidUrl = true
-                  let finalSrc = src
-                  
-                  // Se é base64 sem prefixo data:, adicionar prefixo
-                  if (src.startsWith('iVBORw0KGg') || src.startsWith('/9j/')) {
-                    const mimeType = src.startsWith('iVBORw0KGg') ? 'image/png' : 'image/jpeg'
-                    finalSrc = `data:${mimeType};base64,${src}`
-                    console.log('[MessageBubble] Convertido base64 para data URL')
-                  } else if (!src.startsWith('data:') && !src.startsWith('http') && !src.startsWith('/')) {
-                    // Tentar validar como URL
-                    try {
-                      new URL(src)
-                    } catch (e) {
-                      isValidUrl = false
-                      console.warn('[MessageBubble] URL de imagem inválida:', src.substring(0, 200))
+                    )
+                  },
+                  // Blockquotes
+                  blockquote: ({ node, ...props }) => (
+                    <blockquote className="border-l-4 border-primary pl-4 my-3 italic text-muted-foreground" {...props} />
+                  ),
+                  // Horizontal rule
+                  hr: ({ node, ...props }) => <hr className="my-4 border-muted" {...props} />,
+                  // Tables
+                  table: ({ node, ...props }) => (
+                    <div className="overflow-x-auto my-3">
+                      <table className="min-w-full border border-muted rounded" {...props} />
+                    </div>
+                  ),
+                  th: ({ node, ...props }) => (
+                    <th className="border border-muted px-4 py-2 font-semibold bg-muted" {...props} />
+                  ),
+                  td: ({ node, ...props }) => (
+                    <td className="border border-muted px-4 py-2" {...props} />
+                  ),
+                  // Images - renderizar imagens geradas
+                  img: ({ node, src, alt, ...props }: any) => {
+                    if (!src) return null
+
+                    console.log('[MessageBubble] Tentando renderizar imagem:', {
+                      srcLength: src?.length,
+                      srcStart: src?.substring(0, 100),
+                      srcEnd: src?.substring(Math.max(0, src.length - 50)),
+                      isDataUrl: src?.startsWith('data:'),
+                      isHttp: src?.startsWith('http'),
+                    })
+
+                    // Validar URL antes de tentar renderizar
+                    let isValidUrl = true
+                    let finalSrc = src
+
+                    // Se é base64 sem prefixo data:, adicionar prefixo
+                    if (src.startsWith('iVBORw0KGg') || src.startsWith('/9j/')) {
+                      const mimeType = src.startsWith('iVBORw0KGg') ? 'image/png' : 'image/jpeg'
+                      finalSrc = `data:${mimeType};base64,${src}`
+                      console.log('[MessageBubble] Convertido base64 para data URL')
+                    } else if (!src.startsWith('data:') && !src.startsWith('http') && !src.startsWith('/')) {
+                      // Tentar validar como URL
+                      try {
+                        new URL(src)
+                      } catch (e) {
+                        isValidUrl = false
+                        console.warn('[MessageBubble] URL de imagem inválida:', src.substring(0, 200))
+                      }
                     }
-                  }
-                  
-                  // Se URL inválida, retornar null para evitar erro de HTML inválido
-                  if (!isValidUrl && !finalSrc.startsWith('data:') && !finalSrc.startsWith('http')) {
-                    return null
-                  }
-                  
-                  // Para URLs base64 muito longas (> 1MB), usar <img> nativo ao invés de Next.js Image
-                  // O Next.js Image pode ter problemas com URLs muito longas
-                  const isLongBase64 = finalSrc.startsWith('data:') && finalSrc.length > 1000000
-                  
-                  // Retornar div diretamente - o componente p customizado vai renderizar como div quando detectar imagem
-                  return (
-                    <div className="my-4">
-                      <div className="relative w-full max-w-2xl mx-auto rounded-lg overflow-hidden border border-border">
-                        {isLongBase64 ? (
-                          // Usar <img> nativo para URLs base64 muito longas
-                          <img
-                            src={finalSrc}
-                            alt={alt || 'Imagem gerada'}
-                            className="w-full h-auto"
-                            onError={(e) => {
-                              console.error('[MessageBubble] Erro ao carregar imagem (img nativo):', {
-                                src: finalSrc.substring(0, 200),
-                                srcLength: finalSrc.length,
-                                error: e,
-                              })
-                              const target = e.target as HTMLImageElement
-                              const parent = target.parentElement
-                              if (parent) {
-                                parent.innerHTML = `
+
+                    // Se URL inválida, retornar null para evitar erro de HTML inválido
+                    if (!isValidUrl && !finalSrc.startsWith('data:') && !finalSrc.startsWith('http')) {
+                      return null
+                    }
+
+                    // Para URLs base64 muito longas (> 1MB), usar <img> nativo ao invés de Next.js Image
+                    // O Next.js Image pode ter problemas com URLs muito longas
+                    const isLongBase64 = finalSrc.startsWith('data:') && finalSrc.length > 1000000
+
+                    // Retornar div diretamente - o componente p customizado vai renderizar como div quando detectar imagem
+                    return (
+                      <div className="my-4">
+                        <div className="relative w-full max-w-2xl mx-auto rounded-lg overflow-hidden border border-border">
+                          {isLongBase64 ? (
+                            // Usar <img> nativo para URLs base64 muito longas
+                            <img
+                              src={finalSrc}
+                              alt={alt || 'Imagem gerada'}
+                              className="w-full h-auto"
+                              onError={(e) => {
+                                console.error('[MessageBubble] Erro ao carregar imagem (img nativo):', {
+                                  src: finalSrc.substring(0, 200),
+                                  srcLength: finalSrc.length,
+                                  error: e,
+                                })
+                                const target = e.target as HTMLImageElement
+                                const parent = target.parentElement
+                                if (parent) {
+                                  parent.innerHTML = `
                                   <div class="p-4 border border-destructive rounded-lg bg-destructive/10">
                                     <div class="text-sm text-destructive">Erro ao carregar imagem</div>
                                     <div class="text-xs text-muted-foreground mt-1 break-all">URL muito longa (${(finalSrc.length / 1024 / 1024).toFixed(2)} MB)</div>
                                   </div>
                                 `
-                              }
-                            }}
-                            onLoad={() => {
-                              console.log('[MessageBubble] Imagem carregada com sucesso (img nativo)!')
-                            }}
-                          />
-                        ) : (
-                          // Usar Next.js Image para URLs normais
-                          <Image
-                            src={finalSrc}
-                            alt={alt || 'Imagem gerada'}
-                            width={1024}
-                            height={1024}
-                            className="w-full h-auto"
-                            unoptimized={true} // Sempre desabilitar otimização para data URLs e URLs externas
-                            onError={(e) => {
-                              console.error('[MessageBubble] Erro ao carregar imagem (Next.js Image):', {
-                                src: finalSrc.substring(0, 200),
-                                srcLength: finalSrc.length,
-                                error: e,
-                              })
-                              // Substituir por mensagem de erro usando React
-                              const target = e.target as HTMLImageElement
-                              const parent = target.parentElement?.parentElement
-                              if (parent) {
-                                parent.innerHTML = `
+                                }
+                              }}
+                              onLoad={() => {
+                                console.log('[MessageBubble] Imagem carregada com sucesso (img nativo)!')
+                              }}
+                            />
+                          ) : (
+                            // Usar Next.js Image para URLs normais
+                            <Image
+                              src={finalSrc}
+                              alt={alt || 'Imagem gerada'}
+                              width={1024}
+                              height={1024}
+                              className="w-full h-auto"
+                              unoptimized={true} // Sempre desabilitar otimização para data URLs e URLs externas
+                              onError={(e) => {
+                                console.error('[MessageBubble] Erro ao carregar imagem (Next.js Image):', {
+                                  src: finalSrc.substring(0, 200),
+                                  srcLength: finalSrc.length,
+                                  error: e,
+                                })
+                                // Substituir por mensagem de erro usando React
+                                const target = e.target as HTMLImageElement
+                                const parent = target.parentElement?.parentElement
+                                if (parent) {
+                                  parent.innerHTML = `
                                   <div class="p-4 border border-destructive rounded-lg bg-destructive/10">
                                     <div class="text-sm text-destructive">Erro ao carregar imagem</div>
                                     <div class="text-xs text-muted-foreground mt-1 break-all">${finalSrc.substring(0, 100)}</div>
                                   </div>
                                 `
-                              }
-                            }}
-                            onLoad={() => {
-                              console.log('[MessageBubble] Imagem carregada com sucesso (Next.js Image)!')
-                            }}
-                          />
-                        )}
+                                }
+                              }}
+                              onLoad={() => {
+                                console.log('[MessageBubble] Imagem carregada com sucesso (Next.js Image)!')
+                              }}
+                            />
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  )
-                },
-              }}
+                    )
+                  },
+                }}
               >
                 {contentWithoutMedia}
               </ReactMarkdown>
@@ -617,8 +609,8 @@ export function MessageBubble({
                   <Clock className="h-4 w-4 text-muted-foreground" />
                 )}
                 <span className={pendingVideoOperation.status === 'processing' ? 'text-primary font-medium' : 'text-muted-foreground'}>
-                  {pendingVideoOperation.status === 'processing' 
-                    ? 'Processando vídeo...' 
+                  {pendingVideoOperation.status === 'processing'
+                    ? 'Processando vídeo...'
                     : 'Vídeo em fila de processamento'}
                 </span>
                 <Badge variant="outline" className="text-xs">
@@ -702,7 +694,7 @@ export function MessageBubble({
             </div>
           </div>
         )}
-        
+
         {!isUser && (
           <div className="flex flex-wrap gap-2 mt-2">
             <Button

@@ -59,7 +59,7 @@ export default function MyCoursesPage() {
         .order('enrolled_at', { ascending: false })
 
       if (error) throw error
-      setEnrollments(data || [])
+      setEnrollments((data as any) || [])
     } catch (error: any) {
       console.error('Error fetching enrollments:', error)
       toast({

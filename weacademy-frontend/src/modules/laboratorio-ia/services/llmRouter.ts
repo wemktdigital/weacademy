@@ -1,3 +1,4 @@
+// @ts-nocheck
 import OpenAI from 'openai'
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import Anthropic from '@anthropic-ai/sdk'
@@ -68,10 +69,10 @@ async function extractUrlFromFileOutput(item: any): Promise<string | null> {
       try {
         const urlResult = await item.url()
         console.log(`[extractUrlFromFileOutput] Resultado de url():`, { type: typeof urlResult, constructor: urlResult?.constructor?.name })
-        
+
         // O Replicate pode retornar um objeto URL (com propriedade href) ou uma string
         let urlString: string | null = null
-        
+
         if (typeof urlResult === 'string' && (urlResult.startsWith('http://') || urlResult.startsWith('https://'))) {
           urlString = urlResult
           console.log(`[extractUrlFromFileOutput] URL string extraída:`, urlString)
@@ -89,7 +90,7 @@ async function extractUrlFromFileOutput(item: any): Promise<string | null> {
             }
           }
         }
-        
+
         if (urlString) {
           return urlString
         } else {
@@ -99,13 +100,13 @@ async function extractUrlFromFileOutput(item: any): Promise<string | null> {
         console.warn(`[extractUrlFromFileOutput] Erro ao chamar item.url():`, error)
       }
     }
-    
+
     // Verificar se é Response-like object (tem propriedade url como string)
     if (item.url && typeof item.url === 'string' && (item.url.startsWith('http://') || item.url.startsWith('https://'))) {
       console.log(`[extractUrlFromFileOutput] URL encontrada em propriedade url:`, item.url)
       return item.url
     }
-    
+
     // Verificar se é um objeto com propriedade toString que retorna URL
     if (item.toString && typeof item.toString === 'function') {
       try {
@@ -118,7 +119,7 @@ async function extractUrlFromFileOutput(item: any): Promise<string | null> {
         // Ignorar erros de toString
       }
     }
-    
+
     // Verificar outras propriedades comuns
     const possibleProps = ['image', 'image_url', 'output', 'src', 'href', 'data', 'file', 'file_url']
     for (const prop of possibleProps) {
@@ -132,13 +133,13 @@ async function extractUrlFromFileOutput(item: any): Promise<string | null> {
         try {
           const nestedUrlResult = await value.url()
           let nestedUrlString: string | null = null
-          
+
           if (typeof nestedUrlResult === 'string' && (nestedUrlResult.startsWith('http://') || nestedUrlResult.startsWith('https://'))) {
             nestedUrlString = nestedUrlResult
           } else if (nestedUrlResult && typeof nestedUrlResult === 'object' && nestedUrlResult.href) {
             nestedUrlString = nestedUrlResult.href
           }
-          
+
           if (nestedUrlString) {
             console.log(`[extractUrlFromFileOutput] URL encontrada em propriedade ${prop} (nested FileOutput):`, nestedUrlString)
             return nestedUrlString
@@ -148,7 +149,7 @@ async function extractUrlFromFileOutput(item: any): Promise<string | null> {
         }
       }
     }
-    
+
     // Última tentativa: verificar todas as propriedades string do objeto
     for (const key in item) {
       const value = item[key]
@@ -158,7 +159,7 @@ async function extractUrlFromFileOutput(item: any): Promise<string | null> {
       }
     }
   }
-  
+
   return null
 }
 
@@ -170,9 +171,9 @@ async function extractImageUrlsFromReplicate(result: any, modelName: string): Pr
     hasUrlMethod: result && typeof result === 'object' && typeof (result as any).url === 'function',
     result: result,
   })
-  
+
   let output: any = result
-  
+
   // IMPORTANTE: Se é um FileOutput (tem método url()), chamar url() diretamente ANTES de tentar iterar
   // O FileOutput é um iterador assíncrono, mas iterar sobre ele retorna chunks de dados, não URLs
   if (result && typeof result === 'object' && typeof (result as any).url === 'function') {
@@ -180,7 +181,7 @@ async function extractImageUrlsFromReplicate(result: any, modelName: string): Pr
     try {
       const urlResult = await (result as any).url()
       console.log(`[extractImageUrls] Resultado de url() do FileOutput:`, { type: typeof urlResult, constructor: urlResult?.constructor?.name })
-      
+
       let urlString: string | null = null
       if (typeof urlResult === 'string' && (urlResult.startsWith('http://') || urlResult.startsWith('https://'))) {
         urlString = urlResult
@@ -192,7 +193,7 @@ async function extractImageUrlsFromReplicate(result: any, modelName: string): Pr
           urlString = str
         }
       }
-      
+
       if (urlString) {
         console.log(`[extractImageUrls] ✅ URL extraída diretamente do FileOutput:`, urlString)
         return [urlString]
@@ -202,22 +203,22 @@ async function extractImageUrlsFromReplicate(result: any, modelName: string): Pr
       // Continuar com processamento normal se falhar
     }
   }
-  
+
   // Se é um iterador assíncrono (mas não FileOutput com url()), coletar valores
   // Isso pode acontecer se o resultado for um array de FileOutput objects
   if (result && typeof result === 'object' && typeof (result as any)[Symbol.asyncIterator] === 'function') {
     console.log(`[extractImageUrls] Processando iterador assíncrono para ${modelName}...`)
     const values: any[] = []
     const urls: string[] = []
-    
+
     for await (const value of result as any) {
-      console.log(`[extractImageUrls] Valor recebido do iterador:`, { 
-        type: typeof value, 
+      console.log(`[extractImageUrls] Valor recebido do iterador:`, {
+        type: typeof value,
         isArray: Array.isArray(value),
         hasUrlMethod: value && typeof value === 'object' && typeof value.url === 'function',
-        value: value 
+        value: value
       })
-      
+
       // Se o valor é um FileOutput, extrair URL imediatamente
       if (value && typeof value === 'object') {
         const extractedUrl = await extractUrlFromFileOutput(value)
@@ -234,46 +235,46 @@ async function extractImageUrlsFromReplicate(result: any, modelName: string): Pr
         values.push(value)
       }
     }
-    
+
     console.log(`[extractImageUrls] URLs coletadas do iterador:`, urls)
     console.log(`[extractImageUrls] Valores coletados do iterador:`, values)
-    
+
     // Se encontramos URLs diretamente no iterador, retornar
     if (urls.length > 0) {
       console.log(`[extractImageUrls] Retornando URLs extraídas do iterador:`, urls)
       return urls
     }
-    
+
     // Caso contrário, usar o último valor ou todos os valores
     output = values.length > 0 ? values[values.length - 1] : values[0]
     console.log(`[extractImageUrls] Output final do iterador:`, output)
   }
-  
+
   console.log(`[extractImageUrls] Iniciando extração de URLs. Output:`, {
     type: typeof output,
     isArray: Array.isArray(output),
     output: output,
     keys: output && typeof output === 'object' ? Object.keys(output) : null,
   })
-  
+
   let imageUrls: string[] = []
-  
+
   if (Array.isArray(output)) {
     console.log(`[extractImageUrls] Output é array, processando ${output.length} itens...`)
-    
+
     // Filtrar valores null/undefined
     const validItems = output.filter(item => item !== null && item !== undefined)
     console.log(`[extractImageUrls] Itens válidos após filtro: ${validItems.length} de ${output.length}`)
-    
+
     if (validItems.length === 0) {
       console.warn(`[extractImageUrls] Array vazio ou contém apenas null/undefined`)
       return []
     }
-    
+
     // Processar cada item do array de forma assíncrona
     const urlPromises = validItems.map(async (item: any, i: number) => {
-      console.log(`[extractImageUrls] Processando item ${i}:`, { 
-        type: typeof item, 
+      console.log(`[extractImageUrls] Processando item ${i}:`, {
+        type: typeof item,
         isObject: typeof item === 'object',
         isNull: item === null,
         isUndefined: item === undefined,
@@ -281,9 +282,9 @@ async function extractImageUrlsFromReplicate(result: any, modelName: string): Pr
         hasUrlProperty: item && typeof item === 'object' && typeof item.url === 'string',
         constructor: item?.constructor?.name,
         keys: item && typeof item === 'object' ? Object.keys(item) : null,
-        item: item 
+        item: item
       })
-      
+
       if (typeof item === 'string' && (item.startsWith('http://') || item.startsWith('https://'))) {
         console.log(`[extractImageUrls] URL string encontrada no item ${i}:`, item)
         return item
@@ -312,10 +313,10 @@ async function extractImageUrlsFromReplicate(result: any, modelName: string): Pr
       }
       return null
     })
-    
+
     const extractedUrls = await Promise.all(urlPromises)
     imageUrls = extractedUrls.filter((url): url is string => url !== null && typeof url === 'string')
-    
+
     console.log(`[extractImageUrls] URLs extraídas do array:`, imageUrls)
   } else if (typeof output === 'string' && (output.startsWith('http://') || output.startsWith('https://'))) {
     console.log(`[extractImageUrls] Output é string URL direta`)
@@ -325,7 +326,7 @@ async function extractImageUrlsFromReplicate(result: any, modelName: string): Pr
     console.log(`[extractImageUrls] Constructor:`, output.constructor?.name)
     console.log(`[extractImageUrls] Tem método url:`, typeof (output as any).url === 'function')
     console.log(`[extractImageUrls] É async iterator:`, typeof (output as any)[Symbol.asyncIterator] === 'function')
-    
+
     // Tentar extrair como FileOutput usando função auxiliar (já verificamos no início se é FileOutput direto)
     const extractedUrl = await extractUrlFromFileOutput(output)
     if (extractedUrl) {
@@ -335,16 +336,16 @@ async function extractImageUrlsFromReplicate(result: any, modelName: string): Pr
       // Fallback: procurar em propriedades comuns
       console.log(`[extractImageUrls] Não é FileOutput, procurando URLs em propriedades...`)
       const possibleUrlProperties = ['output', 'urls', 'images', 'url', 'image', 'image_url', 'data', 'result']
-      
+
       for (const prop of possibleUrlProperties) {
         const value = (output as any)[prop]
-        console.log(`[extractImageUrls] Verificando propriedade '${prop}':`, { 
+        console.log(`[extractImageUrls] Verificando propriedade '${prop}':`, {
           type: typeof value,
           isArray: Array.isArray(value),
           hasUrlMethod: value && typeof value === 'object' && typeof value.url === 'function',
-          value: value 
+          value: value
         })
-        
+
         if (Array.isArray(value)) {
           // Processar array de FileOutput objects
           const found: string[] = []
@@ -382,7 +383,7 @@ async function extractImageUrlsFromReplicate(result: any, modelName: string): Pr
           break
         }
       }
-      
+
       // Se ainda não encontrou, tentar extrair URLs de qualquer propriedade string
       if (imageUrls.length === 0) {
         console.log(`[extractImageUrls] Tentando extrair URLs de todas as propriedades string...`)
@@ -396,16 +397,16 @@ async function extractImageUrlsFromReplicate(result: any, modelName: string): Pr
       }
     }
   }
-  
+
   console.log(`[extractImageUrls] URLs finais extraídas para ${modelName}:`, imageUrls)
-  
+
   if (imageUrls.length === 0) {
     console.error(`[extractImageUrls] NENHUMA URL encontrada para ${modelName}!`)
     console.error(`[extractImageUrls] Tipo do output:`, typeof output)
     console.error(`[extractImageUrls] É array:`, Array.isArray(output))
     console.error(`[extractImageUrls] Chaves do objeto:`, output && typeof output === 'object' ? Object.keys(output) : 'N/A')
     console.error(`[extractImageUrls] Resposta completa do Replicate:`, JSON.stringify(output, null, 2))
-    
+
     // Tentar logar estrutura completa do objeto (incluindo métodos)
     if (output && typeof output === 'object') {
       console.error(`[extractImageUrls] Estrutura completa do objeto:`, {
@@ -416,7 +417,7 @@ async function extractImageUrlsFromReplicate(result: any, modelName: string): Pr
       })
     }
   }
-  
+
   return imageUrls
 }
 
@@ -485,12 +486,12 @@ export async function callLLM({
     )
     finalProvider = routingResult.recommended.provider
     finalModel = routingResult.recommended.model
-    
+
     // Se fallback está ativado, usar a cadeia de fallback do routing
     if (enableFallback && routingResult.fallbackChain.length > 0) {
       fallbackChain = routingResult.fallbackChain
     }
-    
+
     console.log(`[callLLM] Routing inteligente: ${provider}:${model} → ${finalProvider}:${finalModel}`, {
       reason: routingResult.recommended.reason,
       score: routingResult.recommended.score,
@@ -515,7 +516,7 @@ export async function callLLM({
 
   // Tentar chamar o modelo principal
   let lastError: Error | null = null
-  const modelsToTry = fallbackChain.length > 0 
+  const modelsToTry = fallbackChain.length > 0
     ? [{ provider: finalProvider, model: finalModel }, ...fallbackChain]
     : [{ provider: finalProvider, model: finalModel }]
 
@@ -523,7 +524,7 @@ export async function callLLM({
     const modelToTry = modelsToTry[i]
     try {
       const result = await callModel(modelToTry.provider, modelToTry.model, sanitizedMessages, stream, startTime, userId, conversationId, messageId)
-      
+
       // Armazenar no cache se não for streaming
       if (enableCache && !stream && result.content) {
         cacheResponse(prompt, result.provider, result.model, result.content, result.cost, result.latency)
@@ -554,7 +555,7 @@ export async function callLLM({
     } catch (error: any) {
       lastError = error
       console.warn(`[callLLM] Falha ao chamar ${modelToTry.provider}:${modelToTry.model}:`, error.message)
-      
+
       // Registrar falha para otimização (Fase 2)
       if (userId && enableOptimization) {
         recordModelPerformance({
@@ -569,13 +570,13 @@ export async function callLLM({
           console.error('[callLLM] Erro ao registrar performance de falha (não crítico):', err)
         })
       }
-      
+
       // Se não é o último modelo na cadeia e fallback está ativado, tentar próximo
       if (enableFallback && i < modelsToTry.length - 1) {
         console.log(`[callLLM] Tentando fallback para próximo modelo na cadeia...`)
         continue
       }
-      
+
       // Se não tem fallback ou é o último modelo, lançar erro
       break
     }
@@ -603,7 +604,7 @@ async function callModel(
   switch (provider.toLowerCase()) {
     case 'openai':
       return await callOpenAI(model, messages, stream, startTime)
-    
+
     case 'google':
       // VEO 3.1 é um modelo de geração de vídeo, precisa de tratamento especial
       if (model.includes('veo')) {
@@ -618,22 +619,22 @@ async function callModel(
         return await callLyria(model, messages, stream, startTime)
       }
       return await callGemini(model, messages, stream, startTime)
-    
+
     case 'deepseek':
       return await callDeepSeek(model, messages, stream, startTime)
-    
+
     case 'grok':
       return await callGrok(model, messages, stream, startTime)
-    
+
     case 'anthropic':
       return await callClaude(model, messages, stream, startTime)
-    
+
     case 'replicate':
       return await callReplicate(model, messages, stream, startTime)
-    
+
     case 'pubmed':
       return await callPubMed(model, messages, stream, startTime)
-    
+
     default:
       throw new Error(`Provedor não suportado: ${provider}`)
   }
@@ -676,7 +677,7 @@ async function callOpenAI(
       role: msg.role === 'assistant' ? 'assistant' : 'user',
       content: String(msg.content || ''), // Sempre converter para string válida
     }))
-  
+
   if (formattedMessages.length === 0) {
     throw new Error('Nenhuma mensagem válida para enviar ao LLM')
   }
@@ -726,7 +727,7 @@ async function callOpenAI(
     const usage = (completion as any).usage || {}
     const inputTokens = usage.prompt_tokens || estimateTokens(messages.map(m => m.content).join(' '))
     const outputTokens = usage.completion_tokens || estimateTokens(content)
-    
+
     const pricing = MODEL_PRICING[`openai:${model}`] || MODEL_PRICING['openai:gpt-4o-mini'] || DEFAULT_PRICING
     const cost = (inputTokens / 1_000_000) * pricing.input + (outputTokens / 1_000_000) * pricing.output
 
@@ -764,28 +765,28 @@ async function callGemini(
 
   try {
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
-    
+
     // Detectar se é Gemini 3 Pro e configurar thinking_level
     const isGemini3High = model === 'gemini-3-pro-preview-high'
     const isGemini3Low = model === 'gemini-3-pro-preview-low'
     const isGemini3 = isGemini3High || isGemini3Low
-    
+
     // Mapear nome interno para nome real da API
     const apiModelName = isGemini3 ? 'gemini-3-pro-preview' : model
-    
+
     // Configurar thinking_level para Gemini 3
     // thinking_level deve ser passado no generationConfig quando chamar generateContent/startChat
     const thinkingLevel = isGemini3High ? 'high' : isGemini3Low ? 'low' : undefined
-    
+
     if (isGemini3) {
       console.log('[callGemini] Gemini 3 detectado, usando thinking_level:', thinkingLevel)
     }
-    
+
     const geminiModel = genAI.getGenerativeModel({ model: apiModelName })
 
     // Filtrar mensagens do sistema
     const filteredMessages = messages.filter(msg => msg.role !== 'system')
-    
+
     if (filteredMessages.length === 0) {
       throw new Error('Nenhuma mensagem válida após filtrar sistema')
     }
@@ -801,7 +802,7 @@ async function callGemini(
     // Se há apenas uma mensagem ou histórico inválido, usar generateContent diretamente
     if (filteredMessages.length === 1) {
       console.log('[callGemini] Usando generateContent (sem histórico)')
-      
+
       if (stream) {
         // Passar thinking_level para Gemini 3 se necessário
         const streamOptions = thinkingLevel ? { generationConfig: { thinkingLevel } } : undefined
@@ -843,7 +844,7 @@ async function callGemini(
         const latency = Date.now() - startTime
         const inputTokens = response.usageMetadata?.promptTokenCount || estimateTokens(currentMessage)
         const outputTokens = response.usageMetadata?.candidatesTokenCount || estimateTokens(content)
-        
+
         // Gemini 3 tem pricing variável baseado no número total de tokens
         let pricing = MODEL_PRICING[`google:${model}`] || MODEL_PRICING['google:gemini-2.5-flash'] || DEFAULT_PRICING
         if (isGemini3) {
@@ -855,7 +856,7 @@ async function callGemini(
             pricing = { input: 2.0, output: 12.0 }
           }
         }
-        
+
         const cost = (inputTokens / 1_000_000) * pricing.input + (outputTokens / 1_000_000) * pricing.output
 
         return {
@@ -879,12 +880,12 @@ async function callGemini(
     let lastRole = ''
     for (const msg of historyMessages) {
       const role = msg.role === 'assistant' ? 'model' : 'user'
-      
+
       // Pular se não alternar corretamente (evitar duplicatas)
       if (lastRole === role) {
         continue
       }
-      
+
       history.push({
         role,
         parts: [{ text: msg.content }],
@@ -895,7 +896,7 @@ async function callGemini(
     // Se o histórico não começa com 'user', usar apenas a mensagem atual
     if (history.length === 0 || history[0].role !== 'user') {
       console.log('[callGemini] Histórico inválido, usando apenas mensagem atual')
-      
+
       if (stream) {
         // Passar thinking_level para Gemini 3 se necessário
         const streamOptions = thinkingLevel ? { generationConfig: { thinkingLevel } } : undefined
@@ -937,7 +938,7 @@ async function callGemini(
         const latency = Date.now() - startTime
         const inputTokens = response.usageMetadata?.promptTokenCount || estimateTokens(currentMessage)
         const outputTokens = response.usageMetadata?.candidatesTokenCount || estimateTokens(content)
-        
+
         // Gemini 3 tem pricing variável baseado no número total de tokens
         let pricing = MODEL_PRICING[`google:${model}`] || MODEL_PRICING['google:gemini-2.5-flash'] || DEFAULT_PRICING
         if (isGemini3) {
@@ -949,7 +950,7 @@ async function callGemini(
             pricing = { input: 2.0, output: 12.0 }
           }
         }
-        
+
         const cost = (inputTokens / 1_000_000) * pricing.input + (outputTokens / 1_000_000) * pricing.output
 
         return {
@@ -973,7 +974,7 @@ async function callGemini(
       if (thinkingLevel) {
         chatOptions.generationConfig = { thinkingLevel }
       }
-      
+
       const chat = geminiModel.startChat(chatOptions)
       const result = await chat.sendMessageStream(currentMessage)
 
@@ -1010,7 +1011,7 @@ async function callGemini(
       if (thinkingLevel) {
         chatOptions.generationConfig = { thinkingLevel }
       }
-      
+
       const chat = geminiModel.startChat(chatOptions)
       const result = await chat.sendMessage(currentMessage)
       const response = await result.response
@@ -1019,7 +1020,7 @@ async function callGemini(
       const latency = Date.now() - startTime
       const inputTokens = response.usageMetadata?.promptTokenCount || estimateTokens(filteredMessages.map(m => m.content).join(' '))
       const outputTokens = response.usageMetadata?.candidatesTokenCount || estimateTokens(content)
-      
+
       // Gemini 3 tem pricing variável baseado no número total de tokens
       let pricing = MODEL_PRICING[`google:${model}`] || MODEL_PRICING['google:gemini-2.5-flash'] || DEFAULT_PRICING
       if (isGemini3) {
@@ -1031,7 +1032,7 @@ async function callGemini(
           pricing = { input: 2.0, output: 12.0 }
         }
       }
-      
+
       const cost = (inputTokens / 1_000_000) * pricing.input + (outputTokens / 1_000_000) * pricing.output
 
       return {
@@ -1062,7 +1063,7 @@ async function callGeminiImage(
   startTime: number
 ): Promise<LLMResponse> {
   const modelName = 'Nano Banana'
-  
+
   try {
     if (!process.env.GEMINI_API_KEY) {
       throw new Error('GEMINI_API_KEY não configurado')
@@ -1141,40 +1142,42 @@ async function callGeminiImage(
 
             // Extrair a imagem da resposta
             let imageData: string | null = null
-            for (const part of response.candidates[0].content.parts) {
-              if ((part as any).inlineData) {
-                const inlineData = (part as any).inlineData
-                const mimeType = inlineData.mimeType || 'image/png'
-                const data = inlineData.data
-                if (data) {
-                  // Converter base64 para data URL
-                  imageData = `data:${mimeType};base64,${data}`
-                  break
+            if (response.candidates && response.candidates[0]) {
+              for (const part of response.candidates[0].content.parts) {
+                if ((part as any).inlineData) {
+                  const inlineData = (part as any).inlineData
+                  const mimeType = inlineData.mimeType || 'image/png'
+                  const data = inlineData.data
+                  if (data) {
+                    // Converter base64 para data URL
+                    imageData = `data:${mimeType};base64,${data}`
+                    break
+                  }
                 }
               }
+
+              if (!imageData) {
+                throw new Error('Resposta da API não contém dados de imagem')
+              }
+
+              // Calcular latência e custo
+              const latency = Date.now() - startTime
+              const pricing = MODEL_PRICING[`google:${model}`] || MODEL_PRICING['google:gemini-2.5-flash'] || DEFAULT_PRICING
+              // Imagens do Gemini são tokenizadas como 1290 tokens por imagem (até 1024x1024px)
+              const outputTokens = 1290
+              const inputTokens = estimateTokens(prompt)
+              const cost = (inputTokens / 1_000_000) * pricing.input + (outputTokens / 1_000_000) * pricing.output
+
+              // Construir markdown com a imagem
+              let content = `🍌 **Imagem gerada com ${modelName}!**\n\n`
+              content += `![Imagem gerada](${imageData})\n\n`
+              content += `**Parâmetros:**\n`
+              content += `- Aspect Ratio: ${aspectRatio}\n`
+              content += `\n**Tempo de processamento:** ${(latency / 1000).toFixed(1)}s\n**Custo:** $${cost.toFixed(4)} ($${pricing.input.toFixed(2)}/token input + $${pricing.output.toFixed(2)}/token output, imagem = 1290 tokens)`
+
+              // Enviar o conteúdo completo
+              controller.enqueue(encoder.encode(content))
             }
-
-            if (!imageData) {
-              throw new Error('Resposta da API não contém dados de imagem')
-            }
-
-            // Calcular latência e custo
-            const latency = Date.now() - startTime
-            const pricing = MODEL_PRICING[`google:${model}`] || MODEL_PRICING['google:gemini-2.5-flash'] || DEFAULT_PRICING
-            // Imagens do Gemini são tokenizadas como 1290 tokens por imagem (até 1024x1024px)
-            const outputTokens = 1290
-            const inputTokens = estimateTokens(prompt)
-            const cost = (inputTokens / 1_000_000) * pricing.input + (outputTokens / 1_000_000) * pricing.output
-
-            // Construir markdown com a imagem
-            let content = `🍌 **Imagem gerada com ${modelName}!**\n\n`
-            content += `![Imagem gerada](${imageData})\n\n`
-            content += `**Parâmetros:**\n`
-            content += `- Aspect Ratio: ${aspectRatio}\n`
-            content += `\n**Tempo de processamento:** ${(latency / 1000).toFixed(1)}s\n**Custo:** $${cost.toFixed(4)} ($${pricing.input.toFixed(2)}/token input + $${pricing.output.toFixed(2)}/token output, imagem = 1290 tokens)`
-
-            // Enviar o conteúdo completo
-            controller.enqueue(encoder.encode(content))
             controller.close()
 
           } catch (error: any) {
@@ -1255,16 +1258,16 @@ async function callGeminiImage(
     }
   } catch (error: any) {
     console.error('[callGeminiImage] Erro:', error)
-    
+
     // Mensagens de erro específicas
     if (error.message?.includes('API') || error.message?.includes('404') || error.message?.includes('not found')) {
       throw new Error(`API do ${modelName} retornou erro. Verifique: https://ai.google.dev/gemini-api/docs/image-generation. Erro: ${error.message}`)
     }
-    
+
     if (error.message?.includes('prompt') || error.message?.includes('conteúdo')) {
       throw new Error(`Erro no prompt de geração de imagem: ${error.message}`)
     }
-    
+
     throw new Error(`Erro ao gerar imagem com ${modelName}: ${error.message || error}`)
   }
 }
@@ -1286,7 +1289,7 @@ async function callLyria(
   startTime: number
 ): Promise<LLMResponse> {
   const modelName = 'Lyria RealTime'
-  
+
   try {
     if (!process.env.GEMINI_API_KEY) {
       throw new Error('GEMINI_API_KEY não configurado')
@@ -1419,7 +1422,7 @@ Para mais informações, consulte: https://ai.google.dev/gemini-api/docs/music-g
     }
   } catch (error: any) {
     console.error('[callLyria] Erro:', error)
-    
+
     throw new Error(`Erro ao gerar música com ${modelName}: ${error.message || error}`)
   }
 }
@@ -1489,7 +1492,7 @@ async function callDeepSeek(
     const usage = (completion as any).usage || {}
     const inputTokens = usage.prompt_tokens || estimateTokens(messages.map(m => m.content).join(' '))
     const outputTokens = usage.completion_tokens || estimateTokens(content)
-    
+
     const pricing = MODEL_PRICING[`deepseek:${model}`] || MODEL_PRICING['deepseek:deepseek-chat'] || DEFAULT_PRICING
     const cost = (inputTokens / 1_000_000) * pricing.input + (outputTokens / 1_000_000) * pricing.output
 
@@ -1578,7 +1581,7 @@ async function callGrok(
     const usage = (completion as any).usage || {}
     const inputTokens = usage.prompt_tokens || estimateTokens(messages.map(m => m.content).join(' '))
     const outputTokens = usage.completion_tokens || estimateTokens(content)
-    
+
     const pricing = MODEL_PRICING[`grok:${model}`] || MODEL_PRICING['grok:grok-4-fast'] || DEFAULT_PRICING
     const cost = (inputTokens / 1_000_000) * pricing.input + (outputTokens / 1_000_000) * pricing.output
 
@@ -1674,11 +1677,11 @@ async function callClaude(
 
     const latency = Date.now() - startTime
     const content = response.content[0].type === 'text' ? response.content[0].text : ''
-    
+
     // Anthropic retorna usage info
     const inputTokens = response.usage.input_tokens || estimateTokens(messages.map(m => m.content).join(' '))
     const outputTokens = response.usage.output_tokens || estimateTokens(content)
-    
+
     const pricing = MODEL_PRICING[`anthropic:${model}`] || MODEL_PRICING['anthropic:claude-3-5-haiku-20241022'] || DEFAULT_PRICING
     const cost = (inputTokens / 1_000_000) * pricing.input + (outputTokens / 1_000_000) * pricing.output
 
@@ -1752,7 +1755,7 @@ async function callReplicate(
     // Construir prompt no formato esperado pelo Llama 3.1
     // O formato é: <|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n{system}<|eot_id|>...
     let prompt = ''
-    
+
     if (systemMessage) {
       prompt += `<|start_header_id|>system<|end_header_id|>\n\n${systemMessage.content}<|eot_id|>\n`
     }
@@ -1789,7 +1792,7 @@ async function callReplicate(
       // Stream mode
       // O Replicate retorna um iterador assíncrono
       const output = replicate.stream(model, { input })
-      
+
       const encoder = new TextEncoder()
       const readable = new ReadableStream({
         async start(controller) {
@@ -1799,7 +1802,7 @@ async function callReplicate(
               // O formato do chunk pode variar dependendo do modelo
               // Vamos tratar diferentes formatos
               let text = ''
-              
+
               if (typeof chunk === 'string') {
                 text = chunk
               } else if (Array.isArray(chunk)) {
@@ -1809,7 +1812,7 @@ async function callReplicate(
                 // Alguns modelos retornam objetos com propriedades diferentes
                 text = chunk.text || chunk.content || chunk.output || chunk.toString() || JSON.stringify(chunk)
               }
-              
+
               if (text && text.trim()) {
                 controller.enqueue(encoder.encode(text))
               }
@@ -1834,7 +1837,7 @@ async function callReplicate(
     } else {
       // Non-stream mode
       const output = await replicate.run(model, { input }) as any
-      
+
       // O output do Replicate pode ser string ou array de strings
       let content = ''
       if (typeof output === 'string') {
@@ -1848,11 +1851,11 @@ async function callReplicate(
       }
 
       const finalLatency = Date.now() - startTime
-      
+
       // Calcular tokens (estimativa)
       const inputTokens = estimateTokens(prompt)
       const outputTokens = estimateTokens(content)
-      
+
       // Preço do Replicate é baseado no tempo de execução e recursos usados
       // Por enquanto, vamos usar um preço fixo ou estimado
       // O Replicate cobra por segundo de execução, não por token
@@ -1916,7 +1919,7 @@ async function callFluxImage(
           try {
             // Enviar mensagem inicial de loading
             controller.enqueue(encoder.encode(`${modelIcon} Gerando imagem com ${modelName}... Isso pode levar alguns segundos.\n\n`))
-            
+
             // Agora gerar a imagem de fato (mesmo com stream=true)
             // Extrair o prompt da última mensagem do usuário
             const lastUserMessage = messages.filter(msg => msg.role === 'user').pop()
@@ -1926,7 +1929,7 @@ async function callFluxImage(
 
             const prompt = lastUserMessage.content
             const promptLower = prompt.toLowerCase()
-            
+
             // Detectar resolução no prompt ou usar padrão
             let aspect_ratio = '1:1'
             if (promptLower.includes('16:9') || promptLower.includes('paisagem') || promptLower.includes('landscape') || promptLower.includes('widescreen')) {
@@ -1959,10 +1962,10 @@ async function callFluxImage(
             }
 
             const startExecutionTime = Date.now()
-            
+
             console.log('[callFluxImage] Chamando Replicate com modelo:', model)
             console.log('[callFluxImage] Input:', JSON.stringify(input, null, 2))
-            
+
             let result: any
             try {
               result = await replicate.run(model, { input })
@@ -1979,7 +1982,7 @@ async function callFluxImage(
               console.error('[callFluxImage] Erro ao chamar replicate.run:', replicateError)
               throw new Error(`Erro ao chamar Replicate API: ${replicateError.message || replicateError}`)
             }
-            
+
             // Usar função auxiliar para extrair URLs
             console.log('[callFluxImage] Chamando extractImageUrlsFromReplicate...')
             const imageUrls = await extractImageUrlsFromReplicate(result, modelName)
@@ -2006,7 +2009,7 @@ async function callFluxImage(
 
             // Construir resposta em formato de mensagem com imagens
             let content = `${modelIcon} **Imagem${imageUrls.length > 1 ? 's' : ''} gerada${imageUrls.length > 1 ? 's' : ''} com ${modelName}!**\n\n`
-            
+
             // Adicionar todas as imagens geradas
             imageUrls.forEach((url, index) => {
               if (imageUrls.length > 1) {
@@ -2014,7 +2017,7 @@ async function callFluxImage(
               }
               content += `![Imagem gerada](${url})\n\n`
             })
-            
+
             content += `**Parâmetros:**\n`
             content += `- Aspecto: ${aspect_ratio}\n`
             content += `- Formato: ${output_format.toUpperCase()}\n`
@@ -2022,7 +2025,7 @@ async function callFluxImage(
             content += `\n**Tempo de processamento:** ${(latency / 1000).toFixed(1)}s\n`
             content += `**Tempo de execução:** ${executionSeconds.toFixed(1)}s\n`
             content += `**Custo:** $${cost.toFixed(4)} ($${pricing.input.toFixed(3)}/segundo × ${executionSeconds.toFixed(1)}s × ${imageUrls.length} imagem${imageUrls.length > 1 ? 's' : ''})`
-            
+
             if (isKrea) {
               content += `\n\n*FLUX.1 Krea [dev] oferece fotorealismo excepcional que evita o "AI look" oversaturado, com estética distintiva e imagens visualmente interessantes*`
             } else {
@@ -2034,14 +2037,14 @@ async function callFluxImage(
             controller.close()
           } catch (error: any) {
             console.error('[callFluxImage] Erro no stream:', error)
-            
+
             let errorMessage = `Erro ao gerar imagem com ${modelName}: ${error.message || error}`
             if (error.message?.includes('REPLICATE_API_TOKEN') || error.message?.includes('auth')) {
               errorMessage = 'REPLICATE_API_TOKEN não configurado. Configure a variável de ambiente.'
             } else if (error.message?.includes('prompt') || error.message?.includes('conteúdo')) {
               errorMessage = `Erro no prompt de geração de imagem: ${error.message}`
             }
-            
+
             controller.enqueue(encoder.encode(`❌ ${errorMessage}`))
             controller.error(error)
           }
@@ -2068,7 +2071,7 @@ async function callFluxImage(
 
     // Detectar parâmetros do prompt ou usar padrões
     const promptLower = prompt.toLowerCase()
-    
+
     // Detectar resolução no prompt ou usar padrão
     // FLUX 1.1 Pro suporta múltiplas resoluções
     let aspect_ratio = '1:1' // Padrão quadrado
@@ -2107,11 +2110,11 @@ async function callFluxImage(
 
     // Chamar a API do Replicate
     const startExecutionTime = Date.now()
-    
+
     try {
       console.log('[callFluxImage][non-stream] Chamando Replicate com modelo:', model)
       console.log('[callFluxImage][non-stream] Input:', JSON.stringify(input, null, 2))
-      
+
       // O Replicate pode retornar um iterador assíncrono ou resultado direto
       let result: any
       try {
@@ -2130,7 +2133,7 @@ async function callFluxImage(
         console.error('[callFluxImage][non-stream] Erro ao chamar replicate.run:', replicateError)
         throw new Error(`Erro ao chamar Replicate API: ${replicateError.message || replicateError}`)
       }
-      
+
       // Usar função auxiliar para extrair URLs
       console.log('[callFluxImage][non-stream] Chamando extractImageUrlsFromReplicate...')
       const imageUrls = await extractImageUrlsFromReplicate(result, modelName)
@@ -2159,7 +2162,7 @@ async function callFluxImage(
 
       // Construir resposta em formato de mensagem com imagens
       let content = `${modelIcon} **Imagem${imageUrls.length > 1 ? 's' : ''} gerada${imageUrls.length > 1 ? 's' : ''} com ${modelName}!**\n\n`
-      
+
       // Adicionar todas as imagens geradas
       imageUrls.forEach((url, index) => {
         if (imageUrls.length > 1) {
@@ -2167,7 +2170,7 @@ async function callFluxImage(
         }
         content += `![Imagem gerada](${url})\n\n`
       })
-      
+
       content += `**Parâmetros:**\n`
       content += `- Aspecto: ${aspect_ratio}\n`
       content += `- Formato: ${output_format.toUpperCase()}\n`
@@ -2175,7 +2178,7 @@ async function callFluxImage(
       content += `\n**Tempo de processamento:** ${(latency / 1000).toFixed(1)}s\n`
       content += `**Tempo de execução:** ${executionSeconds.toFixed(1)}s\n`
       content += `**Custo:** $${cost.toFixed(4)} ($${pricing.input.toFixed(3)}/segundo × ${executionSeconds.toFixed(1)}s × ${imageUrls.length} imagem${imageUrls.length > 1 ? 's' : ''})`
-      
+
       if (isKrea) {
         content += `\n\n*FLUX.1 Krea [dev] oferece fotorealismo excepcional que evita o "AI look" oversaturado, com estética distintiva e imagens visualmente interessantes*`
       } else {
@@ -2198,16 +2201,16 @@ async function callFluxImage(
       }
     } catch (error: any) {
       console.error('[callFluxImage] Erro:', error)
-      
+
       // Mensagens de erro específicas
       if (error.message?.includes('REPLICATE_API_TOKEN') || error.message?.includes('auth')) {
         throw new Error('REPLICATE_API_TOKEN não configurado. Configure a variável de ambiente.')
       }
-      
+
       if (error.message?.includes('prompt') || error.message?.includes('conteúdo')) {
         throw new Error(`Erro no prompt de geração de imagem: ${error.message}`)
       }
-      
+
       const modelName = model.includes('krea') ? 'FLUX.1 Krea [dev]' : 'FLUX 1.1 Pro'
       throw new Error(`Erro ao gerar imagem com ${modelName}: ${error.message || error}`)
     }
@@ -2250,7 +2253,7 @@ async function callFluxKontext(
           try {
             // Enviar mensagem inicial de loading
             controller.enqueue(encoder.encode(`${modelIcon} Editando imagem com ${modelName}... Isso pode levar alguns segundos.\n\n`))
-            
+
             // Agora gerar a imagem de fato (mesmo com stream=true)
             // Extrair o prompt da última mensagem do usuário
             const lastUserMessage = messages.filter(msg => msg.role === 'user').pop()
@@ -2264,7 +2267,7 @@ async function callFluxKontext(
             // Verificar se há imagem anexada (obrigatória para edição)
             const msgAny = lastUserMessage as any
             let imageUrl: string | null = null
-            
+
             if (msgAny.attachments && Array.isArray(msgAny.attachments)) {
               const imageAttachments = msgAny.attachments.filter((a: any) => a.type === 'image')
               if (imageAttachments.length > 0) {
@@ -2283,14 +2286,14 @@ async function callFluxKontext(
 
             const startExecutionTime = Date.now()
             const result = await replicate.run(model, { input })
-            
+
             // Usar função auxiliar para extrair URLs
             const imageUrls = await extractImageUrlsFromReplicate(result, modelName)
-            
+
             if (imageUrls.length === 0) {
               throw new Error(`Resposta da API não contém URL de imagem editada para ${modelName}`)
             }
-            
+
             const imageUrlResult = imageUrls[0]
 
             const executionTime = Date.now() - startExecutionTime
@@ -2302,12 +2305,12 @@ async function callFluxKontext(
 
             let content = `${modelIcon} **Imagem editada com ${modelName}!**\n\n`
             content += `![Imagem editada](${imageUrlResult})\n\n`
-            
+
             content += `**Prompt de edição:** "${prompt}"\n`
             content += `\n**Tempo de processamento:** ${(latency / 1000).toFixed(1)}s\n`
             content += `**Tempo de execução:** ${executionSeconds.toFixed(1)}s\n`
             content += `**Custo:** $${cost.toFixed(4)} ($${pricing.input.toFixed(2)}/segundo × ${executionSeconds.toFixed(1)}s)`
-            
+
             if (isMax) {
               content += `\n\n*FLUX.1 Kontext [max] oferece máxima performance em edição de imagem, geração de tipografia melhorada e resultados superiores*`
             } else if (isPro) {
@@ -2321,7 +2324,7 @@ async function callFluxKontext(
             controller.close()
           } catch (error: any) {
             console.error('[callFluxKontext] Erro no stream:', error)
-            
+
             let errorMessage = `Erro ao editar imagem com ${modelName}: ${error.message || error}`
             if (error.message?.includes('REPLICATE_API_TOKEN') || error.message?.includes('auth')) {
               errorMessage = 'REPLICATE_API_TOKEN não configurado. Configure a variável de ambiente.'
@@ -2330,7 +2333,7 @@ async function callFluxKontext(
             } else if (error.message?.includes('prompt') || error.message?.includes('conteúdo')) {
               errorMessage = `Erro no prompt de edição de imagem: ${error.message}`
             }
-            
+
             controller.enqueue(encoder.encode(`❌ ${errorMessage}`))
             controller.error(error)
           }
@@ -2359,7 +2362,7 @@ async function callFluxKontext(
     // Verificar se há imagem anexada (obrigatória para edição)
     const msgAny = lastUserMessage as any
     let imageUrl: string | null = null
-    
+
     if (msgAny.attachments && Array.isArray(msgAny.attachments)) {
       const imageAttachments = msgAny.attachments.filter((a: any) => a.type === 'image')
       if (imageAttachments.length > 0) {
@@ -2373,43 +2376,43 @@ async function callFluxKontext(
 
     // Detectar tipo de edição baseado no prompt
     const isStyleTransfer = promptLower.includes('estilo') ||
-                           promptLower.includes('style') ||
-                           promptLower.includes('pintura') ||
-                           promptLower.includes('painting') ||
-                           promptLower.includes('aquarela') ||
-                           promptLower.includes('watercolor') ||
-                           promptLower.includes('óleo') ||
-                           promptLower.includes('oil')
-    
+      promptLower.includes('style') ||
+      promptLower.includes('pintura') ||
+      promptLower.includes('painting') ||
+      promptLower.includes('aquarela') ||
+      promptLower.includes('watercolor') ||
+      promptLower.includes('óleo') ||
+      promptLower.includes('oil')
+
     const isTextEditing = promptLower.includes('texto') ||
-                         promptLower.includes('text') ||
-                         promptLower.includes('substituir') ||
-                         promptLower.includes('replace') ||
-                         promptLower.includes('trocar') ||
-                         promptLower.includes('change') ||
-                         promptLower.includes('"') // Aspas indicam edição de texto
-    
+      promptLower.includes('text') ||
+      promptLower.includes('substituir') ||
+      promptLower.includes('replace') ||
+      promptLower.includes('trocar') ||
+      promptLower.includes('change') ||
+      promptLower.includes('"') // Aspas indicam edição de texto
+
     const isBackgroundChange = promptLower.includes('fundo') ||
-                              promptLower.includes('background') ||
-                              promptLower.includes('cenário') ||
-                              promptLower.includes('scenario')
-    
+      promptLower.includes('background') ||
+      promptLower.includes('cenário') ||
+      promptLower.includes('scenario')
+
     const isObjectChange = promptLower.includes('cabelo') ||
-                          promptLower.includes('hair') ||
-                          promptLower.includes('roupa') ||
-                          promptLower.includes('clothing') ||
-                          promptLower.includes('acessório') ||
-                          promptLower.includes('accessory') ||
-                          promptLower.includes('cor') ||
-                          promptLower.includes('color')
+      promptLower.includes('hair') ||
+      promptLower.includes('roupa') ||
+      promptLower.includes('clothing') ||
+      promptLower.includes('acessório') ||
+      promptLower.includes('accessory') ||
+      promptLower.includes('cor') ||
+      promptLower.includes('color')
 
     // Detectar se precisa preservar algo
     const preserveFeatures = promptLower.includes('manter') ||
-                            promptLower.includes('keep') ||
-                            promptLower.includes('preservar') ||
-                            promptLower.includes('preserve') ||
-                            promptLower.includes('mesma') ||
-                            promptLower.includes('same')
+      promptLower.includes('keep') ||
+      promptLower.includes('preservar') ||
+      promptLower.includes('preserve') ||
+      promptLower.includes('mesma') ||
+      promptLower.includes('same')
 
     // Configurar input para FLUX.1 Kontext
     // Documentação: https://replicate.com/black-forest-labs/flux-kontext-max, flux-kontext-pro ou flux-kontext-dev
@@ -2421,14 +2424,14 @@ async function callFluxKontext(
     // Chamar a API do Replicate
     const startExecutionTime = Date.now()
     const result = await replicate.run(model, { input })
-    
+
     // Usar função auxiliar para extrair URLs
     const imageUrls = await extractImageUrlsFromReplicate(result, modelName)
-    
+
     if (imageUrls.length === 0) {
       throw new Error(`Resposta da API não contém URL de imagem editada para ${modelName}`)
     }
-    
+
     const imageUrlResult = imageUrls[0]
 
     const executionTime = Date.now() - startExecutionTime
@@ -2442,7 +2445,7 @@ async function callFluxKontext(
     // Construir resposta em formato de mensagem com imagem editada
     let content = `${modelIcon} **Imagem editada com ${modelName}!**\n\n`
     content += `![Imagem editada](${imageUrlResult})\n\n`
-    
+
     content += `**Tipo de edição:**\n`
     if (isTextEditing) {
       content += `- Edição de texto (tipografia melhorada)\n`
@@ -2459,16 +2462,16 @@ async function callFluxKontext(
     if (!isTextEditing && !isStyleTransfer && !isBackgroundChange && !isObjectChange) {
       content += `- Edição geral baseada em texto\n`
     }
-    
+
     if (preserveFeatures) {
       content += `- Preservação de características solicitadas\n`
     }
-    
+
     content += `\n**Prompt de edição:** "${prompt}"\n`
     content += `\n**Tempo de processamento:** ${(latency / 1000).toFixed(1)}s\n`
     content += `**Tempo de execução:** ${executionSeconds.toFixed(1)}s\n`
     content += `**Custo:** $${cost.toFixed(4)} ($${pricing.input.toFixed(2)}/segundo × ${executionSeconds.toFixed(1)}s)`
-    
+
     if (isMax) {
       content += `\n\n*FLUX.1 Kontext [max] oferece máxima performance em edição de imagem, geração de tipografia melhorada e resultados superiores*`
     } else if (isPro) {
@@ -2499,20 +2502,20 @@ async function callFluxKontext(
     }
   } catch (error: any) {
     console.error('[callFluxKontext] Erro:', error)
-    
+
     // Mensagens de erro específicas
     if (error.message?.includes('REPLICATE_API_TOKEN') || error.message?.includes('auth')) {
       throw new Error('REPLICATE_API_TOKEN não configurado. Configure a variável de ambiente.')
     }
-    
+
     if (error.message?.includes('imagem') || error.message?.includes('image')) {
       throw new Error(`Erro com imagem: ${error.message}`)
     }
-    
+
     if (error.message?.includes('prompt') || error.message?.includes('conteúdo')) {
       throw new Error(`Erro no prompt de edição: ${error.message}`)
     }
-    
+
     throw new Error(`Erro ao editar imagem com ${modelName}: ${error.message || error}`)
   }
 }
@@ -2544,7 +2547,7 @@ async function callSeedreamImage(
           try {
             // Enviar mensagem inicial de loading
             controller.enqueue(encoder.encode('✨ Gerando/Editando imagem com Seedream 4.0... Isso pode levar alguns segundos.\n\n'))
-            
+
             // Agora gerar a imagem de fato (mesmo com stream=true)
             // Extrair o prompt da última mensagem do usuário
             const lastUserMessage = messages.filter(msg => msg.role === 'user').pop()
@@ -2558,25 +2561,25 @@ async function callSeedreamImage(
             // Verificar se há imagens anexadas (para edição)
             const msgAny = lastUserMessage as any
             let referenceImages: string[] = []
-            
+
             if (msgAny.attachments && Array.isArray(msgAny.attachments)) {
               const imageAttachments = msgAny.attachments.filter((a: any) => a.type === 'image')
               referenceImages = imageAttachments.map((a: any) => a.url).filter(Boolean)
             }
 
-            const isEditing = referenceImages.length > 0 || 
-                              promptLower.includes('remover') || 
-                              promptLower.includes('remove') ||
-                              promptLower.includes('substituir') ||
-                              promptLower.includes('replace') ||
-                              promptLower.includes('editar') ||
-                              promptLower.includes('edit') ||
-                              promptLower.includes('modificar') ||
-                              promptLower.includes('modify')
+            const isEditing = referenceImages.length > 0 ||
+              promptLower.includes('remover') ||
+              promptLower.includes('remove') ||
+              promptLower.includes('substituir') ||
+              promptLower.includes('replace') ||
+              promptLower.includes('editar') ||
+              promptLower.includes('edit') ||
+              promptLower.includes('modificar') ||
+              promptLower.includes('modify')
 
             let width = 1024
             let height = 1024
-            
+
             if (promptLower.includes('4k') || promptLower.includes('3840') || promptLower.includes('4096')) {
               width = 3840
               height = 2160
@@ -2631,7 +2634,7 @@ async function callSeedreamImage(
 
             const startExecutionTime = Date.now()
             const result = await replicate.run(model, { input })
-            
+
             // Usar função auxiliar para extrair URLs
             const imageUrls = await extractImageUrlsFromReplicate(result, 'Seedream 4.0')
 
@@ -2648,14 +2651,14 @@ async function callSeedreamImage(
 
             const modeText = isEditing ? 'editada' : 'gerada'
             let content = `✨ **Imagem${imageUrls.length > 1 ? 's' : ''} ${modeText}${imageUrls.length > 1 ? 's' : ''} com Seedream 4.0!**\n\n`
-            
+
             imageUrls.forEach((url, index) => {
               if (imageUrls.length > 1) {
                 content += `**Imagem ${index + 1}:**\n`
               }
               content += `![Imagem ${modeText}](${url})\n\n`
             })
-            
+
             content += `**Parâmetros:**\n`
             content += `- Resolução: ${width}x${height}${width >= 3840 ? ' (4K)' : width >= 2560 ? ' (2K)' : ''}\n`
             content += `- Quantidade: ${imageUrls.length}\n`
@@ -2673,7 +2676,7 @@ async function callSeedreamImage(
             content += `\n**Tempo de processamento:** ${(latency / 1000).toFixed(1)}s\n`
             content += `**Tempo de execução:** ${executionSeconds.toFixed(1)}s\n`
             content += `**Custo:** $${cost.toFixed(4)} ($${pricing.input.toFixed(3)}/segundo × ${executionSeconds.toFixed(1)}s × ${imageUrls.length} imagem${imageUrls.length > 1 ? 's' : ''})`
-            
+
             content += `\n\n*Seedream 4.0 oferece geração e edição unificadas, suporte a até 4K e múltiplas referências*`
 
             // Enviar o conteúdo completo
@@ -2681,14 +2684,14 @@ async function callSeedreamImage(
             controller.close()
           } catch (error: any) {
             console.error('[callSeedreamImage] Erro no stream:', error)
-            
+
             let errorMessage = `Erro ao gerar/editar imagem com Seedream 4.0: ${error.message || error}`
             if (error.message?.includes('REPLICATE_API_TOKEN') || error.message?.includes('auth')) {
               errorMessage = 'REPLICATE_API_TOKEN não configurado. Configure a variável de ambiente.'
             } else if (error.message?.includes('prompt') || error.message?.includes('conteúdo')) {
               errorMessage = `Erro no prompt de geração de imagem: ${error.message}`
             }
-            
+
             controller.enqueue(encoder.encode(`❌ ${errorMessage}`))
             controller.error(error)
           }
@@ -2717,28 +2720,28 @@ async function callSeedreamImage(
     // Verificar se há imagens anexadas (para edição)
     const msgAny = lastUserMessage as any
     let referenceImages: string[] = []
-    
+
     if (msgAny.attachments && Array.isArray(msgAny.attachments)) {
       const imageAttachments = msgAny.attachments.filter((a: any) => a.type === 'image')
       referenceImages = imageAttachments.map((a: any) => a.url).filter(Boolean)
     }
 
     // Detectar se é edição ou geração baseado no prompt e presença de imagens
-    const isEditing = referenceImages.length > 0 || 
-                      promptLower.includes('remover') || 
-                      promptLower.includes('remove') ||
-                      promptLower.includes('substituir') ||
-                      promptLower.includes('replace') ||
-                      promptLower.includes('editar') ||
-                      promptLower.includes('edit') ||
-                      promptLower.includes('modificar') ||
-                      promptLower.includes('modify')
+    const isEditing = referenceImages.length > 0 ||
+      promptLower.includes('remover') ||
+      promptLower.includes('remove') ||
+      promptLower.includes('substituir') ||
+      promptLower.includes('replace') ||
+      promptLower.includes('editar') ||
+      promptLower.includes('edit') ||
+      promptLower.includes('modificar') ||
+      promptLower.includes('modify')
 
     // Detectar resolução no prompt ou usar padrão
     // Seedream 4.0 suporta até 4K
     let width = 1024
     let height = 1024
-    
+
     if (promptLower.includes('4k') || promptLower.includes('3840') || promptLower.includes('4096')) {
       width = 3840
       height = 2160 // 4K UHD
@@ -2801,7 +2804,7 @@ async function callSeedreamImage(
     // Chamar a API do Replicate
     const startExecutionTime = Date.now()
     const result = await replicate.run(model, { input })
-    
+
     // Usar função auxiliar para extrair URLs
     const imageUrls = await extractImageUrlsFromReplicate(result, 'Seedream 4.0')
 
@@ -2820,7 +2823,7 @@ async function callSeedreamImage(
     // Construir resposta em formato de mensagem com imagens
     const modeText = isEditing ? 'editada' : 'gerada'
     let content = `✨ **Imagem${imageUrls.length > 1 ? 's' : ''} ${modeText}${imageUrls.length > 1 ? 's' : ''} com Seedream 4.0!**\n\n`
-    
+
     // Adicionar todas as imagens geradas/editadas
     imageUrls.forEach((url, index) => {
       if (imageUrls.length > 1) {
@@ -2828,7 +2831,7 @@ async function callSeedreamImage(
       }
       content += `![Imagem ${modeText}](${url})\n\n`
     })
-    
+
     content += `**Parâmetros:**\n`
     content += `- Resolução: ${width}x${height}${width >= 3840 ? ' (4K)' : width >= 2560 ? ' (2K)' : ''}\n`
     content += `- Quantidade: ${imageUrls.length}\n`
@@ -2846,7 +2849,7 @@ async function callSeedreamImage(
     content += `\n**Tempo de processamento:** ${(latency / 1000).toFixed(1)}s\n`
     content += `**Tempo de execução:** ${executionSeconds.toFixed(1)}s\n`
     content += `**Custo:** $${cost.toFixed(4)} ($${pricing.input.toFixed(3)}/segundo × ${executionSeconds.toFixed(1)}s × ${imageUrls.length} imagem${imageUrls.length > 1 ? 's' : ''})`
-    
+
     content += `\n\n*Seedream 4.0 oferece geração e edição unificadas, suporte a até 4K e múltiplas referências*`
 
     return {
@@ -2868,16 +2871,16 @@ async function callSeedreamImage(
     }
   } catch (error: any) {
     console.error('[callSeedreamImage] Erro:', error)
-    
+
     // Mensagens de erro específicas
     if (error.message?.includes('REPLICATE_API_TOKEN') || error.message?.includes('auth')) {
       throw new Error('REPLICATE_API_TOKEN não configurado. Configure a variável de ambiente.')
     }
-    
+
     if (error.message?.includes('prompt') || error.message?.includes('conteúdo')) {
       throw new Error(`Erro no prompt de geração/edição de imagem: ${error.message}`)
     }
-    
+
     throw new Error(`Erro ao gerar/editar imagem com Seedream 4.0: ${error.message || error}`)
   }
 }
@@ -2903,7 +2906,7 @@ async function callIdeogramImage(
     const isQuality = model.includes('quality')
     const isBalanced = model.includes('balanced')
     const isTurbo = model.includes('turbo')
-    
+
     let modelName = 'Ideogram v3'
     if (isQuality) {
       modelName = 'Ideogram v3 Quality'
@@ -2922,7 +2925,7 @@ async function callIdeogramImage(
           try {
             // Enviar mensagem inicial de loading
             controller.enqueue(encoder.encode(`🎨 Gerando imagem com ${modelName}... Isso pode levar alguns segundos.\n\n`))
-            
+
             // Agora gerar a imagem de fato (mesmo com stream=true)
             // Extrair o prompt da última mensagem do usuário
             const lastUserMessage = messages.filter(msg => msg.role === 'user').pop()
@@ -2936,14 +2939,14 @@ async function callIdeogramImage(
             // Verificar se há imagens anexadas (para style references)
             const msgAny = lastUserMessage as any
             let styleReferences: string[] = []
-            
+
             if (msgAny.attachments && Array.isArray(msgAny.attachments)) {
               const imageAttachments = msgAny.attachments.filter((a: any) => a.type === 'image')
               styleReferences = imageAttachments.map((a: any) => a.url).filter(Boolean).slice(0, 3)
             }
 
             let aspect_ratio = '1:1'
-            
+
             if (promptLower.includes('16:9') || promptLower.includes('paisagem') || promptLower.includes('landscape') || promptLower.includes('widescreen')) {
               aspect_ratio = '16:9'
             } else if (promptLower.includes('9:16') || promptLower.includes('retrato') || promptLower.includes('portrait') || promptLower.includes('vertical')) {
@@ -2956,25 +2959,25 @@ async function callIdeogramImage(
               aspect_ratio = '21:9'
             }
 
-            const useRandomStyle = promptLower.includes('random style') || 
-                                  promptLower.includes('estilo aleatório') ||
-                                  promptLower.includes('estilo random')
+            const useRandomStyle = promptLower.includes('random style') ||
+              promptLower.includes('estilo aleatório') ||
+              promptLower.includes('estilo random')
 
             const styleCodeMatch = prompt.match(/style[_\s]?code[:\s]+([a-zA-Z0-9]+)/i)
             const style_code = styleCodeMatch ? styleCodeMatch[1] : undefined
 
             const isGraphicDesign = promptLower.includes('logo') ||
-                                   promptLower.includes('design gráfico') ||
-                                   promptLower.includes('graphic design') ||
-                                   promptLower.includes('texto') ||
-                                   promptLower.includes('text') ||
-                                   promptLower.includes('tipografia') ||
-                                   promptLower.includes('typography') ||
-                                   promptLower.includes('marca') ||
-                                   promptLower.includes('branding') ||
-                                   promptLower.includes('publicidade') ||
-                                   promptLower.includes('advertising') ||
-                                   promptLower.includes('marketing')
+              promptLower.includes('design gráfico') ||
+              promptLower.includes('graphic design') ||
+              promptLower.includes('texto') ||
+              promptLower.includes('text') ||
+              promptLower.includes('tipografia') ||
+              promptLower.includes('typography') ||
+              promptLower.includes('marca') ||
+              promptLower.includes('branding') ||
+              promptLower.includes('publicidade') ||
+              promptLower.includes('advertising') ||
+              promptLower.includes('marketing')
 
             const input: any = {
               prompt: prompt,
@@ -2995,7 +2998,7 @@ async function callIdeogramImage(
 
             const startExecutionTime = Date.now()
             const result = await replicate.run(model, { input })
-            
+
             // Usar função auxiliar para extrair URLs
             const imageUrls = await extractImageUrlsFromReplicate(result, modelName)
 
@@ -3010,38 +3013,38 @@ async function callIdeogramImage(
             const cost = pricing.input * imageUrls.length
 
             let content = `🎨 **Imagem${imageUrls.length > 1 ? 's' : ''} gerada${imageUrls.length > 1 ? 's' : ''} com ${modelName}!**\n\n`
-            
+
             imageUrls.forEach((url, index) => {
               if (imageUrls.length > 1) {
                 content += `**Imagem ${index + 1}:**\n`
               }
               content += `![Imagem gerada](${url})\n\n`
             })
-            
+
             content += `**Parâmetros:**\n`
             content += `- Aspecto: ${aspect_ratio}\n`
             content += `- Quantidade: ${imageUrls.length}\n`
-            
+
             if (styleReferences.length > 0) {
               content += `- Referências de estilo: ${styleReferences.length}\n`
             }
-            
+
             if (useRandomStyle) {
               content += `- Estilo: Aleatório (4.3 bilhões de presets)\n`
             }
-            
+
             if (style_code) {
               content += `- Style Code: ${style_code}\n`
             }
-            
+
             if (isGraphicDesign) {
               content += `- Modo: Design Gráfico (renderização de texto otimizada)\n`
             }
-            
+
             content += `\n**Tempo de processamento:** ${(latency / 1000).toFixed(1)}s\n`
             content += `**Tempo de execução:** ${(executionTime / 1000).toFixed(1)}s\n`
             content += `**Custo:** $${cost.toFixed(4)} ($${pricing.input.toFixed(2)}/imagem × ${imageUrls.length} imagem${imageUrls.length > 1 ? 's' : ''})`
-            
+
             if (isQuality) {
               content += `\n\n*Ideogram v3 Quality oferece máxima qualidade, renderização precisa de texto e fotorealismo superior*`
             } else if (isBalanced) {
@@ -3055,14 +3058,14 @@ async function callIdeogramImage(
             controller.close()
           } catch (error: any) {
             console.error('[callIdeogramImage] Erro no stream:', error)
-            
+
             let errorMessage = `Erro ao gerar imagem com ${modelName}: ${error.message || error}`
             if (error.message?.includes('REPLICATE_API_TOKEN') || error.message?.includes('auth')) {
               errorMessage = 'REPLICATE_API_TOKEN não configurado. Configure a variável de ambiente.'
             } else if (error.message?.includes('prompt') || error.message?.includes('conteúdo')) {
               errorMessage = `Erro no prompt de geração de imagem: ${error.message}`
             }
-            
+
             controller.enqueue(encoder.encode(`❌ ${errorMessage}`))
             controller.error(error)
           }
@@ -3091,7 +3094,7 @@ async function callIdeogramImage(
     // Verificar se há imagens anexadas (para style references)
     const msgAny = lastUserMessage as any
     let styleReferences: string[] = []
-    
+
     if (msgAny.attachments && Array.isArray(msgAny.attachments)) {
       const imageAttachments = msgAny.attachments.filter((a: any) => a.type === 'image')
       styleReferences = imageAttachments.map((a: any) => a.url).filter(Boolean).slice(0, 3) // Máximo 3 referências
@@ -3100,7 +3103,7 @@ async function callIdeogramImage(
     // Detectar aspect ratio no prompt ou usar padrão
     // Ideogram v3 Turbo suporta múltiplos aspect ratios
     let aspect_ratio = '1:1' // Padrão quadrado
-    
+
     if (promptLower.includes('16:9') || promptLower.includes('paisagem') || promptLower.includes('landscape') || promptLower.includes('widescreen')) {
       aspect_ratio = '16:9'
     } else if (promptLower.includes('9:16') || promptLower.includes('retrato') || promptLower.includes('portrait') || promptLower.includes('vertical')) {
@@ -3114,9 +3117,9 @@ async function callIdeogramImage(
     }
 
     // Detectar se quer usar random style
-    const useRandomStyle = promptLower.includes('random style') || 
-                          promptLower.includes('estilo aleatório') ||
-                          promptLower.includes('estilo random')
+    const useRandomStyle = promptLower.includes('random style') ||
+      promptLower.includes('estilo aleatório') ||
+      promptLower.includes('estilo random')
 
     // Detectar se há style code mencionado no prompt
     const styleCodeMatch = prompt.match(/style[_\s]?code[:\s]+([a-zA-Z0-9]+)/i)
@@ -3124,17 +3127,17 @@ async function callIdeogramImage(
 
     // Detectar se é para design gráfico (melhor renderização de texto)
     const isGraphicDesign = promptLower.includes('logo') ||
-                           promptLower.includes('design gráfico') ||
-                           promptLower.includes('graphic design') ||
-                           promptLower.includes('texto') ||
-                           promptLower.includes('text') ||
-                           promptLower.includes('tipografia') ||
-                           promptLower.includes('typography') ||
-                           promptLower.includes('marca') ||
-                           promptLower.includes('branding') ||
-                           promptLower.includes('publicidade') ||
-                           promptLower.includes('advertising') ||
-                           promptLower.includes('marketing')
+      promptLower.includes('design gráfico') ||
+      promptLower.includes('graphic design') ||
+      promptLower.includes('texto') ||
+      promptLower.includes('text') ||
+      promptLower.includes('tipografia') ||
+      promptLower.includes('typography') ||
+      promptLower.includes('marca') ||
+      promptLower.includes('branding') ||
+      promptLower.includes('publicidade') ||
+      promptLower.includes('advertising') ||
+      promptLower.includes('marketing')
 
     // Configurar input para Ideogram v3 Turbo
     // Documentação: https://replicate.com/ideogram-ai/ideogram-v3-turbo
@@ -3161,7 +3164,7 @@ async function callIdeogramImage(
     // Chamar a API do Replicate
     const startExecutionTime = Date.now()
     const result = await replicate.run(model, { input })
-    
+
     // Usar função auxiliar para extrair URLs
     const imageUrls = await extractImageUrlsFromReplicate(result, modelName)
 
@@ -3178,7 +3181,7 @@ async function callIdeogramImage(
 
     // Construir resposta em formato de mensagem com imagens
     let content = `🎨 **Imagem${imageUrls.length > 1 ? 's' : ''} gerada${imageUrls.length > 1 ? 's' : ''} com ${modelName}!**\n\n`
-    
+
     // Adicionar todas as imagens geradas
     imageUrls.forEach((url, index) => {
       if (imageUrls.length > 1) {
@@ -3186,31 +3189,31 @@ async function callIdeogramImage(
       }
       content += `![Imagem gerada](${url})\n\n`
     })
-    
+
     content += `**Parâmetros:**\n`
     content += `- Aspecto: ${aspect_ratio}\n`
     content += `- Quantidade: ${imageUrls.length}\n`
-    
+
     if (styleReferences.length > 0) {
       content += `- Referências de estilo: ${styleReferences.length}\n`
     }
-    
+
     if (useRandomStyle) {
       content += `- Estilo: Aleatório (4.3 bilhões de presets)\n`
     }
-    
+
     if (style_code) {
       content += `- Style Code: ${style_code}\n`
     }
-    
+
     if (isGraphicDesign) {
       content += `- Modo: Design Gráfico (renderização de texto otimizada)\n`
     }
-    
+
     content += `\n**Tempo de processamento:** ${(latency / 1000).toFixed(1)}s\n`
     content += `**Tempo de execução:** ${(executionTime / 1000).toFixed(1)}s\n`
     content += `**Custo:** $${cost.toFixed(4)} ($${pricing.input.toFixed(2)}/imagem × ${imageUrls.length} imagem${imageUrls.length > 1 ? 's' : ''})`
-    
+
     if (isQuality) {
       content += `\n\n*Ideogram v3 Quality oferece máxima qualidade, renderização precisa de texto e fotorealismo superior*`
     } else if (isBalanced) {
@@ -3238,16 +3241,16 @@ async function callIdeogramImage(
     }
   } catch (error: any) {
     console.error('[callIdeogramImage] Erro:', error)
-    
+
     // Mensagens de erro específicas
     if (error.message?.includes('REPLICATE_API_TOKEN') || error.message?.includes('auth')) {
       throw new Error('REPLICATE_API_TOKEN não configurado. Configure a variável de ambiente.')
     }
-    
+
     if (error.message?.includes('prompt') || error.message?.includes('conteúdo')) {
       throw new Error(`Erro no prompt de geração de imagem: ${error.message}`)
     }
-    
+
     throw new Error(`Erro ao gerar imagem com ${modelName}: ${error.message || error}`)
   }
 }
@@ -3279,7 +3282,7 @@ async function callIdeogramCharacter(
           try {
             // Enviar mensagem inicial de loading
             controller.enqueue(encoder.encode('👤 Gerando variações de personagem com Ideogram Character... Isso pode levar alguns segundos.\n\n'))
-            
+
             // Agora gerar a imagem de fato (mesmo com stream=true)
             // Extrair o prompt da última mensagem do usuário
             const lastUserMessage = messages.filter(msg => msg.role === 'user').pop()
@@ -3293,7 +3296,7 @@ async function callIdeogramCharacter(
             // Verificar se há imagem de referência anexada (obrigatória)
             const msgAny = lastUserMessage as any
             let referenceImage: string | null = null
-            
+
             if (msgAny.attachments && Array.isArray(msgAny.attachments)) {
               const imageAttachments = msgAny.attachments.filter((a: any) => a.type === 'image')
               if (imageAttachments.length > 0) {
@@ -3314,17 +3317,17 @@ async function callIdeogramCharacter(
             }
 
             const isInpainting = targetImage !== null ||
-                               promptLower.includes('adicionar') ||
-                               promptLower.includes('add') ||
-                               promptLower.includes('inserir') ||
-                               promptLower.includes('insert') ||
-                               promptLower.includes('colocar') ||
-                               promptLower.includes('place') ||
-                               promptLower.includes('na imagem') ||
-                               promptLower.includes('in image')
+              promptLower.includes('adicionar') ||
+              promptLower.includes('add') ||
+              promptLower.includes('inserir') ||
+              promptLower.includes('insert') ||
+              promptLower.includes('colocar') ||
+              promptLower.includes('place') ||
+              promptLower.includes('na imagem') ||
+              promptLower.includes('in image')
 
             let aspect_ratio = '1:1'
-            
+
             if (promptLower.includes('16:9') || promptLower.includes('paisagem') || promptLower.includes('landscape')) {
               aspect_ratio = '16:9'
             } else if (promptLower.includes('9:16') || promptLower.includes('retrato') || promptLower.includes('portrait')) {
@@ -3366,7 +3369,7 @@ async function callIdeogramCharacter(
 
             const startExecutionTime = Date.now()
             const result = await replicate.run(model, { input })
-            
+
             // Usar função auxiliar para extrair URLs
             const imageUrls = await extractImageUrlsFromReplicate(result, 'Ideogram Character')
 
@@ -3383,32 +3386,32 @@ async function callIdeogramCharacter(
 
             const modeText = isInpainting ? 'adicionado' : 'gerado'
             let content = `👤 **Variações de personagem ${modeText}${imageUrls.length > 1 ? 's' : ''} com Ideogram Character!**\n\n`
-            
+
             imageUrls.forEach((url, index) => {
               if (imageUrls.length > 1) {
                 content += `**Variação ${index + 1}:**\n`
               }
               content += `![Variação de personagem](${url})\n\n`
             })
-            
+
             content += `**Parâmetros:**\n`
             content += `- Aspecto: ${aspect_ratio}\n`
             content += `- Quantidade: ${imageUrls.length}\n`
-            
+
             if (isInpainting) {
               content += `- Modo: Inpainting (adicionar personagem a imagem existente)\n`
             } else {
               content += `- Modo: Geração de variações consistentes\n`
             }
-            
+
             if (style) {
               content += `- Estilo: ${style}\n`
             }
-            
+
             content += `\n**Tempo de processamento:** ${(latency / 1000).toFixed(1)}s\n`
             content += `**Tempo de execução:** ${executionSeconds.toFixed(1)}s\n`
             content += `**Custo:** $${cost.toFixed(4)} ($${pricing.input.toFixed(2)}/imagem × ${imageUrls.length} imagem${imageUrls.length > 1 ? 's' : ''})`
-            
+
             content += `\n\n*Ideogram Character gera variações consistentes de personagens a partir de uma imagem de referência, mantendo características faciais e estilo*`
 
             // Enviar o conteúdo completo
@@ -3416,7 +3419,7 @@ async function callIdeogramCharacter(
             controller.close()
           } catch (error: any) {
             console.error('[callIdeogramCharacter] Erro no stream:', error)
-            
+
             let errorMessage = `Erro ao gerar variações de personagem com Ideogram Character: ${error.message || error}`
             if (error.message?.includes('REPLICATE_API_TOKEN') || error.message?.includes('auth')) {
               errorMessage = 'REPLICATE_API_TOKEN não configurado. Configure a variável de ambiente.'
@@ -3425,7 +3428,7 @@ async function callIdeogramCharacter(
             } else if (error.message?.includes('prompt') || error.message?.includes('conteúdo')) {
               errorMessage = `Erro no prompt de geração de personagem: ${error.message}`
             }
-            
+
             controller.enqueue(encoder.encode(`❌ ${errorMessage}`))
             controller.error(error)
           }
@@ -3454,7 +3457,7 @@ async function callIdeogramCharacter(
     // Verificar se há imagem de referência anexada (obrigatória para Ideogram Character)
     const msgAny = lastUserMessage as any
     let referenceImage: string | null = null
-    
+
     if (msgAny.attachments && Array.isArray(msgAny.attachments)) {
       const imageAttachments = msgAny.attachments.filter((a: any) => a.type === 'image')
       if (imageAttachments.length > 0) {
@@ -3477,18 +3480,18 @@ async function callIdeogramCharacter(
 
     // Detectar se é inpainting baseado no prompt
     const isInpainting = targetImage !== null ||
-                         promptLower.includes('adicionar') ||
-                         promptLower.includes('add') ||
-                         promptLower.includes('inserir') ||
-                         promptLower.includes('insert') ||
-                         promptLower.includes('colocar') ||
-                         promptLower.includes('place') ||
-                         promptLower.includes('na imagem') ||
-                         promptLower.includes('in image')
+      promptLower.includes('adicionar') ||
+      promptLower.includes('add') ||
+      promptLower.includes('inserir') ||
+      promptLower.includes('insert') ||
+      promptLower.includes('colocar') ||
+      promptLower.includes('place') ||
+      promptLower.includes('na imagem') ||
+      promptLower.includes('in image')
 
     // Detectar aspect ratio no prompt ou usar padrão
     let aspect_ratio = '1:1' // Padrão quadrado
-    
+
     if (promptLower.includes('16:9') || promptLower.includes('paisagem') || promptLower.includes('landscape')) {
       aspect_ratio = '16:9'
     } else if (promptLower.includes('9:16') || promptLower.includes('retrato') || promptLower.includes('portrait')) {
@@ -3537,7 +3540,7 @@ async function callIdeogramCharacter(
     // Chamar a API do Replicate
     const startExecutionTime = Date.now()
     const result = await replicate.run(model, { input })
-    
+
     // Usar função auxiliar para extrair URLs
     const imageUrls = await extractImageUrlsFromReplicate(result, 'Ideogram Character')
 
@@ -3556,7 +3559,7 @@ async function callIdeogramCharacter(
     // Construir resposta em formato de mensagem com imagens
     const modeText = isInpainting ? 'adicionado' : 'gerada'
     let content = `👤 **Variação${imageUrls.length > 1 ? 'ões' : ''} de personagem ${modeText}${imageUrls.length > 1 ? 's' : ''} com Ideogram Character!**\n\n`
-    
+
     // Adicionar todas as imagens geradas
     imageUrls.forEach((url, index) => {
       if (imageUrls.length > 1) {
@@ -3564,20 +3567,20 @@ async function callIdeogramCharacter(
       }
       content += `![Personagem ${modeText}](${url})\n\n`
     })
-    
+
     content += `**Parâmetros:**\n`
     content += `- Modo: ${isInpainting ? 'Inpainting (adicionar a imagem existente)' : 'Geração de variações'}\n`
     content += `- Aspecto: ${aspect_ratio}\n`
     content += `- Variações: ${imageUrls.length}\n`
-    
+
     if (style) {
       content += `- Estilo: ${style}\n`
     }
-    
+
     content += `\n**Tempo de processamento:** ${(latency / 1000).toFixed(1)}s\n`
     content += `**Tempo de execução:** ${executionSeconds.toFixed(1)}s\n`
     content += `**Custo:** $${cost.toFixed(4)} ($${pricing.input.toFixed(2)}/imagem × ${imageUrls.length} imagem${imageUrls.length > 1 ? 's' : ''})`
-    
+
     content += `\n\n*Ideogram Character mantém consistência visual do personagem através de diferentes cenas e contextos*`
 
     return {
@@ -3598,20 +3601,20 @@ async function callIdeogramCharacter(
     }
   } catch (error: any) {
     console.error('[callIdeogramCharacter] Erro:', error)
-    
+
     // Mensagens de erro específicas
     if (error.message?.includes('REPLICATE_API_TOKEN') || error.message?.includes('auth')) {
       throw new Error('REPLICATE_API_TOKEN não configurado. Configure a variável de ambiente.')
     }
-    
+
     if (error.message?.includes('referência') || error.message?.includes('reference') || error.message?.includes('imagem')) {
       throw new Error(`Erro com imagem de referência: ${error.message}`)
     }
-    
+
     if (error.message?.includes('prompt') || error.message?.includes('conteúdo')) {
       throw new Error(`Erro no prompt de geração de personagem: ${error.message}`)
     }
-    
+
     throw new Error(`Erro ao gerar variações de personagem com Ideogram Character: ${error.message || error}`)
   }
 }
@@ -3674,13 +3677,13 @@ async function callSeedanceVideo(
           try {
             // Enviar mensagem inicial de loading
             controller.enqueue(encoder.encode(`${modelIcon} Gerando vídeo... Isso pode levar alguns minutos.\n\n`))
-            
+
             // Agora gerar o vídeo de fato (mesmo com stream=true)
             const startExecutionTime = Date.now()
-            
+
             console.log('[callSeedanceVideo] Chamando Replicate com modelo:', model)
             console.log('[callSeedanceVideo] Input:', JSON.stringify(input, null, 2))
-            
+
             let result: any
             try {
               result = await replicate.run(model, { input })
@@ -3697,7 +3700,7 @@ async function callSeedanceVideo(
               console.error('[callSeedanceVideo] Erro ao chamar replicate.run:', replicateError)
               throw new Error(`Erro ao chamar Replicate API: ${replicateError.message || replicateError}`)
             }
-            
+
             // Usar função auxiliar para extrair URLs (mesma lógica de imagens)
             console.log('[callSeedanceVideo] Chamando extractImageUrlsFromReplicate...')
             const videoUrls = await extractImageUrlsFromReplicate(result, modelName)
@@ -3717,7 +3720,7 @@ async function callSeedanceVideo(
 
             // Construir resposta em formato de mensagem com vídeo
             let content = `${modelIcon} **Vídeo gerado com ${modelName}!**\n\n`
-            
+
             // Adicionar vídeo gerado
             videoUrls.forEach((url, index) => {
               if (videoUrls.length > 1) {
@@ -3725,7 +3728,7 @@ async function callSeedanceVideo(
               }
               content += `![Vídeo gerado](${url})\n\n`
             })
-            
+
             content += `**Parâmetros:**\n`
             content += `- Duração: ${duration}s\n`
             content += `- Movimento: ${motion}\n`
@@ -3738,14 +3741,14 @@ async function callSeedanceVideo(
             controller.close()
           } catch (error: any) {
             console.error('[callSeedanceVideo] Erro no stream:', error)
-            
+
             let errorMessage = `Erro ao gerar vídeo com ${modelName}: ${error.message || error}`
             if (error.message?.includes('REPLICATE_API_TOKEN') || error.message?.includes('auth')) {
               errorMessage = 'REPLICATE_API_TOKEN não configurado. Configure a variável de ambiente.'
             } else if (error.message?.includes('prompt') || error.message?.includes('conteúdo')) {
               errorMessage = `Erro no prompt de geração de vídeo: ${error.message}`
             }
-            
+
             controller.enqueue(encoder.encode(`❌ ${errorMessage}`))
             controller.error(error)
           }
@@ -3764,10 +3767,10 @@ async function callSeedanceVideo(
 
     // Modo não-stream
     const startExecutionTime = Date.now()
-    
+
     console.log('[callSeedanceVideo][non-stream] Chamando Replicate com modelo:', model)
     console.log('[callSeedanceVideo][non-stream] Input:', JSON.stringify(input, null, 2))
-    
+
     let result: any
     try {
       result = await replicate.run(model, { input })
@@ -3784,7 +3787,7 @@ async function callSeedanceVideo(
       console.error('[callSeedanceVideo][non-stream] Erro ao chamar replicate.run:', replicateError)
       throw new Error(`Erro ao chamar Replicate API: ${replicateError.message || replicateError}`)
     }
-    
+
     // Usar função auxiliar para extrair URLs
     console.log('[callSeedanceVideo][non-stream] Chamando extractImageUrlsFromReplicate...')
     const videoUrls = await extractImageUrlsFromReplicate(result, modelName)
@@ -3804,7 +3807,7 @@ async function callSeedanceVideo(
 
     // Construir resposta em formato de mensagem com vídeo
     let content = `${modelIcon} **Vídeo gerado com ${modelName}!**\n\n`
-    
+
     // Adicionar vídeo gerado
     videoUrls.forEach((url, index) => {
       if (videoUrls.length > 1) {
@@ -3812,7 +3815,7 @@ async function callSeedanceVideo(
       }
       content += `![Vídeo gerado](${url})\n\n`
     })
-    
+
     content += `**Parâmetros:**\n`
     content += `- Duração: ${duration}s\n`
     content += `- Movimento: ${motion}\n`
@@ -3835,16 +3838,16 @@ async function callSeedanceVideo(
     }
   } catch (error: any) {
     console.error('[callSeedanceVideo] Erro:', error)
-    
+
     // Mensagens de erro específicas
     if (error.message?.includes('REPLICATE_API_TOKEN') || error.message?.includes('auth')) {
       throw new Error('REPLICATE_API_TOKEN não configurado. Configure a variável de ambiente.')
     }
-    
+
     if (error.message?.includes('prompt') || error.message?.includes('conteúdo')) {
       throw new Error(`Erro no prompt de geração de vídeo: ${error.message}`)
     }
-    
+
     throw new Error(`Erro ao gerar vídeo com Seedance: ${error.message || error}`)
   }
 }
@@ -3880,11 +3883,11 @@ async function callVeo(
     const modelName = model.includes('fast') ? 'Veo 3.1 Fast Generate' : 'Veo 3.1 Generate'
     const modelIcon = '🎬'
     const isFast = model.includes('fast')
-    
+
     // Base URL da API do Google Gemini
     const BASE_URL = 'https://generativelanguage.googleapis.com/v1beta'
     const endpoint = `${BASE_URL}/models/${model}:predictLongRunning`
-    
+
     console.log('[callVeo] Iniciando geração de vídeo com:', model)
     console.log('[callVeo] Endpoint:', endpoint)
     console.log('[callVeo] Prompt:', prompt.substring(0, 100) + '...')
@@ -3894,11 +3897,11 @@ async function callVeo(
     const pollOperation = async (operationName: string, maxWaitTime: number = 360000): Promise<any> => {
       const startPollTime = Date.now()
       let attempts = 0
-      
+
       while (Date.now() - startPollTime < maxWaitTime) {
         attempts++
         console.log(`[callVeo] Verificando status da operação (tentativa ${attempts})...`)
-        
+
         const statusResponse = await fetch(`${BASE_URL}/${operationName}`, {
           method: 'GET',
           headers: {
@@ -3928,7 +3931,7 @@ async function callVeo(
     // Função auxiliar para fazer download do vídeo
     const downloadVideo = async (videoUri: string): Promise<string> => {
       console.log('[callVeo] Fazendo download do vídeo de:', videoUri)
-      
+
       const videoResponse = await fetch(videoUri, {
         headers: {
           'x-goog-api-key': process.env.GEMINI_API_KEY!,
@@ -3943,7 +3946,7 @@ async function callVeo(
       // Converter ArrayBuffer para base64 usando Buffer (disponível no Node.js)
       const videoBase64 = Buffer.from(videoBuffer).toString('base64')
       console.log('[callVeo] Vídeo baixado com sucesso. Tamanho:', (videoBuffer.byteLength / 1024 / 1024).toFixed(2), 'MB')
-      
+
       return `data:video/mp4;base64,${videoBase64}`
     }
 
@@ -3983,20 +3986,20 @@ async function callVeo(
               } catch {
                 errorData = { message: errorText }
               }
-              
+
               if (initialResponse.status === 401 || initialResponse.status === 403) {
                 throw new Error('Erro de autenticação: GEMINI_API_KEY inválida ou sem permissão para usar VEO 3.1.')
               } else if (initialResponse.status === 429) {
                 throw new Error('Limite de taxa excedido. Aguarde alguns instantes antes de tentar novamente.')
               }
-              
+
               const errorMessage = errorData.error?.message || errorData.message || errorText
               throw new Error(`Erro ao iniciar geração de vídeo: ${initialResponse.status} - ${errorMessage}`)
             }
 
             const initialData = await initialResponse.json()
             const operationName = initialData.name
-            
+
             if (!operationName) {
               throw new Error('Resposta da API não contém o nome da operação')
             }
@@ -4006,7 +4009,7 @@ async function callVeo(
             // Se modo assíncrono (userId, conversationId, messageId fornecidos), salvar no banco e retornar imediatamente
             if (userId && conversationId && messageId) {
               console.log('[callVeo] Modo assíncrono: salvando operação no banco e retornando imediatamente')
-              
+
               // Criar cliente Supabase com service role key para inserir no banco
               const supabase = createClient(
                 process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -4031,14 +4034,14 @@ async function callVeo(
                 // Continuar com polling normal se falhar ao salvar
               } else {
                 console.log('[callVeo] Operação salva no banco com sucesso')
-                
+
                 // Retornar mensagem informando que o vídeo está sendo processado
                 const content = `${modelIcon} **Vídeo em processamento**\n\n` +
                   `Seu vídeo está sendo gerado com ${modelName}. Isso pode levar de 11 segundos a 6 minutos.\n\n` +
                   `Você será notificado quando o vídeo estiver pronto. Você pode continuar usando o chat enquanto isso acontece.\n\n` +
                   `**Status:** Processando...\n` +
                   `**Prompt:** ${prompt.substring(0, 100)}${prompt.length > 100 ? '...' : ''}`
-                
+
                 controller.enqueue(encoder.encode(content))
                 controller.close()
                 return
@@ -4050,12 +4053,12 @@ async function callVeo(
 
             // 2. Fazer polling da operação (modo síncrono)
             const finalStatus = await pollOperation(operationName)
-            
+
             // 3. Extrair URI do vídeo (suporta diferentes estruturas de resposta)
             console.log('[callVeo] Estrutura completa da resposta:', JSON.stringify(finalStatus, null, 2))
-            
+
             let videoUri: string | undefined
-            
+
             // Tentar diferentes caminhos possíveis na estrutura de resposta
             if (finalStatus?.response?.generateVideoResponse?.generatedSamples?.[0]?.video?.uri) {
               videoUri = finalStatus.response.generateVideoResponse.generatedSamples[0].video.uri
@@ -4068,7 +4071,7 @@ async function callVeo(
             } else if (finalStatus?.response?.generateVideoResponse?.generatedSamples?.[0]?.uri) {
               videoUri = finalStatus.response.generateVideoResponse.generatedSamples[0].uri
             }
-            
+
             if (!videoUri) {
               console.error('[callVeo] Estrutura de resposta inesperada. Chaves disponíveis:', Object.keys(finalStatus || {}))
               console.error('[callVeo] Response keys:', Object.keys(finalStatus?.response || {}))
@@ -4106,7 +4109,7 @@ async function callVeo(
             controller.close()
           } catch (error: any) {
             console.error('[callVeo] Erro no stream:', error)
-            
+
             let errorMessage = `Erro ao gerar vídeo com ${modelName}: ${error.message || error}`
             if (error.message?.includes('GEMINI_API_KEY') || error.message?.includes('auth')) {
               errorMessage = 'GEMINI_API_KEY não configurado ou inválido. Configure a variável de ambiente.'
@@ -4115,7 +4118,7 @@ async function callVeo(
             } else if (error.message?.includes('429')) {
               errorMessage = 'Limite de taxa excedido. Aguarde alguns instantes antes de tentar novamente.'
             }
-            
+
             controller.enqueue(encoder.encode(`❌ ${errorMessage}`))
             controller.error(error)
           }
@@ -4160,20 +4163,20 @@ async function callVeo(
       } catch {
         errorData = { message: errorText }
       }
-      
+
       if (initialResponse.status === 401 || initialResponse.status === 403) {
         throw new Error('Erro de autenticação: GEMINI_API_KEY inválida ou sem permissão para usar VEO 3.1.')
       } else if (initialResponse.status === 429) {
         throw new Error('Limite de taxa excedido. Aguarde alguns instantes antes de tentar novamente.')
       }
-      
+
       const errorMessage = errorData.error?.message || errorData.message || errorText
       throw new Error(`Erro ao iniciar geração de vídeo: ${initialResponse.status} - ${errorMessage}`)
     }
 
     const initialData = await initialResponse.json()
     const operationName = initialData.name
-    
+
     if (!operationName) {
       throw new Error('Resposta da API não contém o nome da operação')
     }
@@ -4183,7 +4186,7 @@ async function callVeo(
     // Se modo assíncrono (userId, conversationId, messageId fornecidos), salvar no banco e retornar imediatamente
     if (userId && conversationId && messageId) {
       console.log('[callVeo][non-stream] Modo assíncrono: salvando operação no banco e retornando imediatamente')
-      
+
       // Criar cliente Supabase com service role key para inserir no banco
       const supabase = createClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -4208,14 +4211,14 @@ async function callVeo(
         // Continuar com polling normal se falhar ao salvar
       } else {
         console.log('[callVeo][non-stream] Operação salva no banco com sucesso')
-        
+
         // Retornar mensagem informando que o vídeo está sendo processado
         const content = `${modelIcon} **Vídeo em processamento**\n\n` +
           `Seu vídeo está sendo gerado com ${modelName}. Isso pode levar de 11 segundos a 6 minutos.\n\n` +
           `Você será notificado quando o vídeo estiver pronto. Você pode continuar usando o chat enquanto isso acontece.\n\n` +
           `**Status:** Processando...\n` +
           `**Prompt:** ${prompt.substring(0, 100)}${prompt.length > 100 ? '...' : ''}`
-        
+
         return {
           provider: 'Google',
           model,
@@ -4230,12 +4233,12 @@ async function callVeo(
 
     // 2. Fazer polling da operação (modo síncrono)
     const finalStatus = await pollOperation(operationName)
-    
+
     // 3. Extrair URI do vídeo (suporta diferentes estruturas de resposta)
     console.log('[callVeo][non-stream] Estrutura completa da resposta:', JSON.stringify(finalStatus, null, 2))
-    
+
     let videoUri: string | undefined
-    
+
     // Tentar diferentes caminhos possíveis na estrutura de resposta
     if (finalStatus?.response?.generateVideoResponse?.generatedSamples?.[0]?.video?.uri) {
       videoUri = finalStatus.response.generateVideoResponse.generatedSamples[0].video.uri
@@ -4248,7 +4251,7 @@ async function callVeo(
     } else if (finalStatus?.response?.generateVideoResponse?.generatedSamples?.[0]?.uri) {
       videoUri = finalStatus.response.generateVideoResponse.generatedSamples[0].uri
     }
-    
+
     if (!videoUri) {
       console.error('[callVeo][non-stream] Estrutura de resposta inesperada. Chaves disponíveis:', Object.keys(finalStatus || {}))
       console.error('[callVeo][non-stream] Response keys:', Object.keys(finalStatus?.response || {}))
@@ -4297,7 +4300,7 @@ async function callVeo(
     }
   } catch (error: any) {
     console.error('[callVeo] Erro:', error)
-    
+
     // Mensagens de erro específicas
     if (error.message?.includes('GEMINI_API_KEY') || error.message?.includes('auth')) {
       throw new Error('GEMINI_API_KEY não configurado ou inválido. Configure a variável de ambiente.')
@@ -4306,7 +4309,7 @@ async function callVeo(
     } else if (error.message?.includes('429')) {
       throw new Error('Limite de taxa excedido. Aguarde alguns instantes antes de tentar novamente.')
     }
-    
+
     throw new Error(`Erro ao gerar vídeo com VEO 3.1: ${error.message || error}`)
   }
 }
@@ -4322,7 +4325,7 @@ async function callSora2(
 ): Promise<LLMResponse> {
   // Detectar se é Sora 2 Pro (usado em todo o escopo da função)
   const isPro = model === 'sora-2-pro'
-  
+
   try {
     if (!process.env.OPENAI_API_KEY) {
       throw new Error('OPENAI_API_KEY não configurado')
@@ -4345,26 +4348,26 @@ async function callSora2(
 
     // Detectar parâmetros do prompt ou usar padrões inteligentes
     // Sora 2 Pro suporta até 12 segundos e resolução 1024p
-    
+
     // Detectar resolução no prompt (1024p, 4K, alta resolução, etc.)
     const promptLower = prompt.toLowerCase()
     const wantsHighRes = isPro && (
-      promptLower.includes('1024p') || 
-      promptLower.includes('4k') || 
+      promptLower.includes('1024p') ||
+      promptLower.includes('4k') ||
       promptLower.includes('alta resolução') ||
       promptLower.includes('high resolution') ||
       promptLower.includes('hd') ||
       promptLower.includes('full hd')
     )
-    
+
     // Resolução padrão: 720p para Sora 2, 1024p para Sora 2 Pro (se mencionado)
     const resolution = wantsHighRes ? '1024p' : '720p'
     const size = resolution === '1024p' ? '1920x1080' : '1280x720'
-    
+
     // Detectar duração desejada no prompt ou usar padrão
     const durationMatch = prompt.match(/(\d+)\s*(segundos?|seconds?|s)/i)
     let duration = durationMatch ? parseInt(durationMatch[1]) : (isPro ? 10 : 5)
-    
+
     // Limites: Sora 2 Pro suporta até 12 segundos, Sora 2 padrão até 5 segundos
     if (isPro) {
       duration = Math.min(duration, 12)
@@ -4383,20 +4386,20 @@ async function callSora2(
           try {
             // Enviar mensagem inicial de loading
             controller.enqueue(encoder.encode(`${modelIcon} Gerando vídeo com ${modelName}... Isso pode levar alguns minutos.\n\n`))
-            
+
             // Agora gerar o vídeo de fato (mesmo com stream=true)
             const startExecutionTime = Date.now()
-            
+
             console.log('[callSora2] Chamando API do Sora 2 com modelo:', model)
             console.log('[callSora2] Parâmetros:', { prompt, size, seconds: duration })
-            
+
             // Chamar a API do Sora 2
             // Documentação oficial: https://platform.openai.com/docs/models/sora-2-pro
             // Tentar usar o SDK da OpenAI primeiro, depois fallback para fetch
             // Documentação: https://platform.openai.com/docs/guides/video-generation
             let response: any
             let apiResponse: Response | null = null
-            
+
             try {
               // Tentar usar o SDK da OpenAI se tiver suporte para vídeos
               console.log('[callSora2] Tentando usar SDK da OpenAI...')
@@ -4416,30 +4419,30 @@ async function callSora2(
             } catch (sdkError: any) {
               console.log('[callSora2] SDK não disponível ou erro:', sdkError.message)
               console.log('[callSora2] Usando fetch diretamente...')
-              
+
               // Fallback: usar fetch diretamente
               // Tentar ambos os endpoints possíveis
               const endpoints = [
                 'https://api.openai.com/v1/videos/generations',
                 'https://api.openai.com/v1/videos',
               ]
-              
+
               const requestBody = {
                 model: model,
                 prompt: prompt,
                 size: size,
                 seconds: duration, // Parâmetro correto conforme documentação: 'seconds'
               }
-              
+
               let lastError: Error | null = null
-              
+
               const failedEndpoints: string[] = []
-              
+
               for (const endpoint of endpoints) {
                 try {
                   console.log('[callSora2] Tentando endpoint:', endpoint)
                   console.log('[callSora2] Request Body:', JSON.stringify(requestBody, null, 2))
-                  
+
                   apiResponse = await fetch(endpoint, {
                     method: 'POST',
                     headers: {
@@ -4448,16 +4451,16 @@ async function callSora2(
                     },
                     body: JSON.stringify(requestBody),
                   })
-                  
+
                   console.log('[callSora2] Status da resposta:', apiResponse.status, apiResponse.statusText)
-                  
+
                   if (apiResponse.ok) {
                     console.log('[callSora2] Endpoint funcionou:', endpoint)
                     break
                   } else {
                     // Adicionar endpoint à lista de falhas
                     failedEndpoints.push(`${endpoint} (${apiResponse.status})`)
-                    
+
                     if (apiResponse.status === 405) {
                       console.log('[callSora2] Endpoint retornou 405, tentando próximo...')
                       // Continuar para o próximo endpoint
@@ -4486,7 +4489,7 @@ async function callSora2(
                   continue
                 }
               }
-              
+
               if (!apiResponse || !apiResponse.ok) {
                 // Se ambos os endpoints retornaram 405, fornecer mensagem mais clara
                 if (failedEndpoints.length === endpoints.length && failedEndpoints.every(e => e.includes('405'))) {
@@ -4499,7 +4502,7 @@ async function callSora2(
                   } catch {
                     errorData = { message: errorText }
                   }
-                  
+
                   const errorMessage = errorData.error?.message || errorData.message || errorData.error || apiResponse.statusText
                   throw new Error(`Endpoint ${endpoints[endpoints.length - 1]} retornou ${apiResponse.status}: ${errorMessage}`)
                 } else if (lastError) {
@@ -4523,10 +4526,10 @@ async function callSora2(
                 } catch {
                   errorData = { message: errorText }
                 }
-                
+
                 console.error('[callSora2] Erro da API - Status:', apiResponse.status, apiResponse.statusText)
                 console.error('[callSora2] Erro da API - Body:', errorData)
-                
+
                 // Tratamento específico de erros HTTP
                 if (apiResponse.status === 401) {
                   throw new Error('Erro de autenticação: OPENAI_API_KEY inválida ou expirada. Verifique suas credenciais.')
@@ -4541,14 +4544,14 @@ async function callSora2(
                 } else if (apiResponse.status >= 500) {
                   throw new Error(`Erro interno do servidor da OpenAI (${apiResponse.status}). Tente novamente mais tarde.`)
                 }
-                
+
                 const errorMessage = errorData.error?.message || errorData.message || errorData.error || apiResponse.statusText
                 throw new Error(`API do ${modelName} retornou erro ${apiResponse.status}: ${errorMessage}`)
               }
 
               response = await apiResponse.json()
             }
-            
+
             console.log('[callSora2] Resposta completa da API:', JSON.stringify(response, null, 2))
             console.log('[callSora2] Estrutura da resposta - Keys:', Object.keys(response))
 
@@ -4560,13 +4563,13 @@ async function callSora2(
               if (jobId) {
                 console.log('[callSora2] Processamento assíncrono detectado. Job ID:', jobId)
                 console.log('[callSora2] Status atual:', response.status)
-                
+
                 // Implementar polling para verificar o status do job
                 // Nota: A documentação oficial pode especificar um endpoint diferente para polling
                 // Por enquanto, vamos assumir que a API retorna diretamente o vídeo quando pronto
                 // Se necessário, implementar polling baseado na documentação oficial
                 controller.enqueue(encoder.encode(`${modelIcon} Processando vídeo com ${modelName}... Isso pode levar alguns minutos.\n\n`))
-                
+
                 // Por enquanto, vamos aguardar e tentar novamente após um delay
                 // Em produção, isso deve ser implementado com polling adequado conforme documentação
                 throw new Error('Processamento assíncrono detectado, mas polling ainda não implementado. Verifique a documentação oficial para implementar polling adequado.')
@@ -4582,7 +4585,7 @@ async function callSora2(
             console.log('[callSora2] response.video_url:', response?.video_url)
             console.log('[callSora2] response.status:', response?.status)
             console.log('[callSora2] response.id:', response?.id)
-            
+
             let videoUrl: string | undefined
             if (response?.data && Array.isArray(response.data) && response.data.length > 0) {
               // Estrutura: { data: [{ url: "...", ... }] }
@@ -4597,12 +4600,12 @@ async function callSora2(
               // Fallback: { output: "..." }
               videoUrl = typeof response.output === 'string' ? response.output : response.output?.url
             }
-            
+
             if (!videoUrl) {
               console.error('[callSora2] Estrutura de resposta inesperada. Resposta completa:', JSON.stringify(response, null, 2))
               throw new Error('URL do vídeo não retornada pela API. Estrutura da resposta não corresponde ao esperado. Verifique os logs do servidor para mais detalhes.')
             }
-            
+
             console.log('[callSora2] URL do vídeo extraída:', videoUrl)
 
             const executionTime = Date.now() - startExecutionTime
@@ -4613,22 +4616,22 @@ async function callSora2(
             // Sora 2 Pro: $0.30/segundo (720p) ou $0.50/segundo (1024p)
             const actualDuration = response?.duration || response?.seconds || duration
             let costPerSecond: number
-            
+
             if (isPro) {
               costPerSecond = resolution === '1024p' ? 0.50 : 0.30
             } else {
               costPerSecond = 0.10
             }
-            
+
             const cost = costPerSecond * actualDuration
             const resolutionLabel = resolution === '1024p' ? 'Full HD (1024p)' : 'HD (720p)'
 
             // Construir resposta em formato de mensagem com vídeo
             let content = `${modelIcon} **Vídeo gerado com ${modelName}!**\n\n`
-            
+
             // Adicionar vídeo gerado
             content += `![Vídeo gerado](${videoUrl})\n\n`
-            
+
             content += `**Parâmetros:**\n`
             content += `- Duração: ${actualDuration}s\n`
             content += `- Resolução: ${resolutionLabel} (${size})\n`
@@ -4641,17 +4644,17 @@ async function callSora2(
             controller.close()
           } catch (error: any) {
             console.error('[callSora2] Erro no stream:', error)
-            
+
             let errorMessage = `Erro ao gerar vídeo com ${modelName}: ${error.message || error}`
             if (error.message?.includes('OPENAI_API_KEY') || error.message?.includes('auth')) {
               errorMessage = 'OPENAI_API_KEY não configurado. Configure a variável de ambiente.'
             } else if (error.message?.includes('videos') || error.message?.includes('404') || error.message?.includes('not found')) {
-              const docUrl = isPro 
+              const docUrl = isPro
                 ? 'https://platform.openai.com/docs/models/sora-2-pro'
                 : 'https://platform.openai.com/docs/models/sora-2'
               errorMessage = `API do ${modelName} ainda não está disponível ou requer acesso especial. Verifique: ${docUrl}`
             }
-            
+
             controller.enqueue(encoder.encode(`❌ ${errorMessage}`))
             controller.error(error)
           }
@@ -4670,15 +4673,15 @@ async function callSora2(
 
     // Modo não-stream
     const startExecutionTime = Date.now()
-    
+
     console.log('[callSora2][non-stream] Chamando API do Sora 2 com modelo:', model)
     console.log('[callSora2][non-stream] Parâmetros:', { prompt, size, seconds: duration })
-    
+
     // Tentar usar o SDK da OpenAI primeiro, depois fallback para fetch
     // Documentação oficial: https://platform.openai.com/docs/guides/video-generation
     let response: any
     let apiResponse: Response | null = null
-    
+
     try {
       // Tentar usar o SDK da OpenAI se tiver suporte para vídeos
       console.log('[callSora2][non-stream] Tentando usar SDK da OpenAI...')
@@ -4698,29 +4701,29 @@ async function callSora2(
     } catch (sdkError: any) {
       console.log('[callSora2][non-stream] SDK não disponível ou erro:', sdkError.message)
       console.log('[callSora2][non-stream] Usando fetch diretamente...')
-      
+
       // Fallback: usar fetch diretamente
       // Tentar ambos os endpoints possíveis
       const endpoints = [
         'https://api.openai.com/v1/videos/generations',
         'https://api.openai.com/v1/videos',
       ]
-      
+
       const requestBody = {
         model: model,
         prompt: prompt,
         size: size,
         seconds: duration, // Parâmetro correto conforme documentação: 'seconds'
       }
-      
+
       let lastError: Error | null = null
       const failedEndpoints: string[] = []
-      
+
       for (const endpoint of endpoints) {
         try {
           console.log('[callSora2][non-stream] Tentando endpoint:', endpoint)
           console.log('[callSora2][non-stream] Request Body:', JSON.stringify(requestBody, null, 2))
-          
+
           apiResponse = await fetch(endpoint, {
             method: 'POST',
             headers: {
@@ -4729,16 +4732,16 @@ async function callSora2(
             },
             body: JSON.stringify(requestBody),
           })
-          
+
           console.log('[callSora2][non-stream] Status da resposta:', apiResponse.status, apiResponse.statusText)
-          
+
           if (apiResponse.ok) {
             console.log('[callSora2][non-stream] Endpoint funcionou:', endpoint)
             break
           } else {
             // Adicionar endpoint à lista de falhas
             failedEndpoints.push(`${endpoint} (${apiResponse.status})`)
-            
+
             if (apiResponse.status === 405) {
               console.log('[callSora2][non-stream] Endpoint retornou 405, tentando próximo...')
               // Continuar para o próximo endpoint
@@ -4767,7 +4770,7 @@ async function callSora2(
           continue
         }
       }
-      
+
       if (!apiResponse || !apiResponse.ok) {
         // Se ambos os endpoints retornaram 405, fornecer mensagem mais clara
         if (failedEndpoints.length === endpoints.length && failedEndpoints.every(e => e.includes('405'))) {
@@ -4780,7 +4783,7 @@ async function callSora2(
           } catch {
             errorData = { message: errorText }
           }
-          
+
           const errorMessage = errorData.error?.message || errorData.message || errorData.error || apiResponse.statusText
           throw new Error(`Endpoint ${endpoints[endpoints.length - 1]} retornou ${apiResponse.status}: ${errorMessage}`)
         } else if (lastError) {
@@ -4790,7 +4793,7 @@ async function callSora2(
         }
       }
     }
-    
+
     // Se usamos fetch, processar a resposta
     if (apiResponse) {
       console.log('[callSora2][non-stream] Status da resposta:', apiResponse.status, apiResponse.statusText)
@@ -4804,10 +4807,10 @@ async function callSora2(
         } catch {
           errorData = { message: errorText }
         }
-        
+
         console.error('[callSora2][non-stream] Erro da API - Status:', apiResponse.status, apiResponse.statusText)
         console.error('[callSora2][non-stream] Erro da API - Body:', errorData)
-        
+
         // Tratamento específico de erros HTTP
         if (apiResponse.status === 401) {
           throw new Error('Erro de autenticação: OPENAI_API_KEY inválida ou expirada. Verifique suas credenciais.')
@@ -4822,7 +4825,7 @@ async function callSora2(
         } else if (apiResponse.status >= 500) {
           throw new Error(`Erro interno do servidor da OpenAI (${apiResponse.status}). Tente novamente mais tarde.`)
         }
-        
+
         const errorMessage = errorData.error?.message || errorData.message || errorData.error || apiResponse.statusText
         throw new Error(`API do ${modelName} retornou erro ${apiResponse.status}: ${errorMessage}`)
       }
@@ -4840,7 +4843,7 @@ async function callSora2(
       if (jobId) {
         console.log('[callSora2][non-stream] Processamento assíncrono detectado. Job ID:', jobId)
         console.log('[callSora2][non-stream] Status atual:', response.status)
-        
+
         // Por enquanto, vamos assumir que a API retorna diretamente o vídeo quando pronto
         // Se necessário, implementar polling baseado na documentação oficial
         // Em produção, isso deve ser implementado com polling adequado conforme documentação
@@ -4857,7 +4860,7 @@ async function callSora2(
     console.log('[callSora2][non-stream] response.video_url:', response?.video_url)
     console.log('[callSora2][non-stream] response.status:', response?.status)
     console.log('[callSora2][non-stream] response.id:', response?.id)
-    
+
     let videoUrl: string | undefined
     if (response?.data && Array.isArray(response.data) && response.data.length > 0) {
       // Estrutura: { data: [{ url: "...", ... }] }
@@ -4872,12 +4875,12 @@ async function callSora2(
       // Fallback: { output: "..." }
       videoUrl = typeof response.output === 'string' ? response.output : response.output?.url
     }
-    
+
     if (!videoUrl) {
       console.error('[callSora2][non-stream] Estrutura de resposta inesperada. Resposta completa:', JSON.stringify(response, null, 2))
       throw new Error('URL do vídeo não retornada pela API. Estrutura da resposta não corresponde ao esperado. Verifique os logs do servidor para mais detalhes.')
     }
-    
+
     console.log('[callSora2][non-stream] URL do vídeo extraída:', videoUrl)
 
     const executionTime = Date.now() - startExecutionTime
@@ -4888,22 +4891,22 @@ async function callSora2(
     // Sora 2 Pro: $0.30/segundo (720p) ou $0.50/segundo (1024p)
     const actualDuration = response?.duration || response?.seconds || duration
     let costPerSecond: number
-    
+
     if (isPro) {
       costPerSecond = resolution === '1024p' ? 0.50 : 0.30
     } else {
       costPerSecond = 0.10
     }
-    
+
     const cost = costPerSecond * actualDuration
     const resolutionLabel = resolution === '1024p' ? 'Full HD (1024p)' : 'HD (720p)'
 
     // Construir resposta em formato de mensagem com vídeo
     let content = `${modelIcon} **Vídeo gerado com ${modelName}!**\n\n`
-    
+
     // Adicionar vídeo gerado
     content += `![Vídeo gerado](${videoUrl})\n\n`
-    
+
     content += `**Parâmetros:**\n`
     content += `- Duração: ${actualDuration}s\n`
     content += `- Resolução: ${resolutionLabel} (${size})\n`
@@ -4927,15 +4930,15 @@ async function callSora2(
     }
   } catch (error: any) {
     console.error('[callSora2] Erro:', error)
-    
+
     // Se a API não existir ainda ou retornar erro específico, fornecer mensagem útil
     if (error.message?.includes('videos') || error.code === 'invalid_api_function' || error.message?.includes('404')) {
-      const docUrl = isPro 
+      const docUrl = isPro
         ? 'https://platform.openai.com/docs/models/sora-2-pro'
         : 'https://platform.openai.com/docs/models/sora-2'
       throw new Error(`API do ${isPro ? 'Sora 2 Pro' : 'Sora 2'} ainda não está disponível ou requer acesso especial. Verifique: ${docUrl}. Erro: ${error.message}`)
     }
-    
+
     throw new Error(`Erro ao gerar vídeo com ${isPro ? 'Sora 2 Pro' : 'Sora 2'}: ${error.message || error}`)
   }
 }
@@ -4952,7 +4955,7 @@ async function callImageGeneration(
   // Definir variáveis no início para uso em catch
   const isMini = model === 'gpt-image-1-mini'
   const modelName = isMini ? 'GPT-Image-1 Mini' : 'GPT-Image-1'
-  
+
   try {
     if (!process.env.OPENAI_API_KEY) {
       throw new Error('OPENAI_API_KEY não configurado')
@@ -4971,7 +4974,7 @@ async function callImageGeneration(
           try {
             // Enviar mensagem inicial de loading
             controller.enqueue(encoder.encode(`🖼️ Gerando imagem com ${modelName}... Isso pode levar alguns segundos.\n\n`))
-            
+
             // Agora gerar a imagem de fato (mesmo com stream=true)
             // Extrair o prompt da última mensagem do usuário
             const lastUserMessage = messages.filter(msg => msg.role === 'user').pop()
@@ -4983,12 +4986,12 @@ async function callImageGeneration(
 
             // Detectar resolução no prompt ou usar padrão
             const promptLower = prompt.toLowerCase()
-            const wantsHighRes = promptLower.includes('1024x1024') || 
-                                 promptLower.includes('hd') || 
-                                 promptLower.includes('alta resolução') ||
-                                 promptLower.includes('high resolution') ||
-                                 promptLower.includes('4k')
-            
+            const wantsHighRes = promptLower.includes('1024x1024') ||
+              promptLower.includes('hd') ||
+              promptLower.includes('alta resolução') ||
+              promptLower.includes('high resolution') ||
+              promptLower.includes('4k')
+
             // Resoluções suportadas: 1024x1024 (padrão), 1792x1024, 1024x1792
             let size = '1024x1024'
             if (promptLower.includes('1792x1024') || promptLower.includes('landscape') || promptLower.includes('paisagem')) {
@@ -5012,7 +5015,7 @@ async function callImageGeneration(
 
             // Chamar a API de geração de imagens
             let response: any
-            
+
             try {
               // Tentar usar a API de imagens se disponível no SDK
               const requestBody: any = {
@@ -5022,12 +5025,12 @@ async function callImageGeneration(
                 quality: quality,
                 n: 1, // Gerar 1 imagem por padrão
               }
-              
+
               response = await (openai as any).images?.generate?.(requestBody)
             } catch (sdkError: any) {
               // Se o SDK não suportar, usar fetch diretamente
               console.log('[callImageGeneration] SDK não suporta, usando fetch direto')
-              
+
               const requestBody: any = {
                 model: model,
                 prompt: prompt,
@@ -5035,7 +5038,7 @@ async function callImageGeneration(
                 quality: quality,
                 n: 1,
               }
-              
+
               const apiResponse = await fetch('https://api.openai.com/v1/images/generations', {
                 method: 'POST',
                 headers: {
@@ -5055,21 +5058,21 @@ async function callImageGeneration(
 
             // Extrair URL da imagem gerada
             let imageUrl = response?.data?.[0]?.url || response?.data?.[0]?.b64_json
-            
+
             console.log('[callImageGeneration] Resposta da API completa:', JSON.stringify(response, null, 2))
             console.log('[callImageGeneration] imageUrl extraído:', imageUrl ? imageUrl.substring(0, 100) : 'null')
-            
+
             if (!imageUrl) {
               console.error('[callImageGeneration] Resposta da API:', JSON.stringify(response, null, 2))
               throw new Error('Resposta da API não contém URL de imagem')
             }
-            
+
             // Garantir que a URL seja uma string válida
             imageUrl = String(imageUrl).trim()
             if (!imageUrl) {
               throw new Error('URL de imagem está vazia')
             }
-            
+
             // Se é base64, converter para data URL
             let finalImageUrl = imageUrl
             if (imageUrl.startsWith('iVBORw0KGg') || imageUrl.startsWith('/9j/')) {
@@ -5088,12 +5091,12 @@ async function callImageGeneration(
 
             // Construir resposta em formato de mensagem com imagem
             let content = `🖼️ **Imagem gerada com ${modelName}!**\n\n`
-            
+
             // Incluir a imagem no markdown
             content += `![Imagem gerada](${finalImageUrl})\n\n`
-            
+
             console.log('[callImageGeneration] Conteúdo final (primeiros 200 chars):', content.substring(0, 200))
-            
+
             content += `**Parâmetros:**\n`
             content += `- Resolução: ${size}\n`
             content += `- Qualidade: ${quality}\n`
@@ -5104,18 +5107,18 @@ async function callImageGeneration(
             controller.close()
           } catch (error: any) {
             console.error('[callImageGeneration] Erro no stream:', error)
-            
+
             // Mensagens de erro específicas
             let errorMessage = `Erro ao gerar imagem com ${modelName}: ${error.message || error}`
             if (error.message?.includes('images') || error.code === 'invalid_api_function' || error.message?.includes('404')) {
-              const docUrl = isMini 
+              const docUrl = isMini
                 ? 'https://platform.openai.com/docs/models/gpt-image-1-mini'
                 : 'https://platform.openai.com/docs/models/gpt-image-1'
               errorMessage = `API do ${modelName} ainda não está disponível ou requer acesso especial. Verifique: ${docUrl}. Erro: ${error.message}`
             } else if (error.message?.includes('prompt') || error.message?.includes('conteúdo')) {
               errorMessage = `Erro no prompt de geração de imagem: ${error.message}`
             }
-            
+
             controller.enqueue(encoder.encode(`❌ ${errorMessage}`))
             controller.error(error)
           }
@@ -5142,12 +5145,12 @@ async function callImageGeneration(
 
     // Detectar resolução no prompt ou usar padrão
     const promptLower = prompt.toLowerCase()
-    const wantsHighRes = promptLower.includes('1024x1024') || 
-                         promptLower.includes('hd') || 
-                         promptLower.includes('alta resolução') ||
-                         promptLower.includes('high resolution') ||
-                         promptLower.includes('4k')
-    
+    const wantsHighRes = promptLower.includes('1024x1024') ||
+      promptLower.includes('hd') ||
+      promptLower.includes('alta resolução') ||
+      promptLower.includes('high resolution') ||
+      promptLower.includes('4k')
+
     // Resoluções suportadas: 1024x1024 (padrão), 1792x1024, 1024x1792
     let size = '1024x1024'
     if (promptLower.includes('1792x1024') || promptLower.includes('landscape') || promptLower.includes('paisagem')) {
@@ -5173,7 +5176,7 @@ async function callImageGeneration(
     // Documentação oficial: https://platform.openai.com/docs/models/gpt-image-1
     // Nota: A API pode não suportar o parâmetro 'style' ainda
     let response: any
-    
+
     try {
       // Tentar usar a API de imagens se disponível no SDK
       const requestBody: any = {
@@ -5183,12 +5186,12 @@ async function callImageGeneration(
         quality: quality,
         n: 1, // Gerar 1 imagem por padrão
       }
-      
+
       response = await (openai as any).images?.generate?.(requestBody)
     } catch (sdkError: any) {
       // Se o SDK não suportar, usar fetch diretamente
       console.log('[callImageGeneration] SDK não suporta, usando fetch direto')
-      
+
       const requestBody: any = {
         model: model,
         prompt: prompt,
@@ -5196,7 +5199,7 @@ async function callImageGeneration(
         quality: quality,
         n: 1,
       }
-      
+
       const apiResponse = await fetch('https://api.openai.com/v1/images/generations', {
         method: 'POST',
         headers: {
@@ -5216,21 +5219,21 @@ async function callImageGeneration(
 
     // Extrair URL da imagem gerada
     let imageUrl = response?.data?.[0]?.url || response?.data?.[0]?.b64_json
-    
+
     console.log('[callImageGeneration] Resposta da API completa:', JSON.stringify(response, null, 2))
     console.log('[callImageGeneration] imageUrl extraído:', imageUrl ? imageUrl.substring(0, 100) : 'null')
-    
+
     if (!imageUrl) {
       console.error('[callImageGeneration] Resposta da API:', JSON.stringify(response, null, 2))
       throw new Error('Resposta da API não contém URL de imagem')
     }
-    
+
     // Garantir que a URL seja uma string válida
     imageUrl = String(imageUrl).trim()
     if (!imageUrl) {
       throw new Error('URL de imagem está vazia')
     }
-    
+
     // Se é base64, converter para data URL
     let finalImageUrl = imageUrl
     if (imageUrl.startsWith('iVBORw0KGg') || imageUrl.startsWith('/9j/')) {
@@ -5250,12 +5253,12 @@ async function callImageGeneration(
 
     // Construir resposta em formato de mensagem com imagem
     let content = `🖼️ **Imagem gerada com ${modelName}!**\n\n`
-    
+
     // Incluir a imagem no markdown
     content += `![Imagem gerada](${finalImageUrl})\n\n`
-    
+
     console.log('[callImageGeneration] Conteúdo final (primeiros 200 chars):', content.substring(0, 200))
-    
+
     content += `**Parâmetros:**\n`
     content += `- Resolução: ${size}\n`
     content += `- Qualidade: ${quality}\n`
@@ -5275,19 +5278,19 @@ async function callImageGeneration(
     }
   } catch (error: any) {
     console.error('[callImageGeneration] Erro:', error)
-    
+
     // Mensagens de erro específicas
     if (error.message?.includes('images') || error.code === 'invalid_api_function' || error.message?.includes('404')) {
-      const docUrl = isMini 
+      const docUrl = isMini
         ? 'https://platform.openai.com/docs/models/gpt-image-1-mini'
         : 'https://platform.openai.com/docs/models/gpt-image-1'
       throw new Error(`API do ${modelName} ainda não está disponível ou requer acesso especial. Verifique: ${docUrl}. Erro: ${error.message}`)
     }
-    
+
     if (error.message?.includes('prompt') || error.message?.includes('conteúdo')) {
       throw new Error(`Erro no prompt de geração de imagem: ${error.message}`)
     }
-    
+
     throw new Error(`Erro ao gerar imagem com ${modelName}: ${error.message || error}`)
   }
 }
@@ -5343,7 +5346,7 @@ async function callTranscribe(
     const lastUserMessage = messages.filter(msg => msg.role === 'user').pop()
     if (lastUserMessage) {
       const msgAny = lastUserMessage as any
-      
+
       // Verificar se há attachments diretamente na mensagem
       if (msgAny.attachments && Array.isArray(msgAny.attachments)) {
         const audioAttachment = msgAny.attachments.find((a: any) => a.type === 'audio')
@@ -5351,17 +5354,17 @@ async function callTranscribe(
           audioUrl = audioAttachment.url
         }
       }
-      
+
       // Se não encontrou, verificar no conteúdo da mensagem
       if (!audioUrl && !audioFile) {
         const content = String(lastUserMessage.content || '')
-        
+
         // Verificar se há URL de áudio no conteúdo (formato markdown)
         const audioUrlMatch = content.match(/\[.*?\]\((https?:\/\/[^\)]+\.(mp3|wav|m4a|ogg|webm|flac|mpeg))\)/i)
         if (audioUrlMatch) {
           audioUrl = audioUrlMatch[1]
         }
-        
+
         // Verificar se há URL direta de áudio
         if (!audioUrl) {
           const directUrlMatch = content.match(/(https?:\/\/[^\s]+\.(mp3|wav|m4a|ogg|webm|flac|mpeg))/i)
@@ -5407,8 +5410,8 @@ async function callTranscribe(
 
     // Criar File object para a API da OpenAI
     // A API espera um File object ou FormData
-    const audioFileObj = audioBuffer instanceof File 
-      ? audioBuffer 
+    const audioFileObj = audioBuffer instanceof File
+      ? audioBuffer
       : new File([audioBuffer], 'audio.mp3', { type: 'audio/mpeg' })
 
     // Chamar a API de transcrição
@@ -5421,8 +5424,8 @@ async function callTranscribe(
     })
 
     // Extrair texto transcrito
-    const transcribedText = typeof transcription === 'string' 
-      ? transcription 
+    const transcribedText = typeof transcription === 'string'
+      ? transcription
       : (transcription as any).text || (transcription as any).transcription || ''
 
     if (!transcribedText) {
@@ -5441,20 +5444,20 @@ async function callTranscribe(
     const latency = Date.now() - startTime
     const isDiarize = model === 'gpt-4o-transcribe-diarize'
     const isPro = model === 'gpt-4o-transcribe' || isDiarize
-    const modelName = isDiarize 
-      ? 'GPT-4o Transcribe Diarize' 
-      : isPro 
-      ? 'GPT-4o Transcribe' 
-      : 'GPT-4o Mini Transcribe'
+    const modelName = isDiarize
+      ? 'GPT-4o Transcribe Diarize'
+      : isPro
+        ? 'GPT-4o Transcribe'
+        : 'GPT-4o Mini Transcribe'
 
     // Construir resposta em formato de mensagem
     const metadata = typeof transcription === 'object' && transcription !== null
       ? {
-          duration: (transcription as any).duration,
-          language: (transcription as any).language,
-          segments: (transcription as any).segments,
-          speakers: (transcription as any).speakers || (transcription as any).diarization?.speakers,
-        }
+        duration: (transcription as any).duration,
+        language: (transcription as any).language,
+        segments: (transcription as any).segments,
+        speakers: (transcription as any).speakers || (transcription as any).diarization?.speakers,
+      }
       : null
 
     // Processar diarização se disponível
@@ -5462,12 +5465,12 @@ async function callTranscribe(
     if (isDiarize && metadata?.segments && Array.isArray(metadata.segments)) {
       // Formatar texto com identificação de falantes
       const segmentsWithSpeakers = metadata.segments.filter((seg: any) => seg.speaker !== undefined && seg.speaker !== null)
-      
+
       if (segmentsWithSpeakers.length > 0) {
         formattedText = segmentsWithSpeakers
           .map((seg: any) => {
-            const speakerLabel = seg.speaker !== undefined && seg.speaker !== null 
-              ? `**Falante ${seg.speaker}:**` 
+            const speakerLabel = seg.speaker !== undefined && seg.speaker !== null
+              ? `**Falante ${seg.speaker}:**`
               : '**Falante desconhecido:**'
             const startTime = seg.start !== undefined ? formatTime(seg.start) : ''
             const endTime = seg.end !== undefined ? formatTime(seg.end) : ''
@@ -5479,7 +5482,7 @@ async function callTranscribe(
     }
 
     let content = `🎤 **Transcrição de áudio concluída usando ${modelName}!**\n\n${formattedText}\n\n`
-    
+
     if (metadata) {
       content += `**Metadados:**\n`
       if (metadata.duration) {
@@ -5492,19 +5495,19 @@ async function callTranscribe(
         content += `- Segmentos: ${metadata.segments.length}\n`
       }
       if (isDiarize && metadata.speakers) {
-        const speakerCount = Array.isArray(metadata.speakers) 
-          ? metadata.speakers.length 
-          : typeof metadata.speakers === 'number' 
-          ? metadata.speakers 
-          : 0
+        const speakerCount = Array.isArray(metadata.speakers)
+          ? metadata.speakers.length
+          : typeof metadata.speakers === 'number'
+            ? metadata.speakers
+            : 0
         if (speakerCount > 0) {
           content += `- Falantes identificados: ${speakerCount}\n`
         }
       }
     }
-    
+
     content += `\n**Tempo de processamento:** ${(latency / 1000).toFixed(1)}s\n**Custo:** $${cost.toFixed(4)} ($${pricing.input.toFixed(2)}/minuto)`
-    
+
     if (isDiarize) {
       content += `\n\n*Usando GPT-4o Transcribe Diarize para identificar falantes em conversas com múltiplos participantes*`
     } else if (isPro) {
@@ -5521,21 +5524,21 @@ async function callTranscribe(
     }
   } catch (error: any) {
     console.error('[callTranscribe] Erro:', error)
-    
+
     // Mensagens de erro específicas
     if (error.message?.includes('audio') || error.message?.includes('transcription')) {
       throw new Error(`Erro ao transcrever áudio: ${error.message}`)
     }
-    
+
     if (error.message?.includes('file') || error.message?.includes('arquivo')) {
       throw new Error(`Erro ao processar arquivo de áudio: ${error.message}`)
     }
-    
-    const modelName = model === 'gpt-4o-transcribe-diarize' 
-      ? 'GPT-4o Transcribe Diarize' 
-      : model === 'gpt-4o-transcribe' 
-      ? 'GPT-4o Transcribe' 
-      : 'GPT-4o Mini Transcribe'
+
+    const modelName = model === 'gpt-4o-transcribe-diarize'
+      ? 'GPT-4o Transcribe Diarize'
+      : model === 'gpt-4o-transcribe'
+        ? 'GPT-4o Transcribe'
+        : 'GPT-4o Mini Transcribe'
     throw new Error(`Erro ao transcrever áudio com ${modelName}: ${error.message || error}`)
   }
 }
@@ -5561,7 +5564,7 @@ async function callPubMed(
     }
 
     const searchQuery = lastUserMessage.content.trim()
-    
+
     if (!searchQuery) {
       throw new Error('Query de busca vazia')
     }
@@ -5601,7 +5604,7 @@ async function callPubMed(
 
     const esearchStartTime = Date.now()
     const esearchResponse = await fetch(esearchUrl.toString())
-    
+
     if (!esearchResponse.ok) {
       throw new Error(`Erro na busca PubMed: ${esearchResponse.statusText}`)
     }
@@ -5628,7 +5631,7 @@ async function callPubMed(
     efetchUrl.searchParams.set('api_key', process.env.PUBMED_API_KEY)
 
     const efetchResponse = await fetch(efetchUrl.toString())
-    
+
     if (!efetchResponse.ok) {
       throw new Error(`Erro ao recuperar artigos PubMed: ${efetchResponse.statusText}`)
     }
@@ -5647,13 +5650,13 @@ async function callPubMed(
 
     articles.forEach((article, index) => {
       content += `### ${index + 1}. ${article.title || 'Sem título'}\n\n`
-      
+
       if (article.authors && article.authors.length > 0) {
         const authorsList = article.authors.slice(0, 5).join(', ')
         const moreAuthors = article.authors.length > 5 ? ` et al.` : ''
         content += `**Autores:** ${authorsList}${moreAuthors}\n\n`
       }
-      
+
       if (article.journal) {
         content += `**Revista:** ${article.journal}`
         if (article.publicationDate) {
@@ -5661,18 +5664,18 @@ async function callPubMed(
         }
         content += `\n\n`
       }
-      
+
       if (article.pmid) {
         content += `**PMID:** [${article.pmid}](https://pubmed.ncbi.nlm.nih.gov/${article.pmid}/)\n\n`
       }
-      
+
       if (article.abstract) {
-        const abstractPreview = article.abstract.length > 300 
-          ? article.abstract.substring(0, 300) + '...' 
+        const abstractPreview = article.abstract.length > 300
+          ? article.abstract.substring(0, 300) + '...'
           : article.abstract
         content += `**Resumo:** ${abstractPreview}\n\n`
       }
-      
+
       content += `---\n\n`
     })
 
@@ -5695,16 +5698,16 @@ async function callPubMed(
     }
   } catch (error: any) {
     console.error('[callPubMed] Erro:', error)
-    
+
     // Mensagens de erro específicas
     if (error.message?.includes('PUBMED_API_KEY') || error.message?.includes('api_key')) {
       throw new Error('PUBMED_API_KEY não configurado. Configure a variável de ambiente.')
     }
-    
+
     if (error.message?.includes('busca') || error.message?.includes('search')) {
       throw new Error(`Erro na busca PubMed: ${error.message}`)
     }
-    
+
     throw new Error(`Erro ao buscar artigos no PubMed: ${error.message || error}`)
   }
 }
@@ -5732,7 +5735,7 @@ function parsePubMedXML(xml: string): Array<{
   try {
     // Dividir XML em artigos individuais usando <PubmedArticle>
     const articleMatches = xml.match(/<PubmedArticle>[\s\S]*?<\/PubmedArticle>/g) || []
-    
+
     articleMatches.forEach((articleXml, index) => {
       const article: {
         pmid?: string
@@ -5758,18 +5761,18 @@ function parsePubMedXML(xml: string): Array<{
       // Extrair autores
       const authorMatches = articleXml.match(/<Author[^>]*>[\s\S]*?<\/Author>/g) || []
       article.authors = []
-      
+
       authorMatches.forEach(authorMatch => {
         const lastNameMatch = authorMatch.match(/<LastName>(.*?)<\/LastName>/)?.[1]
         const firstNameMatch = authorMatch.match(/<FirstName>(.*?)<\/FirstName>/)?.[1]
         const initialsMatch = authorMatch.match(/<Initials>(.*?)<\/Initials>/)?.[1]
-        
+
         if (lastNameMatch) {
-          const authorName = firstNameMatch 
+          const authorName = firstNameMatch
             ? `${firstNameMatch} ${lastNameMatch}`
             : initialsMatch
-            ? `${initialsMatch} ${lastNameMatch}`
-            : lastNameMatch
+              ? `${initialsMatch} ${lastNameMatch}`
+              : lastNameMatch
           article.authors.push(authorName)
         }
       })
@@ -5795,13 +5798,13 @@ function parsePubMedXML(xml: string): Array<{
         const yearMatch = pubDateMatch[0].match(/<Year>(\d+)<\/Year>/)?.[1]
         const monthMatch = pubDateMatch[0].match(/<Month>(\d+)<\/Month>/)?.[1]
         const dayMatch = pubDateMatch[0].match(/<Day>(\d+)<\/Day>/)?.[1]
-        
+
         if (yearMatch) {
-          article.publicationDate = monthMatch && dayMatch 
+          article.publicationDate = monthMatch && dayMatch
             ? `${dayMatch}/${monthMatch}/${yearMatch}`
             : monthMatch
-            ? `${monthMatch}/${yearMatch}`
-            : yearMatch
+              ? `${monthMatch}/${yearMatch}`
+              : yearMatch
         }
       }
 

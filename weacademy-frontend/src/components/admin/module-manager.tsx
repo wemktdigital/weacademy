@@ -15,13 +15,13 @@ import {
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
-  CardTitle,
 } from '@/components/ui/card'
 import {
   Plus,
   Trash2,
+  ChevronUp,
+  ChevronDown,
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 
@@ -91,6 +91,31 @@ export function ModuleManager({ modules, onChange }: ModuleManagerProps) {
     onChange(updated)
   }
 
+  const moveModule = (index: number, direction: 'up' | 'down') => {
+    if ((direction === 'up' && index === 0) || (direction === 'down' && index === modules.length - 1)) return
+
+    const newModules = [...modules]
+    const targetIndex = direction === 'up' ? index - 1 : index + 1
+
+    const temp = newModules[index]
+    newModules[index] = newModules[targetIndex]
+    newModules[targetIndex] = temp
+
+    // Update order_index
+    newModules.forEach((m, i) => m.order_index = i)
+
+    onChange(newModules)
+
+    // Adjust expanded state
+    const newExpanded = new Set<number>()
+    expandedModules.forEach(i => {
+      if (i === index) newExpanded.add(targetIndex)
+      else if (i === targetIndex) newExpanded.add(index)
+      else newExpanded.add(i)
+    })
+    setExpandedModules(newExpanded)
+  }
+
   const addLesson = (moduleIndex: number) => {
     const updated = [...modules]
     const newLesson: Lesson = {
@@ -124,13 +149,31 @@ export function ModuleManager({ modules, onChange }: ModuleManagerProps) {
     onChange(updated)
   }
 
+  const moveLesson = (moduleIndex: number, lessonIndex: number, direction: 'up' | 'down') => {
+    const lessons = [...modules[moduleIndex].lessons]
+    if ((direction === 'up' && lessonIndex === 0) || (direction === 'down' && lessonIndex === lessons.length - 1)) return
+
+    const targetIndex = direction === 'up' ? lessonIndex - 1 : lessonIndex + 1
+
+    const temp = lessons[lessonIndex]
+    lessons[lessonIndex] = lessons[targetIndex]
+    lessons[targetIndex] = temp
+
+    // Update order_index
+    lessons.forEach((l, i) => l.order_index = i)
+
+    const newModules = [...modules]
+    newModules[moduleIndex] = { ...newModules[moduleIndex], lessons }
+    onChange(newModules)
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-lg font-semibold">Módulos e Lições</h3>
           <p className="text-sm text-muted-foreground">
-            Organize o conteúdo do curso em módulos e lições
+            Organize o conteúdo do curso. Use as setas para reordenar.
           </p>
         </div>
         <Button type="button" onClick={addModule} size="sm">
@@ -154,191 +197,173 @@ export function ModuleManager({ modules, onChange }: ModuleManagerProps) {
       ) : (
         <div className="space-y-4">
           {modules.map((module, moduleIndex) => (
-            <Card key={moduleIndex}>
-              <CardHeader>
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Badge variant="outline">Módulo {moduleIndex + 1}</Badge>
+            <Card key={moduleIndex} className="transition-all duration-200">
+              <CardHeader className="pb-3">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex flex-col gap-1 pt-1">
+                    <div className="flex flex-col gap-1">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6"
+                        disabled={moduleIndex === 0}
+                        onClick={() => moveModule(moduleIndex, 'up')}
+                      >
+                        <ChevronUp className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6"
+                        disabled={moduleIndex === modules.length - 1}
+                        onClick={() => moveModule(moduleIndex, 'down')}
+                      >
+                        <ChevronDown className="h-4 w-4" />
+                      </Button>
                     </div>
+                  </div>
+
+                  <div className="flex-1 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline">Módulo {moduleIndex + 1}</Badge>
+                        <span className="text-sm text-muted-foreground">({module.lessons.length} lições)</span>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => removeModule(moduleIndex)}
+                        className="text-destructive hover:text-destructive/90"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+
                     <Input
                       placeholder="Título do módulo"
                       value={module.title}
                       onChange={(e) => updateModule(moduleIndex, { title: e.target.value })}
-                      className="mb-2"
                     />
                     <Textarea
                       placeholder="Descrição do módulo (opcional)"
                       value={module.description}
                       onChange={(e) => updateModule(moduleIndex, { description: e.target.value })}
                       rows={2}
+                      className="text-sm resize-none"
                     />
                   </div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => removeModule(moduleIndex)}
-                  >
-                    <Trash2 className="h-4 w-4 text-destructive" />
-                  </Button>
                 </div>
               </CardHeader>
 
               <CardContent>
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm font-medium">
-                      Lições ({module.lessons.length})
-                    </p>
+                <div className="space-y-3 pl-10 border-l-2 border-muted ml-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-sm font-medium">Lições</p>
                     <Button
                       type="button"
                       variant="outline"
                       size="sm"
                       onClick={() => addLesson(moduleIndex)}
                     >
-                      <Plus className="h-4 w-4 mr-2" />
+                      <Plus className="h-3 w-3 mr-2" />
                       Adicionar Lição
                     </Button>
                   </div>
 
                   {module.lessons.map((lesson, lessonIndex) => (
-                    <Card key={lessonIndex} className="bg-muted/30">
-                      <CardContent className="pt-4 space-y-3">
-                        <div className="flex items-start justify-between">
+                    <Card key={lessonIndex} className="bg-muted/30 relative">
+                      <div className="absolute left-2 top-1/2 -translate-y-1/2 flex flex-col gap-1">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-5 w-5"
+                          disabled={lessonIndex === 0}
+                          onClick={() => moveLesson(moduleIndex, lessonIndex, 'up')}
+                        >
+                          <ChevronUp className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-5 w-5"
+                          disabled={lessonIndex === module.lessons.length - 1}
+                          onClick={() => moveLesson(moduleIndex, lessonIndex, 'down')}
+                        >
+                          <ChevronDown className="h-3 w-3" />
+                        </Button>
+                      </div>
+
+                      <CardContent className="pt-4 pl-10 space-y-3">
+                        <div className="flex items-start justify-between gap-4">
                           <div className="flex-1 space-y-3">
-                            <div>
-                              <Label className="text-xs">Título da Lição</Label>
-                              <Input
-                                placeholder="Nome da lição"
-                                value={lesson.title}
-                                onChange={(e) =>
-                                  updateLesson(moduleIndex, lessonIndex, { title: e.target.value })
-                                }
-                              />
-                            </div>
-
+                            <Input
+                              placeholder="Nome da lição"
+                              value={lesson.title}
+                              onChange={(e) => updateLesson(moduleIndex, lessonIndex, { title: e.target.value })}
+                              className="font-medium"
+                            />
                             <div className="grid grid-cols-2 gap-3">
-                              <div>
-                                <Label className="text-xs">Tipo</Label>
-                                <Select
-                                  value={lesson.type}
-                                  onValueChange={(value: any) =>
-                                    updateLesson(moduleIndex, lessonIndex, { type: value })
-                                  }
-                                >
-                                  <SelectTrigger>
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="video">Vídeo</SelectItem>
-                                    <SelectItem value="text">Texto</SelectItem>
-                                    <SelectItem value="pdf">PDF</SelectItem>
-                                    <SelectItem value="quiz">Quiz</SelectItem>
-                                    <SelectItem value="audio">Áudio</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                              </div>
+                              <Select
+                                value={lesson.type}
+                                onValueChange={(value: any) => updateLesson(moduleIndex, lessonIndex, { type: value })}
+                              >
+                                <SelectTrigger><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="video">Vídeo</SelectItem>
+                                  <SelectItem value="text">Texto</SelectItem>
+                                  <SelectItem value="pdf">PDF</SelectItem>
+                                  <SelectItem value="quiz">Quiz</SelectItem>
+                                  <SelectItem value="audio">Áudio</SelectItem>
+                                </SelectContent>
+                              </Select>
 
-                              <div>
-                                <Label className="text-xs">Duração (min)</Label>
+                              <div className="flex items-center gap-2">
                                 <Input
                                   type="number"
+                                  placeholder="Min"
                                   value={lesson.duration_minutes}
-                                  onChange={(e) =>
-                                    updateLesson(moduleIndex, lessonIndex, {
-                                      duration_minutes: Number(e.target.value),
-                                    })
-                                  }
+                                  onChange={(e) => updateLesson(moduleIndex, lessonIndex, { duration_minutes: Number(e.target.value) })}
+                                  className="w-20"
                                 />
+                                <span className="text-xs text-muted-foreground">min</span>
                               </div>
-                            </div>
-
-                            <div>
-                              <Label className="text-xs">Descrição (opcional)</Label>
-                              <Textarea
-                                placeholder="Descrição da lição"
-                                value={lesson.description || ''}
-                                onChange={(e) =>
-                                  updateLesson(moduleIndex, lessonIndex, {
-                                    description: e.target.value,
-                                  })
-                                }
-                                rows={2}
-                              />
                             </div>
 
                             {lesson.type === 'video' && (
-                              <>
-                                <div>
-                                  <Label className="text-xs">Provedor de Vídeo</Label>
-                                  <Select
-                                    value={lesson.video_provider || 'youtube'}
-                                    onValueChange={(value: 'youtube' | 'vimeo') =>
-                                      updateLesson(moduleIndex, lessonIndex, {
-                                        video_provider: value,
-                                      })
-                                    }
-                                  >
-                                    <SelectTrigger>
-                                      <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      <SelectItem value="youtube">YouTube</SelectItem>
-                                      <SelectItem value="vimeo">Vimeo</SelectItem>
-                                    </SelectContent>
-                                  </Select>
-                                </div>
-
-                                <div>
-                                  <Label className="text-xs">URL do Vídeo</Label>
-                                  <Input
-                                    placeholder="https://..."
-                                    value={lesson.video_url || ''}
-                                    onChange={(e) =>
-                                      updateLesson(moduleIndex, lessonIndex, {
-                                        video_url: e.target.value,
-                                      })
-                                    }
-                                  />
-                                </div>
-                              </>
+                              <div className="grid grid-cols-3 gap-3">
+                                <Select
+                                  value={lesson.video_provider || 'youtube'}
+                                  onValueChange={(value: 'youtube' | 'vimeo') => updateLesson(moduleIndex, lessonIndex, { video_provider: value })}
+                                >
+                                  <SelectTrigger><SelectValue /></SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="youtube">YouTube</SelectItem>
+                                    <SelectItem value="vimeo">Vimeo</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                                <Input
+                                  placeholder="URL do vídeo"
+                                  value={lesson.video_url || ''}
+                                  onChange={(e) => updateLesson(moduleIndex, lessonIndex, { video_url: e.target.value })}
+                                  className="col-span-2"
+                                />
+                              </div>
                             )}
 
-                            <div className="flex gap-4">
-                              <div className="flex items-center gap-2">
-                                <input
-                                  type="checkbox"
-                                  id={`preview-${moduleIndex}-${lessonIndex}`}
-                                  checked={lesson.is_preview}
-                                  onChange={(e) =>
-                                    updateLesson(moduleIndex, lessonIndex, {
-                                      is_preview: e.target.checked,
-                                    })
-                                  }
-                                  className="h-4 w-4"
-                                />
-                                <Label htmlFor={`preview-${moduleIndex}-${lessonIndex}`} className="text-xs cursor-pointer">
-                                  Preview gratuita
-                                </Label>
-                              </div>
-
-                              <div className="flex items-center gap-2">
-                                <input
-                                  type="checkbox"
-                                  id={`free-${moduleIndex}-${lessonIndex}`}
-                                  checked={lesson.is_free}
-                                  onChange={(e) =>
-                                    updateLesson(moduleIndex, lessonIndex, {
-                                      is_free: e.target.checked,
-                                    })
-                                  }
-                                  className="h-4 w-4"
-                                />
-                                <Label htmlFor={`free-${moduleIndex}-${lessonIndex}`} className="text-xs cursor-pointer">
-                                  Gratuita
-                                </Label>
-                              </div>
+                            <div className="flex gap-4 pt-1">
+                              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                                <input type="checkbox" checked={lesson.is_preview} onChange={e => updateLesson(moduleIndex, lessonIndex, { is_preview: e.target.checked })} />
+                                Preview
+                              </label>
+                              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                                <input type="checkbox" checked={lesson.is_free} onChange={e => updateLesson(moduleIndex, lessonIndex, { is_free: e.target.checked })} />
+                                Grátis
+                              </label>
                             </div>
                           </div>
 
@@ -347,8 +372,9 @@ export function ModuleManager({ modules, onChange }: ModuleManagerProps) {
                             variant="ghost"
                             size="icon"
                             onClick={() => removeLesson(moduleIndex, lessonIndex)}
+                            className="text-muted-foreground hover:text-destructive"
                           >
-                            <Trash2 className="h-4 w-4 text-destructive" />
+                            <Trash2 className="h-4 w-4" />
                           </Button>
                         </div>
                       </CardContent>
@@ -363,4 +389,3 @@ export function ModuleManager({ modules, onChange }: ModuleManagerProps) {
     </div>
   )
 }
-

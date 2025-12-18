@@ -3,14 +3,16 @@ import { supabaseServer } from '@/lib/supabaseServer'
 import { resumeWorkflowStage } from '@/modules/laboratorio-ia/services/workflowOrchestrator'
 
 interface Params {
-  params: {
+  params: Promise<{
     stageRunId: string
-  }
+  }>
 }
 
-export async function POST(request: NextRequest, { params }: Params) {
+export async function POST(request: NextRequest, props: Params) {
   try {
+    const params = await props.params
     const { stageRunId } = params
+
     if (!stageRunId) {
       return NextResponse.json({ error: 'stageRunId é obrigatório' }, { status: 400 })
     }
@@ -37,4 +39,3 @@ export async function POST(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: err?.message || 'Erro ao retomar etapa' }, { status: 500 })
   }
 }
-

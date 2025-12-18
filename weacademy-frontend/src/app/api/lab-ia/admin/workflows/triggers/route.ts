@@ -6,7 +6,7 @@ import { createClient } from '@supabase/supabase-js'
 const triggerSchema = z.object({
   workflow_version_id: z.string().uuid(),
   type: z.enum(['calendar', 'webhook', 'data', 'user_event']),
-  config: z.record(z.any()),
+  config: z.record(z.string(), z.any()),
   is_active: z.boolean().optional().default(true),
   notes: z.string().optional().nullable(),
   tags: z.array(z.string()).optional().nullable(),

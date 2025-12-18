@@ -7,7 +7,7 @@ import { createClient } from '@supabase/supabase-js'
 export async function GET(request: Request) {
   try {
     const supabase = await supabaseServer()
-    
+
     // Buscar parâmetros
     const { searchParams } = new URL(request.url)
     const page = parseInt(searchParams.get('page') || '1')
@@ -87,7 +87,7 @@ export async function POST(request: Request) {
     }
 
     if (!user) {
-      console.error('[API][pipelines] POST - Usuário não autenticado', { 
+      console.error('[API][pipelines] POST - Usuário não autenticado', {
         hasToken: !!token,
         authError: authError?.message,
         authErrorCode: authError?.code,
@@ -140,10 +140,10 @@ export async function POST(request: Request) {
     return NextResponse.json(pipeline, { status: 201 })
   } catch (error) {
     console.error('Error creating pipeline:', error)
-    
+
     if (error instanceof z.ZodError) {
       return NextResponse.json(
-        { error: 'Validation error', details: error.errors },
+        { error: 'Validation error', details: (error as any).errors },
         { status: 400 }
       )
     }

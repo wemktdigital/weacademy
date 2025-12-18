@@ -10,25 +10,20 @@ import * as path from 'path'
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ filename: string }> | { filename: string } }
+  props: { params: Promise<{ filename: string }> }
 ) {
   try {
-    // Next.js 15+ pode usar params como Promise, vamos tratar ambos os casos
-    let resolvedParams: { filename: string }
-    if (params && typeof params === 'object' && 'then' in params) {
-      resolvedParams = await params as Promise<{ filename: string }>
-    } else {
-      resolvedParams = params as { filename: string }
-    }
-    const filenameParam = resolvedParams?.filename || ''
-    
-    console.log('[Admin][Test Reports] Params recebidos:', resolvedParams)
+    // Next.js 15+ pode usar params como Promise
+    const params = await props.params
+    const filenameParam = params?.filename || ''
+
+    console.log('[Admin][Test Reports] Params recebidos:', params)
     console.log('[Admin][Test Reports] Filename param:', filenameParam)
-    
+
     // Verificar autenticação via header Authorization
     const authHeader = request.headers.get('authorization')
     const token = authHeader?.replace('Bearer ', '')
-    
+
     let user = null
 
     // Tentar autenticar via token primeiro
@@ -71,13 +66,13 @@ export async function GET(
           },
         }
       )
-      
+
       const { data: { user: cookieUser }, error: authError } = await supabase.auth.getUser()
       if (!authError && cookieUser) {
         user = cookieUser
       }
     }
-    
+
     if (!user) {
       return NextResponse.json(
         { error: 'Não autenticado' },
@@ -107,10 +102,10 @@ export async function GET(
     // Validar nome do arquivo (prevenir path traversal)
     // Next.js já decodifica os parâmetros de rota automaticamente
     let filename = filenameParam
-    
+
     console.log('[Admin][Test Reports] Filename recebido (raw):', filename)
     console.log('[Admin][Test Reports] Tipo:', typeof filename)
-    
+
     // Next.js 13+ decodifica automaticamente, mas vamos garantir
     // Se vier codificado (com %), tentar decodificar
     if (filename.includes('%')) {
@@ -123,13 +118,13 @@ export async function GET(
         // Continuar com o original se falhar
       }
     }
-    
+
     console.log('[Admin][Test Reports] Filename final para validação:', filename)
     console.log('[Admin][Test Reports] Length:', filename.length)
     console.log('[Admin][Test Reports] Starts with llm-models-test-:', filename.startsWith('llm-models-test-'))
     console.log('[Admin][Test Reports] Ends with .json:', filename.endsWith('.json'))
     console.log('[Admin][Test Reports] Ends with .txt:', filename.endsWith('.txt'))
-    
+
     // Validar nome do arquivo (prevenir path traversal)
     // Verificar apenas caracteres perigosos, não restringir demais
     if (!filename || filename.trim() === '') {
@@ -139,7 +134,7 @@ export async function GET(
         { status: 400 }
       )
     }
-    
+
     if (filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
       console.error('[Admin][Test Reports] Filename contém caracteres perigosos:', filename)
       return NextResponse.json(
@@ -147,7 +142,7 @@ export async function GET(
         { status: 400 }
       )
     }
-    
+
     if (filename.length > 255) {
       console.error('[Admin][Test Reports] Filename muito longo:', filename.length)
       return NextResponse.json(
@@ -155,11 +150,11 @@ export async function GET(
         { status: 400 }
       )
     }
-    
+
     // Verificar se é um arquivo de relatório válido (começa com prefixo esperado)
-    const isValidReport = filename.startsWith('llm-models-test-') && 
-                         (filename.endsWith('.json') || filename.endsWith('.txt'))
-    
+    const isValidReport = filename.startsWith('llm-models-test-') &&
+      (filename.endsWith('.json') || filename.endsWith('.txt'))
+
     if (!isValidReport) {
       console.error('[Admin][Test Reports] Arquivo não é um relatório válido:', {
         filename,
@@ -178,7 +173,7 @@ export async function GET(
     // Buscar arquivo no diretório test-reports
     const reportsDir = path.join(process.cwd(), 'test-reports')
     const filePath = path.join(reportsDir, filename)
-    
+
     // Verificar se o arquivo existe e está dentro do diretório permitido
     if (!fs.existsSync(filePath) || !filePath.startsWith(reportsDir)) {
       return NextResponse.json(
@@ -189,11 +184,11 @@ export async function GET(
 
     // Ler e retornar o arquivo
     const content = fs.readFileSync(filePath, 'utf-8')
-    
+
     // Determinar content-type baseado na extensão
     const isJson = filename.endsWith('.json')
     const isText = filename.endsWith('.txt')
-    
+
     if (isJson) {
       try {
         const jsonContent = JSON.parse(content)

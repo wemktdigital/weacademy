@@ -77,7 +77,7 @@ export async function GET(
     const { searchParams } = new URL(request.url)
     const includeSnapshots = searchParams.get('snapshots') === 'true'
 
-    let snapshots = []
+    let snapshots: any[] = []
     if (includeSnapshots) {
       snapshots = await getSnapshots(sessionId)
     }

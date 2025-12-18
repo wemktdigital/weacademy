@@ -11,11 +11,11 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { toast } from '@/hooks/use-toast'
 import { trackLessonStart, trackLessonComplete } from '@/lib/analytics'
-import { 
-  ArrowLeft, 
-  CheckCircle2, 
-  Lock, 
-  Play, 
+import {
+  ArrowLeft,
+  CheckCircle2,
+  Lock,
+  Play,
   Clock,
   ChevronRight,
   FileText
@@ -70,24 +70,28 @@ export default function LessonPlayerPage() {
         .eq('id', params.lessonId)
         .single()
 
-      if (lessonError) throw lessonError
+      if (lessonError || !lessonData) throw lessonError || new Error('Lesson not found')
 
       // Buscar módulo
-      const { data: moduleData } = await supabase
+      const { data: moduleData, error: moduleError } = await supabase
         .from('modules')
         .select('*')
         .eq('id', lessonData.module_id)
         .single()
 
+      if (moduleError || !moduleData) throw moduleError || new Error('Module not found')
+
       // Buscar curso
-      const { data: courseData } = await supabase
+      const { data: courseData, error: courseError } = await supabase
         .from('courses')
         .select('id')
         .eq('id', moduleData.course_id)
         .single()
 
+      if (courseError || !courseData) throw courseError || new Error('Course not found')
+
       // Buscar todos os módulos e lições do curso
-      const { data: courseModules } = await supabase
+      const { data: courseModules, error: modulesError } = await supabase
         .from('modules')
         .select(`
           id,
@@ -97,6 +101,8 @@ export default function LessonPlayerPage() {
         `)
         .eq('course_id', courseData.id)
         .order('order_index', { ascending: true })
+
+      if (modulesError || !courseModules) throw modulesError || new Error('Modules not found')
 
       // Buscar progresso
       const allLessonIds = courseModules.flatMap((m: Module) => m.lessons.map((l: Lesson) => l.id))
@@ -110,14 +116,17 @@ export default function LessonPlayerPage() {
         progressData?.filter(p => p.completed_at).map(p => p.lesson_id) || []
       )
 
-      courseModules.forEach((module: Module) => {
-        module.lessons.forEach((lesson: Lesson) => {
-          lesson.completed = completedLessonIds.has(lesson.id)
-        })
-      })
+      // Tipagem explícita para evitar erro de atribuição
+      const modulesWithCompletion: Module[] = courseModules.map((m: any) => ({
+        ...m,
+        lessons: m.lessons.map((l: any) => ({
+          ...l,
+          completed: completedLessonIds.has(l.id)
+        })).sort((a: any, b: any) => a.order_index - b.order_index)
+      }))
 
       setCurrentLesson(lessonData)
-      setModules(courseModules)
+      setModules(modulesWithCompletion)
 
       // Rastrear início da lição
       if (moduleData && courseData) {
@@ -378,7 +387,7 @@ export default function LessonPlayerPage() {
                       <FileText className="h-5 w-5 text-primary" />
                       <h3 className="font-semibold">Conteúdo da Lição</h3>
                     </div>
-                    <div 
+                    <div
                       className="prose max-w-none text-muted-foreground"
                       dangerouslySetInnerHTML={{ __html: currentLesson.content }}
                     />
@@ -386,6 +395,28 @@ export default function LessonPlayerPage() {
                 )}
               </div>
             </Card>
+
+            {/* Mark as Complete Button */}
+            <div className="flex items-center justify-between gap-4">
+              <Button
+                variant={currentLesson.completed ? "outline" : "default"}
+                onClick={handleVideoComplete}
+                disabled={currentLesson.completed}
+                className="flex-1"
+              >
+                {currentLesson.completed ? (
+                  <>
+                    <CheckCircle2 className="mr-2 h-4 w-4" />
+                    Concluída
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="mr-2 h-4 w-4" />
+                    Marcar como Concluída
+                  </>
+                )}
+              </Button>
+            </div>
 
             {/* Next Lesson Button */}
             {nextLesson && (

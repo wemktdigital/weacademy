@@ -24,7 +24,7 @@ export const webhookConfigSchema = z.object({
 // Schema para configuração de evento
 export const eventConfigSchema = z.object({
   event_type: z.string().min(1), // ex: "user.created", "course.enrolled", etc.
-  filters: z.record(z.any()).optional(), // Filtros adicionais para o evento
+  filters: z.record(z.string(), z.any()).optional(), // Filtros adicionais para o evento
 }).passthrough()
 
 // Schema union para schedule_config
@@ -42,7 +42,7 @@ export const pipelineScheduleSchema = z.object({
   description: z.string().optional(),
   schedule_type: z.enum(['cron', 'interval', 'webhook', 'event']),
   schedule_config: scheduleConfigSchema,
-  input_data: z.record(z.any()).optional(), // Dados de input para o pipeline
+  input_data: z.record(z.string(), z.any()).optional(), // Dados de input para o pipeline
   enabled: z.boolean().default(true),
 }).passthrough()
 

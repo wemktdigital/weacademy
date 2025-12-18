@@ -8,8 +8,9 @@ import { createClient } from '@supabase/supabase-js'
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { operationId: string } }
+  props: { params: Promise<{ operationId: string }> }
 ) {
+  const params = await props.params
   try {
     const operationId = params.operationId
 

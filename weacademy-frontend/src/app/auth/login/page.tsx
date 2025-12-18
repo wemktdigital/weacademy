@@ -1,9 +1,11 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+export const dynamic = 'force-dynamic'
+
+import { useState, useEffect, Suspense } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { toast } from 'sonner'
+import { useToast } from '@/hooks/use-toast'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -12,15 +14,17 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { BookOpen, Mail, Lock, Eye, EyeOff } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabase'
+import { trackEvent } from '@/lib/events'
 
-export default function LoginPage() {
+function LoginPageInner() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
-  
+
   const { signIn, user, loading: authLoading } = useAuth()
+  const { toast } = useToast()
   const router = useRouter()
   const searchParams = useSearchParams()
 
@@ -36,13 +40,18 @@ export default function LoginPage() {
   useEffect(() => {
     const message = searchParams?.get('message')
     if (message) {
-      toast.success(message)
+      toast({
+        title: 'Sucesso',
+        description: message,
+        variant: 'default',
+        className: 'bg-green-500 text-white border-green-600',
+      } as any)
       // Limpar a URL removendo o parâmetro message
       const url = new URL(window.location.href)
       url.searchParams.delete('message')
       window.history.replaceState({}, '', url.toString())
     }
-  }, [searchParams])
+  }, [searchParams, toast])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -51,13 +60,19 @@ export default function LoginPage() {
 
     try {
       const { data, error } = await signIn(email, password)
-      
+
       if (error) {
         setError(error.message)
       } else if (data) {
+        // Track login event
+        await trackEvent('login_success', {
+          method: 'email',
+          user_id: data.user.id
+        })
+
         // Aguardar um pouco para o contexto de autenticação atualizar
         await new Promise(resolve => setTimeout(resolve, 1000))
-        
+
         // Buscar role do usuário para redirecionar corretamente
         try {
           const { data: profile } = await supabase
@@ -201,5 +216,17 @@ export default function LoginPage() {
         </Card>
       </div>
     </div>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center h-screen">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      </div>
+    }>
+      <LoginPageInner />
+    </Suspense>
   )
 }

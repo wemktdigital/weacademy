@@ -4,8 +4,9 @@ import { createClient } from '@supabase/supabase-js'
 // GET /api/quizzes/[id] - Obter quiz
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  props: { params: Promise<{ id: string }> }
 ) {
+  const params = await props.params
   try {
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -41,8 +42,9 @@ export async function GET(
 // PUT /api/quizzes/[id] - Atualizar quiz
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  props: { params: Promise<{ id: string }> }
 ) {
+  const params = await props.params
   try {
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -77,7 +79,7 @@ export async function PUT(
     const { title, description, passing_score, time_limit_minutes } = body
 
     const updateData: any = {}
-    
+
     if (title !== undefined) updateData.title = title
     if (description !== undefined) updateData.description = description
     if (passing_score !== undefined) updateData.passing_score = passing_score

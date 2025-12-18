@@ -1,0 +1,157 @@
+RELATÓRIO DE TESTE - MODELOS LLM
+======================================================================
+
+Data: 17/12/2025, 10:33:29
+Total: 29 modelos
+Sucesso: 20 (69%)
+Falhas: 9 (31%)
+
+RESULTADOS DETALHADOS:
+----------------------------------------------------------------------
+
+GPT-5.2 (OpenAI/gpt-5.2)
+  Status: ✅ Sucesso
+  Latência: 3138ms
+  Preview: OK
+
+GPT-5.1 (OpenAI/gpt-5.1)
+  Status: ✅ Sucesso
+  Latência: 2482ms
+  Preview: OK
+
+GPT-5 (OpenAI/gpt-5)
+  Status: ✅ Sucesso
+  Latência: 4618ms
+  Preview: OK
+
+GPT-5 Mini (OpenAI/gpt-5-mini)
+  Status: ✅ Sucesso
+  Latência: 3562ms
+  Preview: OK
+
+GPT-5 Nano (OpenAI/gpt-5-nano)
+  Status: ✅ Sucesso
+  Latência: 3425ms
+  Preview: OK
+
+o1-mini (OpenAI/o1-mini)
+  Status: ❌ Erro
+  Latência: 1135ms
+  Erro: Falha ao chamar modelo: 404 The model `o1-mini` does not exist or you do not have access to it.
+
+o3-mini (OpenAI/o3-mini)
+  Status: ✅ Sucesso
+  Latência: 2681ms
+  Preview: OK
+
+o4-mini (OpenAI/o4-mini)
+  Status: ✅ Sucesso
+  Latência: 2130ms
+  Preview: OK
+
+o4-mini (Deep Research) (OpenAI/o4-mini-deep-research)
+  Status: ❌ Erro
+  Latência: 796ms
+  Erro: Falha ao chamar modelo: 404 This model is only supported in v1/responses and not in v1/chat/completions.
+
+o3 (OpenAI/o3)
+  Status: ✅ Sucesso
+  Latência: 1766ms
+  Preview: OK
+
+GPT-4o Transcribe (OpenAI/gpt-4o-transcribe)
+  Status: ❌ Erro
+  Latência: 547ms
+  Erro: Falha ao chamar modelo: Erro ao processar arquivo de áudio: Nenhum arquivo de áudio encontrado para transcrição. Por favor, anexe um arquivo de áudio.
+
+PubMed Search (PubMed/pubmed-search)
+  Status: ✅ Sucesso
+  Latência: 1282ms
+  Preview: 🔬 **Busca no PubMed concluída**
+
+**Query:** "Responda apenas com "OK" se você está funcionando corr
+
+Gemini 3 Pro Preview (Google/gemini-3-pro-preview)
+  Status: ✅ Sucesso
+  Latência: 3865ms
+  Preview: OK
+
+Gemini 2.5 Pro (Google/gemini-2.5-pro)
+  Status: ✅ Sucesso
+  Latência: 4408ms
+  Preview: OK
+
+Gemini 2.5 Flash (Google/gemini-2.5-flash)
+  Status: ✅ Sucesso
+  Latência: 2225ms
+  Preview: OK
+
+DeepSeek Chat (DeepSeek/deepseek-chat)
+  Status: ✅ Sucesso
+  Latência: 2283ms
+  Preview: OK
+
+DeepSeek Reasoner (DeepSeek/deepseek-reasoner)
+  Status: ✅ Sucesso
+  Latência: 5440ms
+  Preview: OK
+
+Grok 4.1 Fast Reasoning (Grok/grok-4-1-fast-reasoning)
+  Status: ✅ Sucesso
+  Latência: 2559ms
+  Preview: OK
+
+Grok 4.1 Fast (Grok/grok-4-1-fast-non-reasoning)
+  Status: ✅ Sucesso
+  Latência: 1057ms
+  Preview: OK
+
+Claude Sonnet 4.5 (Anthropic/claude-4-5-sonnet-latest)
+  Status: ❌ Erro
+  Latência: 1099ms
+  Erro: Falha ao chamar modelo: 404 {"type":"error","error":{"type":"not_found_error","message":"model: claude-4-5-sonnet-latest"},"request_id":"req_011CWCRU3t7d7jrtWAmFSAGn"}
+
+Claude Sonnet 4 (Anthropic/claude-4-sonnet-latest)
+  Status: ❌ Erro
+  Latência: 747ms
+  Erro: Falha ao chamar modelo: 404 {"type":"error","error":{"type":"not_found_error","message":"model: claude-4-sonnet-latest"},"request_id":"req_011CWCRUCBSKzYiAPxJKu1EX"}
+
+Claude Opus 4.5 (Anthropic/claude-4-5-opus-latest)
+  Status: ❌ Erro
+  Latência: 1067ms
+  Erro: Falha ao chamar modelo: 404 {"type":"error","error":{"type":"not_found_error","message":"model: claude-4-5-opus-latest"},"request_id":"req_011CWCRULJ6FQRL9aSfYKrkq"}
+
+Claude Opus 4.1 (Anthropic/claude-4-1-opus-latest)
+  Status: ❌ Erro
+  Latência: 746ms
+  Erro: Falha ao chamar modelo: 404 {"type":"error","error":{"type":"not_found_error","message":"model: claude-4-1-opus-latest"},"request_id":"req_011CWCRUUP1atMQ6hSr5fhMC"}
+
+Claude Haiku 4.5 (Anthropic/claude-4-5-haiku-latest)
+  Status: ❌ Erro
+  Latência: 889ms
+  Erro: Falha ao chamar modelo: 404 {"type":"error","error":{"type":"not_found_error","message":"model: claude-4-5-haiku-latest"},"request_id":"req_011CWCRUbyfZPeSq7CgTTozL"}
+
+Claude Haiku 3.5 (Anthropic/claude-3-5-haiku-20241022)
+  Status: ✅ Sucesso
+  Latência: 2129ms
+  Preview: OK
+
+Claude Haiku 3 (Anthropic/claude-3-haiku-20240307)
+  Status: ✅ Sucesso
+  Latência: 1734ms
+  Preview: OK
+
+Claude 3.5 Sonnet (Legacy) (Anthropic/claude-3-5-sonnet-20240620)
+  Status: ❌ Erro
+  Latência: 728ms
+  Erro: Falha ao chamar modelo: 404 {"type":"error","error":{"type":"not_found_error","message":"model: claude-3-5-sonnet-20240620"},"request_id":"req_011CWCRVB4VRR3DY1tPN4XEW"}
+
+Claude 3 Opus (Legacy) (Anthropic/claude-3-opus-20240229)
+  Status: ✅ Sucesso
+  Latência: 1688ms
+  Preview: OK
+
+Llama 3.1 405B Instruct (Replicate/meta/meta-llama-3.1-405b-instruct)
+  Status: ✅ Sucesso
+  Latência: 30936ms
+  Preview: OK

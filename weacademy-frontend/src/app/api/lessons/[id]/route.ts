@@ -4,8 +4,9 @@ import { createClient } from '@supabase/supabase-js'
 // GET /api/lessons/[id] - Obter lição
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  props: { params: Promise<{ id: string }> }
 ) {
+  const params = await props.params
   try {
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -40,8 +41,9 @@ export async function GET(
 // PUT /api/lessons/[id] - Atualizar lição
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  props: { params: Promise<{ id: string }> }
 ) {
+  const params = await props.params
   try {
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -76,7 +78,7 @@ export async function PUT(
     const { title, description, type, content, video_url, video_provider, attachments, duration_minutes, is_preview, is_free, order_index } = body
 
     const updateData: any = {}
-    
+
     if (title !== undefined) updateData.title = title
     if (description !== undefined) updateData.description = description
     if (type !== undefined) updateData.type = type
@@ -112,8 +114,9 @@ export async function PUT(
 // DELETE /api/lessons/[id] - Deletar lição
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  props: { params: Promise<{ id: string }> }
 ) {
+  const params = await props.params
   try {
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,

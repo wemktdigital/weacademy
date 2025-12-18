@@ -41,6 +41,7 @@ export interface Achievement {
   category: 'courses' | 'quizzes' | 'lab-ia' | 'community' | 'special'
   points: number
   rarity: 'common' | 'rare' | 'epic' | 'legendary'
+  conditions: Record<string, any>
   active: boolean
   sort_order: number
   unlocked_count?: number
@@ -87,10 +88,10 @@ export function AchievementsTable({
       achievement.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       achievement.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
       achievement.description.toLowerCase().includes(searchTerm.toLowerCase())
-    
+
     const matchesCategory = categoryFilter === 'all' || achievement.category === categoryFilter
     const matchesRarity = rarityFilter === 'all' || achievement.rarity === rarityFilter
-    const matchesStatus = statusFilter === 'all' || 
+    const matchesStatus = statusFilter === 'all' ||
       (statusFilter === 'active' && achievement.active) ||
       (statusFilter === 'inactive' && !achievement.active)
 

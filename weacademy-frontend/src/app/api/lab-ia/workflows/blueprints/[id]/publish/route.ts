@@ -29,13 +29,13 @@ type BlueprintRecord = {
   published_workflow_version_id?: string | null
 }
 
-const ALLOWED_STAGE_TYPES = new Set(['pipeline', 'human', 'delay', 'webhook'])
+const ALLOWED_STAGE_TYPES = new Set(['pipeline', 'human', 'delay', 'webhook', 'loop'])
 
-function sanitizeStageType(input: any): 'pipeline' | 'human' | 'delay' | 'webhook' {
+function sanitizeStageType(input: any): 'pipeline' | 'human' | 'delay' | 'webhook' | 'loop' {
   if (typeof input !== 'string') return 'pipeline'
   const value = input.toLowerCase()
   if (ALLOWED_STAGE_TYPES.has(value)) {
-    return value as 'pipeline' | 'human' | 'delay' | 'webhook'
+    return value as 'pipeline' | 'human' | 'delay' | 'webhook' | 'loop'
   }
   return 'pipeline'
 }
@@ -287,7 +287,8 @@ function computeOrderHint(node: any, index: number) {
   return Math.round(baseY * 100) + Math.round(baseX)
 }
 
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params
   try {
     const supabase = await supabaseServer()
     const { data: authData, error: authError } = await supabase.auth.getUser()
@@ -527,11 +528,11 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       const membersInsertPayload: any[] = []
       const idByTeamKey = new Map<string, string>()
 
-      ;(insertedTeams || []).forEach((teamRow: any) => {
-        if (teamRow?.team_key && teamRow?.id) {
-          idByTeamKey.set(teamRow.team_key, teamRow.id)
-        }
-      })
+        ; (insertedTeams || []).forEach((teamRow: any) => {
+          if (teamRow?.team_key && teamRow?.id) {
+            idByTeamKey.set(teamRow.team_key, teamRow.id)
+          }
+        })
 
       teamsFromBlueprint.forEach((team: any) => {
         const teamId = idByTeamKey.get(team.teamKey)

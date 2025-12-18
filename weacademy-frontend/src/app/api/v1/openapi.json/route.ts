@@ -278,7 +278,7 @@ export async function GET(request: NextRequest) {
 
     // Adicionar exemplos de pipelines disponíveis
     if (pipelines && pipelines.length > 0) {
-      openApiSpec.paths['/api/v1/pipelines'] = {
+      (openApiSpec.paths as any)['/api/v1/pipelines'] = {
         get: {
           summary: 'List available pipelines',
           description: 'Returns list of pipelines that can be executed via API',

@@ -5,7 +5,7 @@ import { createClient } from '@supabase/supabase-js'
 
 const triggerUpdateSchema = z.object({
   type: z.enum(['calendar', 'webhook', 'data', 'user_event']).optional(),
-  config: z.record(z.any()).optional(),
+  config: z.record(z.string(), z.any()).optional(),
   is_active: z.boolean().optional(),
   notes: z.string().optional().nullable(),
   tags: z.array(z.string()).optional().nullable(),
@@ -37,7 +37,8 @@ async function getAuthenticatedUser(request: NextRequest) {
   return user
 }
 
-export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PUT(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params
   try {
     const user = await getAuthenticatedUser(request)
     if (!user) {
@@ -82,7 +83,8 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
   }
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params
   try {
     const user = await getAuthenticatedUser(request)
     if (!user) {

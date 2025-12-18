@@ -2,13 +2,14 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseServer } from '@/lib/supabaseServer'
 
 interface Params {
-  params: {
+  params: Promise<{
     id: string
-  }
+  }>
 }
 
-export async function GET(request: NextRequest, { params }: Params) {
+export async function GET(request: NextRequest, props: Params) {
   try {
+    const params = await props.params
     const { id } = params
     const supabase = await supabaseServer()
     const { data: { user }, error } = await supabase.auth.getUser()
@@ -35,8 +36,9 @@ export async function GET(request: NextRequest, { params }: Params) {
   }
 }
 
-export async function PUT(request: NextRequest, { params }: Params) {
+export async function PUT(request: NextRequest, props: Params) {
   try {
+    const params = await props.params
     const { id } = params
     const body = await request.json()
 
@@ -48,9 +50,9 @@ export async function PUT(request: NextRequest, { params }: Params) {
     }
 
     const updatePayload: Record<string, any> = {}
-    ;['name', 'description', 'category', 'tags', 'canvas', 'settings', 'published_workflow_version_id'].forEach((key) => {
-      if (key in body) updatePayload[key] = body[key]
-    })
+      ;['name', 'description', 'category', 'tags', 'canvas', 'settings', 'published_workflow_version_id'].forEach((key) => {
+        if (key in body) updatePayload[key] = body[key]
+      })
 
     if (Object.keys(updatePayload).length === 0) {
       return NextResponse.json({ error: 'Nenhum campo para atualizar' }, { status: 400 })
@@ -75,8 +77,9 @@ export async function PUT(request: NextRequest, { params }: Params) {
   }
 }
 
-export async function DELETE(request: NextRequest, { params }: Params) {
+export async function DELETE(request: NextRequest, props: Params) {
   try {
+    const params = await props.params
     const { id } = params
     const supabase = await supabaseServer()
     const { data: { user }, error } = await supabase.auth.getUser()

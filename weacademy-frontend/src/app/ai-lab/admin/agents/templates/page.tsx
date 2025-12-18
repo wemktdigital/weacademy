@@ -52,10 +52,14 @@ export default function TemplatesPage() {
       if (!response.ok) throw new Error('Failed to fetch templates')
       const data = await response.json()
       setTemplates(data.templates || [])
-      
+
       // Extrair categorias e provedores únicos dos templates
-      const categories = [...new Set(data.templates?.map((t: Agent) => t.category).filter(Boolean) || [])].sort()
-      const providers = [...new Set(data.templates?.map((t: Agent) => t.provider).filter(Boolean) || [])].sort()
+      const categories = [...new Set((data.templates || []).map((t: Agent) => t.category).filter(Boolean))] as string[]
+      categories.sort()
+
+      const providers = [...new Set((data.templates || []).map((t: Agent) => t.provider).filter(Boolean))] as string[]
+      providers.sort()
+
       setAvailableCategories(categories)
       setAvailableProviders(providers)
     } catch (error) {
@@ -87,7 +91,7 @@ export default function TemplatesPage() {
         prompt: selectedTemplate.prompt || '',
         category: selectedTemplate.category || '',
       })
-      
+
       router.push(`/ai-lab/admin/agents?${params}`)
     } catch (error) {
       console.error('Error using template:', error)
@@ -100,7 +104,7 @@ export default function TemplatesPage() {
       const response = await fetch('/api/lab-ia/admin/templates?action=export')
       if (!response.ok) throw new Error('Failed to export templates')
       const data = await response.json()
-      
+
       // Criar arquivo JSON e fazer download
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
       const url = URL.createObjectURL(blob)
@@ -111,7 +115,7 @@ export default function TemplatesPage() {
       a.click()
       document.body.removeChild(a)
       URL.revokeObjectURL(url)
-      
+
       toast.success('Templates exportados com sucesso!')
     } catch (error) {
       console.error('Error exporting templates:', error)
@@ -126,7 +130,7 @@ export default function TemplatesPage() {
     try {
       const text = await file.text()
       const data = JSON.parse(text)
-      
+
       if (!data.templates || !Array.isArray(data.templates)) {
         toast.error('Formato de arquivo inválido')
         return
@@ -139,7 +143,7 @@ export default function TemplatesPage() {
       const headers: HeadersInit = {
         'Content-Type': 'application/json',
       }
-      
+
       if (token) {
         headers['Authorization'] = `Bearer ${token}`
       }
@@ -156,27 +160,27 @@ export default function TemplatesPage() {
         console.error('Erro ao importar templates:', errorData)
         throw new Error(errorData.error || 'Failed to import templates')
       }
-      
+
       const result = await response.json()
-      
+
       // Log detalhado no console
       console.log('[Templates] Resultado da importação:', result)
-      
+
       // Mostrar detalhes dos resultados
       const successCount = result.results?.filter((r: any) => r.success).length || 0
       const failCount = result.results?.filter((r: any) => !r.success).length || 0
       const totalCount = result.results?.length || 0
-      
+
       console.log(`[Templates] Importação concluída: ${successCount} sucesso, ${failCount} falhas de ${totalCount} total`)
-      
+
       if (failCount > 0) {
         const failedTemplates = result.results
           .filter((r: any) => !r.success)
           .map((r: any) => `${r.name}: ${r.error}`)
           .join(', ')
-        
+
         console.warn('[Templates] Templates que falharam:', result.results.filter((r: any) => !r.success))
-        
+
         toast.warning(
           `Importados ${successCount}/${totalCount} templates. ${failCount} falharam. Veja o console para detalhes.`,
           { duration: 10000 }

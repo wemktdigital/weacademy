@@ -8,7 +8,7 @@ export async function GET(request: NextRequest) {
     // Verificar autenticação via header Authorization
     const authHeader = request.headers.get('authorization')
     const token = authHeader?.replace('Bearer ', '')
-    
+
     let user = null
 
     // Tentar autenticar via token primeiro
@@ -51,7 +51,7 @@ export async function GET(request: NextRequest) {
           },
         }
       )
-      
+
       const { data: { user: cookieUser }, error: authError } = await supabase.auth.getUser()
       if (!authError && cookieUser) {
         user = cookieUser
@@ -97,7 +97,7 @@ export async function GET(request: NextRequest) {
     // Buscar emails dos usuários separadamente
     const userIds = [...new Set(agentLogs?.map(log => log.user_id).filter(Boolean) || [])]
     const userEmailsMap = new Map<string, string>()
-    
+
     if (userIds.length > 0) {
       // Buscar emails usando auth.admin.listUsers() e filtrar pelos IDs
       const { data: allUsers } = await serviceRoleSupabase.auth.admin.listUsers()
@@ -200,7 +200,7 @@ export async function GET(request: NextRequest) {
     const buffer = await workbook.xlsx.writeBuffer()
 
     // Retornar como download
-    return new NextResponse(buffer as Buffer, {
+    return new NextResponse(buffer as any, {
       headers: {
         'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         'Content-Disposition': `attachment; filename=lab-ia-relatorio-${new Date().toISOString().split('T')[0]}.xlsx`,

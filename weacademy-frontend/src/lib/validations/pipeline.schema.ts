@@ -37,7 +37,7 @@ export const pipelineStepSchema = z.object({
   strict_validation: z.boolean().optional(), // Se true, bloqueia execução se validação falhar (default: false)
   prompt_template: z.string().optional(), // Template do prompt com variáveis (sobrescreve prompt do agente)
   output_transform: z.array(transformationConfigSchema).optional(), // Transformações a aplicar no output
-  variables: z.record(z.union([z.string(), z.number(), z.boolean()])).optional(), // Variáveis customizadas para este step
+  variables: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional(), // Variáveis customizadas para este step
 })
 
 export const pipelineSchema = z.object({

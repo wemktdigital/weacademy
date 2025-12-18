@@ -9,6 +9,12 @@ vi.mock('@/lib/supabase')
 vi.mock('@/lib/supabaseServer')
 vi.mock('@/modules/laboratorio-ia/services/llmRouter')
 vi.mock('@/modules/laboratorio-ia/services/knowledgeBase')
+vi.mock('@/modules/laboratorio-ia/services/memory', () => ({
+  recallGlobal: vi.fn().mockResolvedValue([]),
+  recallProfile: vi.fn().mockResolvedValue({ global: [], agent: [] }),
+  getRecentSummaries: vi.fn().mockResolvedValue([]),
+  formatMemoriesForContext: vi.fn().mockReturnValue(''),
+}))
 
 // Mock supabase do @/lib/supabase
 vi.mock('@/lib/supabase', async () => {
@@ -358,18 +364,13 @@ describe('Chat API - Lab IA', () => {
         data: mockProfile,
         error: null,
       })
+        .mockResolvedValue({ // Sticky agent for subsequent queries (settings + agent)
+          data: mockAgent,
+          error: null,
+        })
 
-      // Mock buscar agente - a API cria um serviceRoleSupabase
-      // A API faz: createClient(url, SERVICE_ROLE_KEY) -> retorna serviceRoleClient
-      // Precisamos mockar a query de lab_agents
-      mockSupabase.serviceRoleClient.from.mockReturnValue(mockSupabase.getQueryBuilder())
-      mockSupabase.getQueryBuilder().select.mockReturnValue(mockSupabase.getQueryBuilder())
-      mockSupabase.getQueryBuilder().eq.mockReturnValue(mockSupabase.getQueryBuilder())
-      mockSupabase.getQueryBuilder().eq.mockReturnValue(mockSupabase.getQueryBuilder())
-      mockSupabase.getQueryBuilder().single.mockResolvedValue({
-        data: mockAgent,
-        error: null,
-      })
+      // Ensure creation of client uses the mocked service role client
+      vi.mocked(createClient).mockReturnValue(mockSupabase.getServiceRoleClient())
 
       // Mock callLLM
       const { callLLM } = await import('@/modules/laboratorio-ia/services/llmRouter')
@@ -447,6 +448,9 @@ describe('Chat API - Lab IA', () => {
         data: mockAgent,
         error: null,
       })
+
+      // Ensure creation of client uses the mocked service role client
+      vi.mocked(createClient).mockReturnValue(mockSupabase.getServiceRoleClient())
 
       // Mock callLLM
       const { callLLM } = await import('@/modules/laboratorio-ia/services/llmRouter')

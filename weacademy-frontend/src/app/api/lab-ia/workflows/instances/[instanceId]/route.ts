@@ -2,13 +2,14 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseServer } from '@/lib/supabaseServer'
 
 interface Params {
-  params: {
+  params: Promise<{
     instanceId: string
-  }
+  }>
 }
 
-export async function GET(request: NextRequest, { params }: Params) {
+export async function GET(request: NextRequest, props: Params) {
   try {
+    const params = await props.params
     const { instanceId } = params
     if (!instanceId) {
       return NextResponse.json({ error: 'instanceId é obrigatório' }, { status: 400 })

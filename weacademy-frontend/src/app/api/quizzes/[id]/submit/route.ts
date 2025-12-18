@@ -5,8 +5,9 @@ import { trackQuizComplete } from '@/lib/analytics'
 // POST /api/quizzes/[id]/submit - Submeter quiz
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  props: { params: Promise<{ id: string }> }
 ) {
+  const params = await props.params
   try {
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -61,7 +62,7 @@ export async function POST(
       totalPoints += question.points || 1
 
       const userAnswer = answers[question.id]
-      
+
       if (!userAnswer) {
         continue // Não respondeu
       }
@@ -87,8 +88,8 @@ export async function POST(
       }
     }
 
-    const scorePercentage = totalPoints > 0 
-      ? Math.round((earnedPoints / totalPoints) * 100) 
+    const scorePercentage = totalPoints > 0
+      ? Math.round((earnedPoints / totalPoints) * 100)
       : 0
 
     const passed = scorePercentage >= quiz.passing_score
@@ -151,7 +152,7 @@ export async function POST(
       earnedPoints,
       passed,
       passing_score: quiz.passing_score,
-      message: passed 
+      message: passed
         ? `Parabéns! Você passou no quiz e ganhou ${scorePercentage === 100 ? '75' : '50'} XP! 🎉`
         : `Quiz finalizado. Tente novamente para passar e ganhar XP!`,
     })

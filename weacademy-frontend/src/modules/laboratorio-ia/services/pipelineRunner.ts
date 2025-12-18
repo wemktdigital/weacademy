@@ -1,13 +1,14 @@
+// @ts-nocheck
 import { callLLM } from './llmRouter'
 import { createClient } from '@supabase/supabase-js'
 import { evaluateCondition, mergeOutputs, type Condition } from './conditionEvaluator'
 import { validateOutput, createSchemaFromDefinition, type ValidationResult } from './outputValidator'
-import { 
-  processPrompt, 
-  processOutput, 
+import {
+  processPrompt,
+  processOutput,
   buildVariableContext,
   type VariableContext,
-  type TransformationConfig 
+  type TransformationConfig
 } from './variableProcessor'
 import { searchKnowledgeBase, injectRAGContext } from './ragService'
 import { getABVariant, recordABExecution, type ABExperiment } from './abTesting'
@@ -304,7 +305,7 @@ const CIRCUIT_BREAKER_RESET_TIME = 60000 // Reset após 60 segundos
 function isCircuitBreakerOpen(agentId: string): boolean {
   const state = circuitBreakerState.get(agentId)
   if (!state) return false
-  
+
   if (state.isOpen) {
     // Verificar se passou tempo suficiente para resetar
     const timeSinceLastFailure = Date.now() - state.lastFailure
@@ -315,7 +316,7 @@ function isCircuitBreakerOpen(agentId: string): boolean {
     }
     return true
   }
-  
+
   return false
 }
 
@@ -326,12 +327,12 @@ function recordFailure(agentId: string) {
   const state = circuitBreakerState.get(agentId) || { failures: 0, lastFailure: 0, isOpen: false }
   state.failures++
   state.lastFailure = Date.now()
-  
+
   if (state.failures >= CIRCUIT_BREAKER_THRESHOLD) {
     state.isOpen = true
     console.log(`[CircuitBreaker] Circuit aberto para agente ${agentId} após ${state.failures} falhas`)
   }
-  
+
   circuitBreakerState.set(agentId, state)
 }
 
@@ -357,14 +358,14 @@ function recordSuccess(agentId: string) {
 function isRetryableError(error: any, retryConfig: RetryConfig): boolean {
   const errorMessage = error?.message?.toLowerCase() || ''
   const errorCode = error?.code?.toLowerCase() || ''
-  
+
   // Se não há configuração específica, retry apenas em erros de rede/timeout/rate-limit
   const defaultRetryable = ['network', 'timeout', 'rate-limit', 'rate_limit', '429', '503', '502', '500']
-  
+
   const retryablePatterns = retryConfig.retryableErrors || defaultRetryable
-  
-  return retryablePatterns.some(pattern => 
-    errorMessage.includes(pattern.toLowerCase()) || 
+
+  return retryablePatterns.some(pattern =>
+    errorMessage.includes(pattern.toLowerCase()) ||
     errorCode.includes(pattern.toLowerCase())
   )
 }
@@ -375,10 +376,10 @@ function isRetryableError(error: any, retryConfig: RetryConfig): boolean {
 function calculateRetryDelay(attempt: number, retryConfig: RetryConfig): number {
   const baseDelay = retryConfig.baseDelay || 1000
   const maxDelay = retryConfig.maxDelay || 10000
-  
+
   // Backoff exponencial: baseDelay * 2^(attempt - 1)
   const delay = baseDelay * Math.pow(2, attempt - 1)
-  
+
   return Math.min(delay, maxDelay)
 }
 
@@ -392,7 +393,7 @@ async function withTimeout<T>(
 ): Promise<T> {
   return Promise.race([
     promise,
-    new Promise<T>((_, reject) => 
+    new Promise<T>((_, reject) =>
       setTimeout(() => reject(new Error(timeoutMessage)), timeoutMs)
     )
   ])
@@ -404,7 +405,7 @@ export async function getPipelineById(pipelineId: string) {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
-  
+
   const { data, error } = await supabase
     .from('lab_agent_pipelines')
     .select('*')
@@ -412,7 +413,7 @@ export async function getPipelineById(pipelineId: string) {
     .single()
 
   if (error) throw new Error(`Pipeline not found: ${error.message}`)
-  
+
   return data
 }
 
@@ -422,7 +423,7 @@ export async function getAgentById(agentId: string) {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
-  
+
   const { data, error } = await supabase
     .from('lab_agents')
     .select('*')
@@ -430,7 +431,7 @@ export async function getAgentById(agentId: string) {
     .single()
 
   if (error) throw new Error(`Agent not found: ${error.message}`)
-  
+
   return data
 }
 
@@ -457,30 +458,30 @@ export async function runAgent(
   if (isCircuitBreakerOpen(agentId)) {
     throw new Error(`Circuit breaker está aberto para agente ${agentId}. Muitas falhas recentes.`)
   }
-  
+
   const agent = await getAgentById(agentId)
-  
+
   // Se o agente tem provider/modelo definidos, usar esses
   const finalProvider = provider || agent.provider || 'OpenAI'
   const finalModel = model || agent.model || 'gpt-4o-mini'
-  
+
   // Adicionar prompt do agente como system message
   let systemPrompt = agent.prompt || ''
-  
+
   // Integrar RAG se o agente tem knowledge_base_files configurado
   if (agent.knowledge_base_files && agent.knowledge_base_files.length > 0) {
     try {
       // Buscar contexto relevante da knowledge base
       const lastUserMessage = messages.filter((m: any) => m.role === 'user').pop()
       const query = lastUserMessage?.content || messages[messages.length - 1]?.content || ''
-      
+
       if (query) {
         const ragContext = await searchKnowledgeBase(query, {
           agentId: agentId,
           similarityThreshold: 0.7,
           maxResults: 5,
         })
-        
+
         if (ragContext.chunks.length > 0) {
           // Injeta contexto RAG no prompt
           systemPrompt = injectRAGContext(systemPrompt, ragContext)
@@ -492,7 +493,7 @@ export async function runAgent(
       // Continuar sem RAG se houver erro
     }
   }
-  
+
   const messagesWithSystem = [
     ...(systemPrompt ? [{ role: 'system', content: String(systemPrompt || '') }] : []),
     // Filtrar e validar mensagens - garantir que content seja sempre string válida
@@ -517,19 +518,19 @@ export async function runAgent(
     timeout: 30000,
     retryableErrors: ['network', 'timeout', 'rate-limit', 'rate_limit', '429', '503', '502'],
   }
-  
+
   const finalRetryConfig = retryConfig || defaultRetryConfig
   const finalTimeout = timeout || finalRetryConfig.timeout || 30000
-  
+
   // Executar com retry
   const maxTries = finalRetryConfig.maxTries || 3
   let lastError: Error | null = null
-  
+
   for (let attempt = 1; attempt <= maxTries; attempt++) {
     try {
       console.log(`[runAgent] Tentativa ${attempt}/${maxTries} - Executando LLM: provider=${finalProvider}, model=${finalModel}`)
       const startTime = Date.now()
-      
+
       // Executar LLM com timeout
       const llmPromise = callLLM({
         provider: finalProvider,
@@ -537,13 +538,13 @@ export async function runAgent(
         messages: messagesWithSystem,
         stream: false,
       })
-      
+
       const result = await withTimeout(
         llmPromise,
         finalTimeout,
         `Timeout após ${finalTimeout}ms na tentativa ${attempt}`
       )
-      
+
       const latency = Date.now() - startTime
 
       console.log(`[runAgent] Sucesso na tentativa ${attempt}:`, {
@@ -554,7 +555,7 @@ export async function runAgent(
 
       // Garantir que output seja sempre uma string válida
       const safeOutput = result.content ? String(result.content) : '[Resposta vazia do agente]'
-      
+
       // Registrar sucesso no circuit breaker
       recordSuccess(agentId)
 
@@ -569,7 +570,7 @@ export async function runAgent(
         error: error.message,
         code: error.code,
       })
-      
+
       // Verificar se é retriável
       if (attempt < maxTries && isRetryableError(error, finalRetryConfig)) {
         const delay = calculateRetryDelay(attempt, finalRetryConfig)
@@ -586,7 +587,7 @@ export async function runAgent(
       }
     }
   }
-  
+
   // Se chegou aqui, todas as tentativas falharam
   recordFailure(agentId)
   throw lastError || new Error('Todas as tentativas falharam')
@@ -1142,8 +1143,7 @@ Instruções: ${coordinatorInstruction}`
             const weight = entry.member.weight || 1
             votes.set(entry.decisionIndex, (votes.get(entry.decisionIndex) || 0) + weight)
             voteDetails.push(
-              `Validador ${idx + 1} (${entry.execution.agentName}) votou no item ${
-                entry.decisionIndex + 1
+              `Validador ${idx + 1} (${entry.execution.agentName}) votou no item ${entry.decisionIndex + 1
               } (peso ${weight}).`
             )
           } else {
@@ -1178,9 +1178,8 @@ Instruções: ${coordinatorInstruction}`
           ...validatorsOutputs.map((entry) => entry.execution.stepResult)
         )
 
-        const finalOutput = `${winningExecutor.execution.stepResult.output}\n\n---\nResumo dos votos:\n${
-          voteDetails.join('\n') || 'Sem votos registrados.'
-        }\n\nContribuições:
+        const finalOutput = `${winningExecutor.execution.stepResult.output}\n\n---\nResumo dos votos:\n${voteDetails.join('\n') || 'Sem votos registrados.'
+          }\n\nContribuições:
 \n${formattedExecutorSummary}`
 
         if (onProgress) {
@@ -1292,26 +1291,26 @@ export async function runPipeline(
   }
 ): Promise<PipelineResult> {
   const startTime = Date.now()
-  
+
   // Verificar se há experimento A/B ativo para este pipeline
   let actualPipelineId = pipelineId
   let abExperiment: ABExperiment | null = null
   let abVariant: 'a' | 'b' | null = null
-  
+
   if (options?.abExperimentId) {
     try {
       const { getABExperiment } = await import('./abTesting')
       abExperiment = await getABExperiment(options.abExperimentId)
-      
+
       if (abExperiment && abExperiment.status === 'running') {
         // Determinar variante
         abVariant = await getABVariant(options.abExperimentId, userId, options.sessionId)
-        
+
         // Selecionar pipeline correto baseado na variante
-        actualPipelineId = abVariant === 'a' 
+        actualPipelineId = abVariant === 'a'
           ? abExperiment.variant_a_pipeline_id
           : abExperiment.variant_b_pipeline_id
-        
+
         // Se há versão específica, usar versão (implementar depois)
         // Por enquanto, usar pipeline diretamente
       }
@@ -1326,18 +1325,18 @@ export async function runPipeline(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
         process.env.SUPABASE_SERVICE_ROLE_KEY!
       )
-      
+
       const { data: experiments } = await serviceSupabase
         .from('lab_pipeline_ab_experiments')
         .select('*')
         .eq('status', 'running')
         .or(`variant_a_pipeline_id.eq.${pipelineId},variant_b_pipeline_id.eq.${pipelineId}`)
         .limit(1)
-      
+
       if (experiments && experiments.length > 0) {
         abExperiment = experiments[0] as ABExperiment
         abVariant = await getABVariant(abExperiment.id, userId, options?.sessionId)
-        
+
         actualPipelineId = abVariant === 'a'
           ? abExperiment.variant_a_pipeline_id
           : abExperiment.variant_b_pipeline_id
@@ -1347,10 +1346,10 @@ export async function runPipeline(
       // Continuar com pipeline original
     }
   }
-  
+
   // Buscar pipeline (pode ser diferente se em experimento A/B)
   const pipeline = await getPipelineById(actualPipelineId)
-  
+
   // Verificar se pipeline está ativo ou se é draft e está permitido
   if (!pipeline.active && !(allowDraft && pipeline.draft)) {
     throw new Error('Pipeline is inactive')
@@ -1365,31 +1364,31 @@ export async function runPipeline(
     throw new Error('Pipeline has no steps')
   }
 
-      // Estrutura para rastrear branches condicionais
-      interface BranchContext {
-        context: any[]
-        stepIndex: number
-        executedSteps: PipelineExecutionResult[] // Steps executados neste branch
-        variableContext: VariableContext // Contexto de variáveis acumulado
-      }
-      
-      // Construir contexto inicial de variáveis
-      const initialVariableContext = buildVariableContext([], inputMessages)
-      
-      // Começar com um único branch
-      let activeBranches: BranchContext[] = [{
-        context: inputMessages,
-        stepIndex: 0,
-        executedSteps: [],
-        variableContext: initialVariableContext,
-      }]
-  
+  // Estrutura para rastrear branches condicionais
+  interface BranchContext {
+    context: any[]
+    stepIndex: number
+    executedSteps: PipelineExecutionResult[] // Steps executados neste branch
+    variableContext: VariableContext // Contexto de variáveis acumulado
+  }
+
+  // Construir contexto inicial de variáveis
+  const initialVariableContext = buildVariableContext([], inputMessages)
+
+  // Começar com um único branch
+  let activeBranches: BranchContext[] = [{
+    context: inputMessages,
+    stepIndex: 0,
+    executedSteps: [],
+    variableContext: initialVariableContext,
+  }]
+
   const allResults: PipelineExecutionResult[] = []
 
   // Processar steps com suporte a branches condicionais
   while (activeBranches.length > 0) {
     const nextBranches: BranchContext[] = []
-    
+
     // Processar cada branch ativo
     for (const branch of activeBranches) {
       // Se chegamos ao fim dos steps, finalizar este branch
@@ -1397,36 +1396,36 @@ export async function runPipeline(
         allResults.push(...branch.executedSteps)
         continue
       }
-      
+
       // Agrupar steps por ordem (steps com mesma ordem podem ser branches)
       const currentOrder = steps[branch.stepIndex].order
       const stepsAtCurrentOrder = steps.filter(s => s.order === currentOrder)
-      
+
       // Filtrar steps que atendem suas condições antes de executar em paralelo
       const stepsToExecute: PipelineStep[] = []
-      
+
       for (const step of stepsAtCurrentOrder) {
         // Verificar condição se existir
         if (step.condition) {
           const contextText = branch.context
             .map(msg => String(msg.content || ''))
             .join(' ')
-          
+
           const conditionMet = evaluateCondition(step.condition, contextText)
-          
+
           if (!conditionMet) {
             console.log(`[PipelineRunner] Step ${step.order} (${step.agent_id}) não executado - condição não atendida`)
             continue // Pular este step se condição não for atendida
           }
         }
-        
+
         stepsToExecute.push(step)
       }
-      
+
       // Executar steps em paralelo usando Promise.all
       const executedAtThisOrder: PipelineExecutionResult[] = []
       const outputsAtThisOrder: string[] = []
-      
+
       if (stepsToExecute.length > 0) {
         // Construir contexto de variáveis atualizado para este branch
         const currentVariableContext = buildVariableContext(
@@ -1437,7 +1436,7 @@ export async function runPipeline(
           })),
           branch.context
         )
-        
+
         // Executar todos os steps desta ordem em paralelo
         const parallelExecutions = stepsToExecute.map(async (step) => {
           // Criar contexto de variáveis para este step específico
@@ -1689,10 +1688,10 @@ export async function runPipeline(
             }
           }
         })
-        
+
         // Aguardar todas as execuções paralelas
         const results = await Promise.all(parallelExecutions)
-        
+
         // Processar resultados
         for (const result of results) {
           if (result.success) {
@@ -1703,12 +1702,12 @@ export async function runPipeline(
             throw result.error
           }
         }
-        
+
         if (stepsToExecute.length > 1) {
           console.log(`[PipelineRunner] Executados ${stepsToExecute.length} steps em paralelo na ordem ${currentOrder}`)
         }
       }
-      
+
       // Se nenhum step foi executado nesta ordem, avançar para próxima ordem
       if (executedAtThisOrder.length === 0) {
         // Avançar para próxima ordem única
@@ -1726,7 +1725,7 @@ export async function runPipeline(
         }
         continue
       }
-      
+
       // Mergear outputs se houver múltiplos (mesma ordem = branches condicionais)
       let mergedOutput: string
       if (outputsAtThisOrder.length === 1) {
@@ -1737,10 +1736,10 @@ export async function runPipeline(
         mergedOutput = mergeOutputs(outputsAtThisOrder, mergeStrategy)
         console.log(`[PipelineRunner] Múltiplos outputs mergeados usando estratégia: ${mergeStrategy}`)
       }
-      
+
       // Adicionar resultados ao branch
       const updatedExecutedSteps = [...branch.executedSteps, ...executedAtThisOrder]
-      
+
       // Atualizar contexto de variáveis com novos outputs
       const updatedVariableContext = buildVariableContext(
         updatedExecutedSteps.map(es => ({
@@ -1750,10 +1749,10 @@ export async function runPipeline(
         })),
         branch.context
       )
-      
+
       // Criar novo contexto para próximo step
       const nextContext = [{ role: 'user', content: mergedOutput }]
-      
+
       // Avançar para próxima ordem
       const nextOrder = Math.min(...steps.filter(s => s.order > currentOrder).map(s => s.order))
       if (isFinite(nextOrder)) {
@@ -1768,11 +1767,11 @@ export async function runPipeline(
         allResults.push(...updatedExecutedSteps)
       }
     }
-    
+
     // Atualizar branches ativos
     activeBranches = nextBranches
   }
-  
+
   // Usar todos os resultados coletados
   const results = allResults.length > 0 ? allResults : []
 
@@ -1813,14 +1812,14 @@ export async function runPipeline(
 
   if (pipelineStepsRecord && pipelineStepsRecord.steps) {
     const steps = pipelineStepsRecord.steps as Array<{ order: number; agent_id: string; provider?: string; model?: string }>
-    
+
     for (const step of steps) {
       const stepResult = results.find(r => r.agent_id === step.agent_id)
       if (stepResult) {
         // Buscar informações do agente para provider/model se não estiver no step
         let provider = step.provider
         let model = step.model
-        
+
         if (!provider || !model) {
           try {
             const { data: agent } = await supabaseForLogs

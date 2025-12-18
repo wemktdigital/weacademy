@@ -19,7 +19,7 @@ import {
   trackAILabUsage,
   trackSearch,
   EventMetadata,
-} from '@/lib/analytics/eventTracking'
+} from '@/lib/analytics'
 
 export interface UseEventTrackingReturn {
   trackEvent: (eventName: string, metadata?: EventMetadata) => Promise<boolean>
@@ -53,16 +53,16 @@ export function useEventTracking(): UseEventTrackingReturn {
   useEffect(() => {
     // Evitar rastrear a mesma página múltiplas vezes
     const currentPath = pathname + (searchParams?.toString() ? `?${searchParams.toString()}` : '')
-    
+
     if (currentPath !== lastPathname.current) {
       lastPathname.current = currentPath
-      
+
       // Extrair nome da página do pathname
       const pageName = pathname
         .split('/')
         .filter(Boolean)
         .join('_') || 'home'
-      
+
       // Aguardar um pouco para garantir que a página carregou
       const timer = setTimeout(() => {
         trackPageView(pageName, {
@@ -77,7 +77,7 @@ export function useEventTracking(): UseEventTrackingReturn {
 
   return {
     trackEvent: useCallback((eventName: string, metadata?: EventMetadata) => {
-      return trackEvent({ eventName, metadata })
+      return trackEvent(eventName, metadata)
     }, []),
     trackPageView: useCallback((pageName: string, metadata?: EventMetadata) => {
       return trackPageView(pageName, metadata)

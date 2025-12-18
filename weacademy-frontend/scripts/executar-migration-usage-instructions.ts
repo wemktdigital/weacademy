@@ -14,21 +14,21 @@ async function executarMigration() {
   try {
     console.log('🚀 Executando migration: add_agent_usage_instructions')
     console.log(`📡 Conectando em: ${supabaseUrl}`)
-    
+
     // Ler arquivo SQL
     const sqlFile = join(process.cwd(), 'supabase/migrations/20251110000000_add_agent_usage_instructions.sql')
     const sql = readFileSync(sqlFile, 'utf-8')
-    
+
     console.log('📄 Arquivo SQL carregado:', sqlFile)
-    
+
     // Criar cliente Supabase com service role
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
-    
+
     console.log('\n📋 SQL a ser executado:')
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     console.log(sql)
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n')
-    
+
     // Tentar executar via função auxiliar
     try {
       // Primeiro, criar função auxiliar se não existir
@@ -43,29 +43,27 @@ async function executarMigration() {
         END;
         $$;
       `
-      
+
       // Tentar criar a função
-      const { error: funcError } = await supabase.rpc('exec_sql', { 
-        sql_query: createFunctionSQL 
-      }).catch(async () => {
-        // Se não existir exec_sql, tentar criar exec_ddl_sql diretamente
-        // Mas isso também não funciona via REST...
-        return { error: new Error('Cannot execute DDL via REST API') }
+      const { error: funcError } = await supabase.rpc('exec_sql', {
+        sql_query: createFunctionSQL
       })
-      
+
       if (funcError) {
+        // Se falhar (ex: não existir exec_sql), tentar criar exec_ddl_sql diretamente
+        console.warn('Função exec_sql não disponível, tentando fallback...')
         throw new Error('Não é possível executar DDL via REST API')
       }
-      
+
       // Executar a migration
-      const { error: execError } = await supabase.rpc('exec_ddl_sql', { 
-        sql_text: sql 
+      const { error: execError } = await supabase.rpc('exec_ddl_sql', {
+        sql_text: sql
       })
-      
+
       if (execError) {
         throw execError
       }
-      
+
       console.log('✅ Migration executada com sucesso!')
     } catch (error: any) {
       console.log('\n⚠️  Não é possível executar DDL (ALTER TABLE) diretamente via REST API.')
@@ -79,22 +77,22 @@ async function executarMigration() {
       console.log('📌 Opção 2 - Via linha de comando (se psql estiver instalado):')
       console.log(`   PGPASSWORD=postgres psql -h 127.0.0.1 -p 54322 -U postgres -d postgres -f ${sqlFile}\n`)
       console.log('📌 Opção 3 - Copiar e colar o SQL acima no terminal psql\n')
-      
+
       // Verificar se as colunas já existem
       console.log('🔍 Verificando se as colunas já existem...')
       const { data: checkData, error: checkError } = await supabase
         .from('lab_agents')
         .select('id')
         .limit(1)
-      
+
       if (!checkError) {
         console.log('✅ Tabela lab_agents existe e está acessível')
         console.log('⚠️  Execute o SQL acima para adicionar as novas colunas\n')
       }
-      
+
       process.exit(0)
     }
-    
+
   } catch (error: any) {
     console.error('❌ Erro:', error.message)
     process.exit(1)

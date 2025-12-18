@@ -10,18 +10,19 @@ import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { toast } from '@/hooks/use-toast'
 import { useAuth } from '@/contexts/AuthContext'
-import { 
-  Calendar, 
-  Clock, 
-  Users, 
-  Star, 
-  Play, 
+import {
+  Calendar,
+  Clock,
+  Users,
+  Star,
+  Play,
   CheckCircle,
   Award,
   User,
   ArrowLeft
 } from 'lucide-react'
 import Link from 'next/link'
+import { trackEvent } from '@/lib/events'
 
 interface Lesson {
   id: string
@@ -99,6 +100,14 @@ export default function CourseDetailsPage() {
 
       if (error) throw error
       setCourse(data)
+
+      // Track view event
+      trackEvent('view_course', {
+        course_id: data.id,
+        course_title: data.title,
+        slug: data.slug,
+        price: data.price
+      })
     } catch (error: any) {
       console.error('Error fetching course:', error)
       toast({
@@ -140,6 +149,13 @@ export default function CourseDetailsPage() {
       toast({
         title: 'Sucesso!',
         description: 'Você foi inscrito no curso',
+      })
+
+      // Track enrollment event
+      trackEvent('enroll_course', {
+        course_id: course?.id,
+        course_title: course?.title,
+        price: course?.price
       })
 
       // Se há redirect_url, redirecionar para lá, senão para o curso

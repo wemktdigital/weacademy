@@ -6,14 +6,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { 
+import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { 
+import {
   Table,
   TableBody,
   TableCell,
@@ -21,11 +21,11 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { 
-  Shield, 
-  Users, 
-  UserCheck, 
-  UserX, 
+import {
+  Shield,
+  Users,
+  UserCheck,
+  UserX,
   Search,
   RefreshCw,
   Settings,
@@ -34,6 +34,7 @@ import {
   BarChart3,
   FileText,
   Bell,
+  CreditCard,
 } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { getAllUsers, updateUserRole, getAdminLogs, UserRole } from '@/lib/auth'
@@ -106,7 +107,7 @@ export default function AdminDashboard() {
 
   const filteredUsers = users.filter(user => {
     const matchesSearch = user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         (user.full_name && user.full_name.toLowerCase().includes(searchTerm.toLowerCase()))
+      (user.full_name && user.full_name.toLowerCase().includes(searchTerm.toLowerCase()))
     const matchesRole = selectedRole === 'all' || user.role === selectedRole
     return matchesSearch && matchesRole
   })
@@ -160,7 +161,7 @@ export default function AdminDashboard() {
     <div className="min-h-screen bg-background">
       {/* Header */}
       <div className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="container py-6">
+        <div className="container mx-auto px-4 py-6">
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-3xl font-bold flex items-center space-x-2">
@@ -187,7 +188,7 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      <div className="container py-8">
+      <div className="container mx-auto px-4 py-8">
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <Card>
@@ -279,97 +280,52 @@ export default function AdminDashboard() {
               </CardContent>
             </Card>
           </Link>
+
+          <Link href="/admin/plans">
+            <Card className="cursor-pointer hover:shadow-lg transition-shadow">
+              <CardContent className="p-6">
+                <div className="flex items-center space-x-4">
+                  <div className="p-3 rounded-lg bg-primary/10">
+                    <CreditCard className="h-6 w-6 text-primary" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold">Planos</h3>
+                    <p className="text-sm text-muted-foreground">Gerenciar assinaturas</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </Link>
         </div>
 
         {/* User Management */}
         <Card className="mb-8">
-          <CardHeader>
-            <CardTitle>Gerenciamento de Usuários</CardTitle>
-            <CardDescription>
-              Visualize e gerencie os roles dos usuários do sistema
-            </CardDescription>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <div>
+              <CardTitle>Gerenciamento de Usuários</CardTitle>
+              <CardDescription>
+                Acesse o painel completo para criar, editar e remover usuários.
+              </CardDescription>
+            </div>
+            <Button asChild>
+              <Link href="/admin/users">
+                Gerenciar Usuários
+              </Link>
+            </Button>
           </CardHeader>
-          <CardContent>
-            {/* Filters */}
-            <div className="flex flex-col sm:flex-row gap-4 mb-6">
-              <div className="flex-1">
-                <Label htmlFor="search">Buscar usuários</Label>
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    id="search"
-                    placeholder="Email ou nome..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-10"
-                  />
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between p-4 border rounded-lg bg-muted/20">
+              <div className="flex items-center space-x-4">
+                <div className="p-2 bg-primary/10 rounded-full">
+                  <Users className="h-6 w-6 text-primary" />
+                </div>
+                <div>
+                  <h3 className="font-semibold">Controle Total</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Adicione novos administradores, edite perfis ou remova contas.
+                  </p>
                 </div>
               </div>
-              <div className="sm:w-48">
-                <Label htmlFor="role-filter">Filtrar por role</Label>
-                <Select value={selectedRole} onValueChange={setSelectedRole}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Todos os roles" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todos os roles</SelectItem>
-                    <SelectItem value="admin">Administrador</SelectItem>
-                    <SelectItem value="user">Usuário</SelectItem>
-                    <SelectItem value="guest">Convidado</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            {/* Users Table */}
-            <div className="border rounded-lg">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Usuário</TableHead>
-                    <TableHead>Email</TableHead>
-                    <TableHead>Role Atual</TableHead>
-                    <TableHead>Data de Criação</TableHead>
-                    <TableHead>Ações</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredUsers.map((user) => (
-                    <TableRow key={user.id}>
-                      <TableCell>
-                        <div>
-                          <div className="font-medium">{user.full_name || 'Sem nome'}</div>
-                          <div className="text-sm text-muted-foreground">ID: {user.id.slice(0, 8)}...</div>
-                        </div>
-                      </TableCell>
-                      <TableCell>{user.email}</TableCell>
-                      <TableCell>
-                        <Badge variant={getRoleBadgeVariant(user.role)}>
-                          {getRoleLabel(user.role)}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        {new Date(user.created_at).toLocaleDateString('pt-BR')}
-                      </TableCell>
-                      <TableCell>
-                        <Select
-                          value={user.role}
-                          onValueChange={(value: UserRole) => handleRoleChange(user.id, value)}
-                        >
-                          <SelectTrigger className="w-32">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="admin">Administrador</SelectItem>
-                            <SelectItem value="user">Usuário</SelectItem>
-                            <SelectItem value="guest">Convidado</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
             </div>
           </CardContent>
         </Card>

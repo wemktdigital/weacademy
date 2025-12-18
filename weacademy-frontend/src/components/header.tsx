@@ -5,13 +5,13 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
-import { 
-  DropdownMenu, 
-  DropdownMenuContent, 
-  DropdownMenuItem, 
-  DropdownMenuLabel, 
-  DropdownMenuSeparator, 
-  DropdownMenuTrigger 
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
 import {
   BookOpen,
@@ -29,7 +29,9 @@ import {
   ClipboardList,
   Trophy,
   Award,
+  CreditCard,
 } from 'lucide-react'
+import { useToast } from '@/hooks/use-toast'
 import { useAuth } from '@/contexts/AuthContext'
 import { SimpleThemeToggle } from '@/components/theme-toggle'
 import { Notifications } from '@/components/notifications'
@@ -37,8 +39,27 @@ import { useGamification } from '@/hooks/useGamification'
 import { PointsDisplay, LevelBadge, StreakDisplay } from '@/components/gamification'
 
 export default function Header() {
-  const { user, loading, signOut, isAdmin } = useAuth()
+  const { user, loading: authLoading, signOut, isAdmin } = useAuth()
   const { stats } = useGamification()
+  const { toast } = useToast()
+
+  const handleManageSubscription = async () => {
+    try {
+      toast({ title: 'Redirecionando...', description: 'Aguarde enquanto levamos você ao portal do cliente.' })
+      const response = await fetch('/api/stripe/portal', {
+        method: 'POST',
+      })
+      const data = await response.json()
+
+      if (data.url) {
+        window.location.href = data.url
+      } else {
+        toast({ title: 'Erro', description: data.error || 'Erro ao abrir portal', variant: 'destructive' })
+      }
+    } catch (error) {
+      toast({ title: 'Erro', description: 'Erro de conexão', variant: 'destructive' })
+    }
+  }
 
   const handleSignOut = async () => {
     await signOut()
@@ -46,7 +67,7 @@ export default function Header() {
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="container flex h-16 items-center justify-between">
+      <div className="container mx-auto px-4 flex h-16 items-center justify-between">
         {/* Logo */}
         <div className="flex items-center space-x-4">
           <Link href="/" className="flex items-center space-x-2">
@@ -79,15 +100,10 @@ export default function Header() {
         {/* Search Bar */}
         <div className="hidden md:flex items-center space-x-2 flex-1 max-w-md mx-8">
           <div className="relative w-full max-w-xl">
-            <Search
-              className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500 dark:text-gray-300 z-10"
-              strokeWidth={2}
-              aria-hidden="true"
-            />
             <Input
               type="search"
               placeholder="Buscar cursos..."
-              className="pl-10"
+              className="h-10 w-full"
             />
           </div>
         </div>
@@ -97,7 +113,8 @@ export default function Header() {
           {/* Theme Toggle */}
           <SimpleThemeToggle />
 
-          {loading ? (
+
+          {authLoading ? (
             <div className="h-8 w-8 rounded-full bg-muted animate-pulse"></div>
           ) : user ? (
             <>
@@ -105,26 +122,26 @@ export default function Header() {
               {stats && (
                 <div className="hidden lg:flex items-center gap-3 px-3 py-1.5 rounded-lg border bg-muted/50">
                   <Link href="/profile/dashboard" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-                    <PointsDisplay 
-                      points={stats.total_xp} 
-                      showIcon 
-                      size="sm" 
+                    <PointsDisplay
+                      points={stats.total_xp}
+                      showIcon
+                      size="sm"
                       variant="compact"
                     />
-                    <LevelBadge 
-                      level={stats.current_level} 
-                      size="sm" 
+                    <LevelBadge
+                      level={stats.current_level}
+                      size="sm"
                       showIcon
                     />
-                    <StreakDisplay 
-                      currentStreak={stats.current_streak} 
-                      size="sm" 
+                    <StreakDisplay
+                      currentStreak={stats.current_streak}
+                      size="sm"
                       variant="compact"
                     />
                   </Link>
                 </div>
               )}
-              
+
               {/* Notifications */}
               <Notifications />
 
@@ -250,6 +267,11 @@ export default function Header() {
                       </DropdownMenuItem>
                     </>
                   )}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={handleManageSubscription}>
+                    <CreditCard className="mr-2 h-4 w-4" />
+                    <span>Gerenciar Assinatura</span>
+                  </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={handleSignOut}>
                     <LogOut className="mr-2 h-4 w-4" />

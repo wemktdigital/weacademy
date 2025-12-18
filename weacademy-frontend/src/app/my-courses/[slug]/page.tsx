@@ -161,7 +161,7 @@ export default function CoursePlayerPage() {
   }
 
   const totalLessons = course.modules.reduce((acc, m) => acc + m.lessons.length, 0)
-  const completedLessons = course.modules.reduce((acc, m) => 
+  const completedLessons = course.modules.reduce((acc, m) =>
     acc + m.lessons.filter(l => l.completed).length, 0)
 
   // Encontrar primeira lição não completa
@@ -209,9 +209,11 @@ export default function CoursePlayerPage() {
           <Card>
             <CardContent className="pt-6">
               <ProgressTracker
-                progress={progress}
-                totalLessons={totalLessons}
-                completedLessons={completedLessons}
+                modules={course.modules}
+                onLessonClick={(lessonId) => {
+                  const lesson = course.modules.flatMap(m => m.lessons).find(l => l.id === lessonId)
+                  if (lesson) handleLessonClick(lesson)
+                }}
               />
             </CardContent>
           </Card>

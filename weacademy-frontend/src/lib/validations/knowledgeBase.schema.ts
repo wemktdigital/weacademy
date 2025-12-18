@@ -29,7 +29,7 @@ export const knowledgeDocumentSchema = z.object({
   file_size: z.number().int().positive().optional(),
   file_url: z.string().url().optional(),
   mime_type: z.string().optional(),
-  metadata: z.record(z.any()).optional(),
+  metadata: z.record(z.string(), z.any()).optional(),
 }).passthrough()
 
 export type KnowledgeDocument = z.infer<typeof knowledgeDocumentSchema> & {
@@ -51,7 +51,7 @@ export const knowledgeChunkSchema = z.object({
   embedding: z.array(z.number()).optional(), // Array de 1536 números
   start_char: z.number().int().nonnegative().optional(),
   end_char: z.number().int().nonnegative().optional(),
-  metadata: z.record(z.any()).optional(),
+  metadata: z.record(z.string(), z.any()).optional(),
 }).passthrough()
 
 export type KnowledgeChunk = z.infer<typeof knowledgeChunkSchema> & {
@@ -77,7 +77,7 @@ export const searchResultSchema = z.object({
   document_id: z.string().uuid(),
   document_filename: z.string(),
   similarity: z.number().min(0).max(1),
-  metadata: z.record(z.any()).optional(),
+  metadata: z.record(z.string(), z.any()).optional(),
 })
 
 export type SearchResult = z.infer<typeof searchResultSchema>

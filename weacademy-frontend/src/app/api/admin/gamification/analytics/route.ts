@@ -6,10 +6,10 @@ export const dynamic = "force-dynamic"
 
 async function authenticateAdmin(request: NextRequest) {
   let user = null
-  
+
   const authHeader = request.headers.get('authorization')
   const token = authHeader?.replace('Bearer ', '')
-  
+
   if (token) {
     const supabaseWithToken = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -22,13 +22,13 @@ async function authenticateAdmin(request: NextRequest) {
         },
       }
     )
-    
+
     const { data: { user: tokenUser }, error: tokenError } = await supabaseWithToken.auth.getUser(token)
     if (!tokenError && tokenUser) {
       user = tokenUser
     }
   }
-  
+
   if (!user) {
     const sb = await supabaseServer()
     const { data: { user: cookieUser }, error: authErr } = await sb.auth.getUser()
@@ -62,7 +62,7 @@ async function authenticateAdmin(request: NextRequest) {
 export async function GET(request: NextRequest) {
   try {
     const { user, isAdmin } = await authenticateAdmin(request)
-    
+
     if (!user || !isAdmin) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
     }
@@ -125,7 +125,7 @@ export async function GET(request: NextRequest) {
     })
 
     // Calcular taxa de engajamento
-    const engagementRate = totalUsers > 0 ? ((activeUsers || 0) / totalUsers) * 100 : 0
+    const engagementRate = (totalUsers || 0) > 0 ? ((activeUsers || 0) / (totalUsers || 1)) * 100 : 0
 
     // Calcular badges mais desbloqueados
     const achievementUnlockCounts = new Map<string, number>()

@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { AchievementsTable } from '@/components/admin/gamification/AchievementsTable'
+import { AchievementsTable, Achievement as TableAchievement } from '@/components/admin/gamification/AchievementsTable'
 import { AchievementForm, Achievement } from '@/components/admin/gamification/AchievementForm'
 import {
   Dialog,
@@ -23,7 +23,7 @@ export default function AchievementsAdminPage() {
   const { user, isAdmin, loading: authLoading } = useAuth()
   const router = useRouter()
   const [loading, setLoading] = useState(true)
-  const [achievements, setAchievements] = useState<Achievement[]>([])
+  const [achievements, setAchievements] = useState<TableAchievement[]>([])
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingAchievement, setEditingAchievement] = useState<Achievement | null>(null)
 
@@ -60,7 +60,14 @@ export default function AchievementsAdminPage() {
       }
 
       const data = await response.json()
-      setAchievements(data.achievements || [])
+
+      // Ensure data conforms to Achievement[] type for Table
+      const formattedAchievements: any[] = (data.achievements || []).map((item: any) => ({
+        ...item,
+        id: item.id || '', // Ensure id is string
+      }))
+
+      setAchievements(formattedAchievements)
     } catch (error: any) {
       console.error('Error loading achievements:', error)
       toast.error(error.message || 'Erro ao carregar achievements')
@@ -147,7 +154,7 @@ export default function AchievementsAdminPage() {
       const url = editingAchievement
         ? `/api/admin/gamification/achievements/${editingAchievement.id}`
         : '/api/admin/gamification/achievements'
-      
+
       const method = editingAchievement ? 'PUT' : 'POST'
 
       const response = await fetch(url, {

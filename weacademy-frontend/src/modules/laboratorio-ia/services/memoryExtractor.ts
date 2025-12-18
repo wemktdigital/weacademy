@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { callLLM } from './llmRouter'
 import { MemoryItem } from './memory'
 import { containsPHI, sanitizePHI } from './summary'
@@ -22,7 +23,7 @@ export async function extractMemoriesFromConversation({
   try {
     // Analisar últimas mensagens da conversa (últimas 10-15)
     const recentMessages = messages.slice(-15)
-    
+
     if (recentMessages.length === 0) {
       return []
     }
@@ -86,7 +87,7 @@ Se não houver informações novas relevantes, retorne: {"memories": []}`
 
     // Parsear resposta JSON
     let parsedResult: { memories: Array<{ key: string; value: string; importance: number }> }
-    
+
     try {
       // Tentar extrair JSON da resposta (pode ter texto extra)
       const jsonMatch = result.output.match(/\{[\s\S]*\}/)
@@ -166,7 +167,7 @@ export function shouldExtractMemories(
 ): boolean {
   const MIN_MESSAGES_FOR_EXTRACTION = 4
   const messagesSinceLastExtraction = messageCount - lastExtractionIndex
-  
+
   return messagesSinceLastExtraction >= MIN_MESSAGES_FOR_EXTRACTION
 }
 

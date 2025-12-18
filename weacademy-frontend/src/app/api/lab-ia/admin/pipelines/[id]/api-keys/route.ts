@@ -182,13 +182,13 @@ export async function POST(
       success: true,
       api_key: {
         ...newApiKey,
-        api_key, // Retornar API key completa apenas na criação
+        api_key: apiKey, // Retornar API key completa apenas na criação
       },
       message: 'API key created successfully. Save this key - it will not be shown again.',
     }, { status: 201 })
   } catch (error: any) {
     console.error('[API Keys] Erro ao criar key:', error)
-    
+
     if (error.name === 'ZodError') {
       return NextResponse.json(
         { error: 'Validation error', details: error.errors },

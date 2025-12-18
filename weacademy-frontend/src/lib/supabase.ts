@@ -1,15 +1,15 @@
-import { createClient as createSupabaseClient } from '@supabase/supabase-js'
+import { createBrowserClient } from '@supabase/ssr'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
 // Função helper para criar cliente Supabase
 export function createClient() {
-  return createSupabaseClient(supabaseUrl, supabaseAnonKey)
+  return createBrowserClient(supabaseUrl, supabaseAnonKey)
 }
 
-// Cliente padrão (mantido para compatibilidade)
-export const supabase = createSupabaseClient(supabaseUrl, supabaseAnonKey)
+// Cliente padrão (atualizado para usar cookies via SSR)
+export const supabase = createBrowserClient(supabaseUrl, supabaseAnonKey)
 
 // Tipos TypeScript para o banco de dados
 export interface Database {

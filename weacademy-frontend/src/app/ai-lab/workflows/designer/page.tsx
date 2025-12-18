@@ -86,6 +86,8 @@ interface Blueprint {
   }
   settings?: Record<string, any>
   updated_at?: string
+  created_at?: string
+  published_workflow_version_id?: string
 }
 
 interface BlueprintListResponse {
@@ -297,75 +299,75 @@ function ensureHumanConfigState(raw?: HumanStageConfig | null): HumanStageConfig
   const assignment: HumanStageConfigState['assignment'] =
     raw?.assignment != null
       ? {
-          mode: assignmentMode,
-          users: Array.isArray(raw.assignment.users) ? raw.assignment.users.filter(Boolean) : [],
-          roles: Array.isArray(raw.assignment.roles) ? raw.assignment.roles.filter(Boolean) : [],
-          groups: Array.isArray(raw.assignment.groups) ? raw.assignment.groups.filter(Boolean) : [],
-          dynamicPath: typeof raw.assignment.dynamicPath === 'string' ? raw.assignment.dynamicPath : '',
-          allowSelfAssign: Boolean(raw.assignment.allowSelfAssign),
-          fallback: raw.assignment.fallback
-            ? {
-                mode:
-                  HUMAN_ASSIGNMENT_MODES.includes(raw.assignment.fallback.mode as any)
-                    ? (raw.assignment.fallback.mode as typeof HUMAN_ASSIGNMENT_MODES[number])
-                    : 'role',
-                targetIds: Array.isArray(raw.assignment.fallback.targetIds)
-                  ? raw.assignment.fallback.targetIds.filter(Boolean)
-                  : [],
-                dynamicPath:
-                  typeof raw.assignment.fallback.dynamicPath === 'string'
-                    ? raw.assignment.fallback.dynamicPath
-                    : '',
-              }
-            : null,
-        }
+        mode: assignmentMode,
+        users: Array.isArray(raw.assignment.users) ? raw.assignment.users.filter(Boolean) : [],
+        roles: Array.isArray(raw.assignment.roles) ? raw.assignment.roles.filter(Boolean) : [],
+        groups: Array.isArray(raw.assignment.groups) ? raw.assignment.groups.filter(Boolean) : [],
+        dynamicPath: typeof raw.assignment.dynamicPath === 'string' ? raw.assignment.dynamicPath : '',
+        allowSelfAssign: Boolean(raw.assignment.allowSelfAssign),
+        fallback: raw.assignment.fallback
+          ? {
+            mode:
+              HUMAN_ASSIGNMENT_MODES.includes(raw.assignment.fallback.mode as any)
+                ? (raw.assignment.fallback.mode as typeof HUMAN_ASSIGNMENT_MODES[number])
+                : 'role',
+            targetIds: Array.isArray(raw.assignment.fallback.targetIds)
+              ? raw.assignment.fallback.targetIds.filter(Boolean)
+              : [],
+            dynamicPath:
+              typeof raw.assignment.fallback.dynamicPath === 'string'
+                ? raw.assignment.fallback.dynamicPath
+                : '',
+          }
+          : null,
+      }
       : null
 
   const approval: HumanStageConfigState['approval'] =
     raw?.approval != null
       ? {
-          type:
-            raw.approval.type === 'majority' || raw.approval.type === 'unanimous' ? raw.approval.type : 'single',
-          requiredApprovals:
-            typeof raw.approval.requiredApprovals === 'number' ? raw.approval.requiredApprovals : null,
-          allowRejectionComments: Boolean(raw.approval.allowRejectionComments),
-          allowDelegation: Boolean(raw.approval.allowDelegation),
-          autoApproveAfterMinutes:
-            typeof raw.approval.autoApproveAfterMinutes === 'number' ? raw.approval.autoApproveAfterMinutes : null,
-          autoRejectAfterMinutes:
-            typeof raw.approval.autoRejectAfterMinutes === 'number' ? raw.approval.autoRejectAfterMinutes : null,
-        }
+        type:
+          raw.approval.type === 'majority' || raw.approval.type === 'unanimous' ? raw.approval.type : 'single',
+        requiredApprovals:
+          typeof raw.approval.requiredApprovals === 'number' ? raw.approval.requiredApprovals : null,
+        allowRejectionComments: Boolean(raw.approval.allowRejectionComments),
+        allowDelegation: Boolean(raw.approval.allowDelegation),
+        autoApproveAfterMinutes:
+          typeof raw.approval.autoApproveAfterMinutes === 'number' ? raw.approval.autoApproveAfterMinutes : null,
+        autoRejectAfterMinutes:
+          typeof raw.approval.autoRejectAfterMinutes === 'number' ? raw.approval.autoRejectAfterMinutes : null,
+      }
       : {
-          type: 'single',
-          requiredApprovals: null,
-          allowRejectionComments: false,
-          allowDelegation: false,
-          autoApproveAfterMinutes: null,
-          autoRejectAfterMinutes: null,
-        }
+        type: 'single',
+        requiredApprovals: null,
+        allowRejectionComments: false,
+        allowDelegation: false,
+        autoApproveAfterMinutes: null,
+        autoRejectAfterMinutes: null,
+      }
 
   const slaChain =
     raw?.sla?.escalationChain && Array.isArray(raw.sla.escalationChain)
       ? raw.sla.escalationChain
-          .filter((entry: any) => entry && typeof entry === 'object')
-          .map((entry: any) => ({
-            id: crypto.randomUUID(),
-            mode: HUMAN_ASSIGNMENT_MODES.includes(entry.mode as any)
-              ? (entry.mode as typeof HUMAN_ASSIGNMENT_MODES[number])
-              : 'role',
-            targetId: typeof entry.targetId === 'string' ? entry.targetId : '',
-            afterMinutes:
-              typeof entry.afterMinutes === 'number'
-                ? entry.afterMinutes
-                : entry.afterMinutes && typeof entry.afterMinutes === 'string'
+        .filter((entry: any) => entry && typeof entry === 'object')
+        .map((entry: any) => ({
+          id: crypto.randomUUID(),
+          mode: HUMAN_ASSIGNMENT_MODES.includes(entry.mode as any)
+            ? (entry.mode as typeof HUMAN_ASSIGNMENT_MODES[number])
+            : 'role',
+          targetId: typeof entry.targetId === 'string' ? entry.targetId : '',
+          afterMinutes:
+            typeof entry.afterMinutes === 'number'
+              ? entry.afterMinutes
+              : entry.afterMinutes && typeof entry.afterMinutes === 'string'
                 ? Number(entry.afterMinutes)
                 : 0,
-            notifyChannels: Array.isArray(entry.notifyChannels)
-              ? entry.notifyChannels
-                  .map((channel: any) => (HUMAN_CHANNEL_OPTIONS.includes(channel) ? channel : null))
-                  .filter(Boolean) as string[]
-              : [],
-          }))
+          notifyChannels: Array.isArray(entry.notifyChannels)
+            ? entry.notifyChannels
+              .map((channel: any) => (HUMAN_CHANNEL_OPTIONS.includes(channel) ? channel : null))
+              .filter(Boolean) as typeof HUMAN_CHANNEL_OPTIONS[number][]
+            : [],
+        }))
       : []
 
   const sla: HumanStageConfigState['sla'] = {
@@ -374,44 +376,44 @@ function ensureHumanConfigState(raw?: HumanStageConfig | null): HumanStageConfig
       typeof raw?.sla?.durationMinutes === 'number'
         ? raw!.sla!.durationMinutes
         : raw?.sla?.durationMinutes && typeof raw.sla.durationMinutes === 'string'
-        ? Number(raw.sla.durationMinutes)
-        : null,
+          ? Number(raw.sla.durationMinutes)
+          : null,
     reminderEveryMinutes:
       typeof raw?.sla?.reminderEveryMinutes === 'number'
         ? raw!.sla!.reminderEveryMinutes
         : raw?.sla?.reminderEveryMinutes && typeof raw.sla.reminderEveryMinutes === 'string'
-        ? Number(raw.sla.reminderEveryMinutes)
-        : null,
+          ? Number(raw.sla.reminderEveryMinutes)
+          : null,
     maxReminders:
       typeof raw?.sla?.maxReminders === 'number'
         ? raw!.sla!.maxReminders
         : raw?.sla?.maxReminders && typeof raw.sla.maxReminders === 'string'
-        ? Number(raw.sla.maxReminders)
-        : null,
+          ? Number(raw.sla.maxReminders)
+          : null,
     escalationChain: slaChain,
   }
 
   const externalActions: HumanStageConfigState['externalActions'] =
     raw?.externalActions && typeof raw.externalActions === 'object'
       ? {
-          notifyChannels: Array.isArray(raw.externalActions.notifyChannels)
-            ? raw.externalActions.notifyChannels.filter((channel: any) =>
-                HUMAN_CHANNEL_OPTIONS.includes(channel)
-              )
-            : [],
-          webhookUrl: typeof raw.externalActions.webhookUrl === 'string' ? raw.externalActions.webhookUrl : '',
-          webhookHeaders:
-            raw.externalActions.webhookHeaders && typeof raw.externalActions.webhookHeaders === 'object'
-              ? raw.externalActions.webhookHeaders
-              : {},
-          includeContext: Boolean(raw.externalActions.includeContext),
-        }
+        notifyChannels: Array.isArray(raw.externalActions.notifyChannels)
+          ? raw.externalActions.notifyChannels.filter((channel: any) =>
+            HUMAN_CHANNEL_OPTIONS.includes(channel)
+          ) as typeof HUMAN_CHANNEL_OPTIONS[number][]
+          : [],
+        webhookUrl: typeof raw.externalActions.webhookUrl === 'string' ? raw.externalActions.webhookUrl : '',
+        webhookHeaders:
+          raw.externalActions.webhookHeaders && typeof raw.externalActions.webhookHeaders === 'object'
+            ? raw.externalActions.webhookHeaders
+            : {},
+        includeContext: Boolean(raw.externalActions.includeContext),
+      }
       : {
-          notifyChannels: [],
-          webhookUrl: '',
-          webhookHeaders: {},
-          includeContext: false,
-        }
+        notifyChannels: [],
+        webhookUrl: '',
+        webhookHeaders: {},
+        includeContext: false,
+      }
 
   return {
     instructions: typeof raw?.instructions === 'string' ? raw.instructions : '',
@@ -433,84 +435,84 @@ function sanitizeHumanConfigForSave(state: HumanStageConfigState): HumanStageCon
   const assignment =
     state.assignment && state.assignment.mode
       ? {
-          mode: state.assignment.mode,
-          allowSelfAssign: Boolean(state.assignment.allowSelfAssign),
-          users: state.assignment.users.filter((value) => value.trim().length > 0),
-          roles: state.assignment.roles.filter((value) => value.trim().length > 0),
-          groups: state.assignment.groups.filter((value) => value.trim().length > 0),
-          dynamicPath: state.assignment.dynamicPath?.trim() || undefined,
-          fallback:
-            state.assignment.fallback &&
+        mode: state.assignment.mode,
+        allowSelfAssign: Boolean(state.assignment.allowSelfAssign),
+        users: state.assignment.users.filter((value) => value.trim().length > 0),
+        roles: state.assignment.roles.filter((value) => value.trim().length > 0),
+        groups: state.assignment.groups.filter((value) => value.trim().length > 0),
+        dynamicPath: state.assignment.dynamicPath?.trim() || undefined,
+        fallback:
+          state.assignment.fallback &&
             (state.assignment.fallback.targetIds.some((id) => id.trim().length > 0) ||
               state.assignment.fallback.dynamicPath.trim().length > 0)
-              ? {
-                  mode: state.assignment.fallback.mode,
-                  targetIds: state.assignment.fallback.targetIds.filter((value) => value.trim().length > 0),
-                  dynamicPath: state.assignment.fallback.dynamicPath.trim() || undefined,
-                }
-              : undefined,
-        }
+            ? {
+              mode: state.assignment.fallback.mode,
+              targetIds: state.assignment.fallback.targetIds.filter((value) => value.trim().length > 0),
+              dynamicPath: state.assignment.fallback.dynamicPath.trim() || undefined,
+            }
+            : undefined,
+      }
       : null
 
   const approval =
     state.approval?.type
       ? {
-          type: state.approval.type,
-          requiredApprovals:
-            state.approval.type === 'majority' && state.approval.requiredApprovals
-              ? Math.max(1, state.approval.requiredApprovals)
-              : undefined,
-          allowRejectionComments: Boolean(state.approval.allowRejectionComments),
-          allowDelegation: Boolean(state.approval.allowDelegation),
-          autoApproveAfterMinutes:
-            state.approval.autoApproveAfterMinutes && state.approval.autoApproveAfterMinutes > 0
-              ? state.approval.autoApproveAfterMinutes
-              : undefined,
-          autoRejectAfterMinutes:
-            state.approval.autoRejectAfterMinutes && state.approval.autoRejectAfterMinutes > 0
-              ? state.approval.autoRejectAfterMinutes
-              : undefined,
-        }
+        type: state.approval.type,
+        requiredApprovals:
+          state.approval.type === 'majority' && state.approval.requiredApprovals
+            ? Math.max(1, state.approval.requiredApprovals)
+            : undefined,
+        allowRejectionComments: Boolean(state.approval.allowRejectionComments),
+        allowDelegation: Boolean(state.approval.allowDelegation),
+        autoApproveAfterMinutes:
+          state.approval.autoApproveAfterMinutes && state.approval.autoApproveAfterMinutes > 0
+            ? state.approval.autoApproveAfterMinutes
+            : undefined,
+        autoRejectAfterMinutes:
+          state.approval.autoRejectAfterMinutes && state.approval.autoRejectAfterMinutes > 0
+            ? state.approval.autoRejectAfterMinutes
+            : undefined,
+      }
       : null
 
   const sla =
     state.sla.enabled && state.sla.durationMinutes
       ? {
-          enabled: true,
-          durationMinutes: state.sla.durationMinutes,
-          reminderEveryMinutes:
-            state.sla.reminderEveryMinutes && state.sla.reminderEveryMinutes > 0
-              ? state.sla.reminderEveryMinutes
-              : undefined,
-          maxReminders:
-            state.sla.maxReminders && state.sla.maxReminders > 0 ? state.sla.maxReminders : undefined,
-          escalationChain:
-            state.sla.escalationChain
-              .filter((entry) => entry.targetId.trim().length > 0)
-              .map((entry) => ({
-                mode: entry.mode,
-                targetId: entry.targetId.trim(),
-                afterMinutes: Math.max(1, entry.afterMinutes),
-                notifyChannels: entry.notifyChannels,
-              })) || undefined,
-        }
+        enabled: true,
+        durationMinutes: state.sla.durationMinutes,
+        reminderEveryMinutes:
+          state.sla.reminderEveryMinutes && state.sla.reminderEveryMinutes > 0
+            ? state.sla.reminderEveryMinutes
+            : undefined,
+        maxReminders:
+          state.sla.maxReminders && state.sla.maxReminders > 0 ? state.sla.maxReminders : undefined,
+        escalationChain:
+          state.sla.escalationChain
+            .filter((entry) => entry.targetId.trim().length > 0)
+            .map((entry) => ({
+              mode: entry.mode,
+              targetId: entry.targetId.trim(),
+              afterMinutes: Math.max(1, entry.afterMinutes),
+              notifyChannels: entry.notifyChannels as any,
+            })) || undefined,
+      }
       : null
 
   const externalActions =
     state.externalActions &&
-    (state.externalActions.notifyChannels.length > 0 ||
-      state.externalActions.webhookUrl ||
-      Object.keys(state.externalActions.webhookHeaders).length > 0 ||
-      state.externalActions.includeContext)
+      (state.externalActions.notifyChannels.length > 0 ||
+        state.externalActions.webhookUrl ||
+        Object.keys(state.externalActions.webhookHeaders).length > 0 ||
+        state.externalActions.includeContext)
       ? {
-          notifyChannels: state.externalActions.notifyChannels,
-          webhookUrl: state.externalActions.webhookUrl || undefined,
-          webhookHeaders:
-            Object.keys(state.externalActions.webhookHeaders).length > 0
-              ? state.externalActions.webhookHeaders
-              : undefined,
-          includeContext: Boolean(state.externalActions.includeContext),
-        }
+        notifyChannels: state.externalActions.notifyChannels as any,
+        webhookUrl: state.externalActions.webhookUrl || undefined,
+        webhookHeaders:
+          Object.keys(state.externalActions.webhookHeaders).length > 0
+            ? state.externalActions.webhookHeaders
+            : undefined,
+        includeContext: Boolean(state.externalActions.includeContext),
+      }
       : null
 
   const metadata =
@@ -542,25 +544,25 @@ function ensureCollaborationTeamsState(input?: any): CollaborationTeamState[] {
       const generatedId = crypto.randomUUID()
       const members: CollaborationTeamMemberState[] = Array.isArray(team.members)
         ? team.members
-            .filter((member: any) => member && typeof member === 'object')
-            .map((member: any) => ({
-              id: crypto.randomUUID(),
-              agentId: typeof member.agentId === 'string' ? member.agentId : '',
-              role:
-                member.role === 'coordinator' ||
+          .filter((member: any) => member && typeof member === 'object')
+          .map((member: any) => ({
+            id: crypto.randomUUID(),
+            agentId: typeof member.agentId === 'string' ? member.agentId : '',
+            role:
+              member.role === 'coordinator' ||
                 member.role === 'validator' ||
                 member.role === 'observer' ||
                 member.role === 'executor'
-                  ? member.role
-                  : 'executor',
-              weight:
-                typeof member.weight === 'number'
-                  ? member.weight
-                  : member.weight && typeof member.weight === 'string'
+                ? member.role
+                : 'executor',
+            weight:
+              typeof member.weight === 'number'
+                ? member.weight
+                : member.weight && typeof member.weight === 'string'
                   ? Number(member.weight)
                   : 1,
-              responsibilities: typeof member.responsibilities === 'string' ? member.responsibilities : '',
-            }))
+            responsibilities: typeof member.responsibilities === 'string' ? member.responsibilities : '',
+          }))
         : []
 
       return {
@@ -654,25 +656,25 @@ function ensureSupervisorConfigsState(input?: any): SupervisorConfigState[] {
           })),
         conflictPolicy: conflictPolicyRaw
           ? {
-              strategy:
-                conflictPolicyRaw.strategy === 'rerun_team' ||
+            strategy:
+              conflictPolicyRaw.strategy === 'rerun_team' ||
                 conflictPolicyRaw.strategy === 'escalate_human' ||
                 conflictPolicyRaw.strategy === 'fallback_pipeline'
-                  ? conflictPolicyRaw.strategy
-                  : 'auto_resolve',
-              notify: Array.isArray(conflictPolicyRaw.notify)
-                ? conflictPolicyRaw.notify.filter((value: any) => typeof value === 'string' && value.trim())
-                : [],
-              messageTemplate:
-                typeof conflictPolicyRaw.messageTemplate === 'string' ? conflictPolicyRaw.messageTemplate : '',
-            }
+                ? conflictPolicyRaw.strategy
+                : 'auto_resolve',
+            notify: Array.isArray(conflictPolicyRaw.notify)
+              ? conflictPolicyRaw.notify.filter((value: any) => typeof value === 'string' && value.trim()) as any
+              : [],
+            messageTemplate:
+              typeof conflictPolicyRaw.messageTemplate === 'string' ? conflictPolicyRaw.messageTemplate : '',
+          }
           : null,
         autoApproveThreshold:
           typeof config.autoApproveThreshold === 'number'
             ? config.autoApproveThreshold
             : config.autoApproveThreshold && typeof config.autoApproveThreshold === 'string'
-            ? Number(config.autoApproveThreshold)
-            : null,
+              ? Number(config.autoApproveThreshold)
+              : null,
         allowOverride: config.allowOverride !== undefined ? Boolean(config.allowOverride) : true,
         metadata: config.metadata && typeof config.metadata === 'object' ? config.metadata : {},
       }
@@ -688,10 +690,10 @@ function serializeSupervisorConfigs(configs: SupervisorConfigState[]): Superviso
 
       const serializedConflictPolicy = config.conflictPolicy
         ? {
-            strategy: config.conflictPolicy.strategy,
-            notify: config.conflictPolicy.notify.filter(Boolean),
-            messageTemplate: config.conflictPolicy.messageTemplate?.trim() || undefined,
-          }
+          strategy: config.conflictPolicy.strategy,
+          notify: config.conflictPolicy.notify.filter(Boolean) as any,
+          messageTemplate: config.conflictPolicy.messageTemplate?.trim() || undefined,
+        }
         : undefined
 
       const serializedValidationRules = config.validationRules
@@ -706,9 +708,9 @@ function serializeSupervisorConfigs(configs: SupervisorConfigState[]): Superviso
       const appliesTo =
         stageKeys.length > 0 || teamKeys.length > 0
           ? {
-              stageKeys,
-              teamKeys,
-            }
+            stageKeys,
+            teamKeys,
+          }
           : undefined
 
       const metadata = config.metadata && Object.keys(config.metadata).length > 0 ? config.metadata : undefined
@@ -1940,7 +1942,13 @@ function HumanStageConfigForm({ value, onChange }: HumanStageConfigFormProps) {
               onCheckedChange={(checked) =>
                 updateAssignment((assignment) => ({
                   ...assignment,
-                  fallback: checked ? createDefaultAssignmentState('role') : null,
+                  fallback: checked
+                    ? {
+                      mode: 'role',
+                      targetIds: [],
+                      dynamicPath: '',
+                    }
+                    : null,
                 }))
               }
             />
@@ -1992,12 +2000,12 @@ function HumanStageConfigForm({ value, onChange }: HumanStageConfigFormProps) {
                       ...assignment,
                       fallback: assignment.fallback
                         ? {
-                            ...assignment.fallback,
-                            targetIds: event.target.value
-                              .split(',')
-                              .map((value) => value.trim())
-                              .filter(Boolean),
-                          }
+                          ...assignment.fallback,
+                          targetIds: event.target.value
+                            .split(',')
+                            .map((value) => value.trim())
+                            .filter(Boolean),
+                        }
                         : null,
                     }))
                   }
@@ -2449,12 +2457,14 @@ type VersionHistoryItem = {
 
 type SnapshotNode = {
   id: string
+  type?: string
   position: { x: number; y: number }
   data: any
 }
 
 type SnapshotEdge = {
   id: string
+  type?: string
   source: string
   target: string
   data?: {
@@ -2815,10 +2825,10 @@ function computeVersionDiff(
       .sort((a, b) => a.description.localeCompare(b.description)),
     conflictPolicy: config.conflictPolicy
       ? {
-          strategy: config.conflictPolicy.strategy,
-          notify: [...config.conflictPolicy.notify].sort(),
-          messageTemplate: config.conflictPolicy.messageTemplate || '',
-        }
+        strategy: config.conflictPolicy.strategy,
+        notify: [...config.conflictPolicy.notify].sort(),
+        messageTemplate: config.conflictPolicy.messageTemplate || '',
+      }
       : null,
   })
 
@@ -2888,8 +2898,8 @@ function BlueprintEditor({ blueprintId, onRefetchList }: { blueprintId: string; 
     }
   )
 
-  const [nodes, setNodes, onNodesChange] = useNodesState<Node[]>([])
-  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge[]>([])
+  const [nodes, setNodes, onNodesChange] = useNodesState([])
+  const [edges, setEdges, onEdgesChange] = useEdgesState([])
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [meta, setMeta] = useState({ name: '', description: '', category: '', tags: '' })
   const [isSaving, setIsSaving] = useState(false)
@@ -3603,7 +3613,7 @@ function BlueprintEditor({ blueprintId, onRefetchList }: { blueprintId: string; 
                           placeholder="Ex.: Olá {{paciente.nome}}, seu workflow {{workflow.name}} foi concluído."
                         />
                         <p className="text-[11px] text-muted-foreground">
-                          Variáveis suportadas: {{'{{workflow.name}}'}}, {{'{{paciente.nome}}'}}, {{'{{status}}'}}
+                          Variáveis suportadas: {'{{workflow.name}}'}, {'{{paciente.nome}}'}, {'{{status}}'}
                         </p>
                       </div>
                       <div className="mt-3 flex justify-end">
@@ -3936,42 +3946,42 @@ function BlueprintEditor({ blueprintId, onRefetchList }: { blueprintId: string; 
                                 <p className="text-xs text-muted-foreground">
                                   Se definido, a etapa usará esse time para debate/votação entre agentes.
                                 </p>
-                            {(() => {
-                              const currentTeamKey = selectedNode.data?.stageConfig?.teamKey
-                              if (!currentTeamKey) return null
-                              const selectedTeam = globalSettings.collaboration.teams.find(
-                                (team) => team.teamKey === currentTeamKey
-                              )
-                              if (!selectedTeam) return null
-                              const members = selectedTeam.members || []
-                              return (
-                                <div className="rounded-md border border-dashed border-primary/30 bg-primary/5 p-3 text-xs text-muted-foreground">
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    <Badge variant="outline" className="text-[10px] uppercase tracking-wide">
-                                      Estratégia: {selectedTeam.strategy}
-                                    </Badge>
-                                    <Badge variant="secondary" className="text-[10px]">
-                                      {members.length} integrante(s)
-                                    </Badge>
-                                  </div>
-                                  {members.length > 0 ? (
-                                    <div className="mt-2 flex flex-wrap gap-2">
-                                      {members.map((member) => (
-                                        <Badge
-                                          key={`${selectedTeam.teamKey}-${member.agentId}`}
-                                          variant="outline"
-                                          className="text-[10px]"
-                                        >
-                                          {member.role.toUpperCase()} · {member.agentId}
+                                {(() => {
+                                  const currentTeamKey = selectedNode.data?.stageConfig?.teamKey
+                                  if (!currentTeamKey) return null
+                                  const selectedTeam = globalSettings.collaboration.teams.find(
+                                    (team) => team.teamKey === currentTeamKey
+                                  )
+                                  if (!selectedTeam) return null
+                                  const members = selectedTeam.members || []
+                                  return (
+                                    <div className="rounded-md border border-dashed border-primary/30 bg-primary/5 p-3 text-xs text-muted-foreground">
+                                      <div className="flex flex-wrap items-center gap-2">
+                                        <Badge variant="outline" className="text-[10px] uppercase tracking-wide">
+                                          Estratégia: {selectedTeam.strategy}
                                         </Badge>
-                                      ))}
+                                        <Badge variant="secondary" className="text-[10px]">
+                                          {members.length} integrante(s)
+                                        </Badge>
+                                      </div>
+                                      {members.length > 0 ? (
+                                        <div className="mt-2 flex flex-wrap gap-2">
+                                          {members.map((member) => (
+                                            <Badge
+                                              key={`${selectedTeam.teamKey}-${member.agentId}`}
+                                              variant="outline"
+                                              className="text-[10px]"
+                                            >
+                                              {member.role.toUpperCase()} · {member.agentId}
+                                            </Badge>
+                                          ))}
+                                        </div>
+                                      ) : (
+                                        <p className="mt-2 text-[11px]">Adicione membros no painel de times.</p>
+                                      )}
                                     </div>
-                                  ) : (
-                                    <p className="mt-2 text-[11px]">Adicione membros no painel de times.</p>
-                                  )}
-                                </div>
-                              )
-                            })()}
+                                  )
+                                })()}
                               </div>
                             )}
                           </AccordionContent>
@@ -4649,81 +4659,81 @@ function BlueprintEditor({ blueprintId, onRefetchList }: { blueprintId: string; 
               </>
             )}
           </div>
-        <DrawerFooter className="flex flex-col gap-2 sm:flex-row sm:justify-end">
-          <DrawerClose asChild>
-            <Button variant="outline">Fechar</Button>
-          </DrawerClose>
-          <AlertDialog open={publishConfirmOpen} onOpenChange={setPublishConfirmOpen}>
-            <AlertDialogTrigger asChild>
-              <Button
-                variant="secondary"
-                disabled={!selectedVersionSnapshot || isLoadingVersionDetail || isPublishingVersion}
-              >
-                <Check className="mr-2 h-4 w-4" />
-                Publicar versão
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>
-                  Publicar versão {selectedVersionSnapshot?.version.label}
-                </AlertDialogTitle>
-                <AlertDialogDescription>
-                  A versão selecionada será marcada como ativa no orquestrador. Você pode opcionalmente sincronizar o rascunho com os nós desta versão.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <div className="space-y-4 py-2">
-                <div className="rounded-md border bg-muted/20 p-3 text-sm">
-                  <div className="font-semibold text-foreground">
-                    {selectedVersionSnapshot?.version.label}
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    Publicada em{' '}
-                    {selectedVersionSnapshot
-                      ? new Date(selectedVersionSnapshot.version.createdAt).toLocaleString('pt-BR')
-                      : '--'}
-                  </div>
-                  {versionDiff && (
-                    <div className="mt-2 flex items-center gap-3 text-xs text-muted-foreground">
-                      <span>{versionDiff.addedStages.length} etapas novas</span>
-                      <span>•</span>
-                      <span>{versionDiff.removedStages.length} removidas</span>
-                      <span>•</span>
-                      <span>{versionDiff.changedStages.length} alteradas</span>
-                    </div>
-                  )}
-                </div>
-                <div className="flex items-center justify-between rounded-md border bg-muted/10 p-3">
-                  <div>
-                    <p className="text-sm font-medium text-foreground">Atualizar rascunho</p>
-                    <p className="text-xs text-muted-foreground">
-                      Substitui o blueprint atual pelos nós e conexões desta versão.
-                    </p>
-                  </div>
-                  <Switch checked={publishSyncDraft} onCheckedChange={setPublishSyncDraft} />
-                </div>
-              </div>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                <AlertDialogAction
-                  disabled={isPublishingVersion}
-                  onClick={() => handlePublishVersion({ updateDraft: publishSyncDraft })}
-                  className="bg-primary text-primary-foreground hover:bg-primary/90"
+          <DrawerFooter className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+            <DrawerClose asChild>
+              <Button variant="outline">Fechar</Button>
+            </DrawerClose>
+            <AlertDialog open={publishConfirmOpen} onOpenChange={setPublishConfirmOpen}>
+              <AlertDialogTrigger asChild>
+                <Button
+                  variant="secondary"
+                  disabled={!selectedVersionSnapshot || isLoadingVersionDetail || isPublishingVersion}
                 >
-                  {isPublishingVersion ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                  <Check className="mr-2 h-4 w-4" />
                   Publicar versão
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-          <Button
-            variant="default"
-            disabled={!selectedVersionSnapshot || isLoadingVersionDetail}
-            onClick={handleApplyVersion}
-          >
-            <RefreshCw className="mr-2 h-4 w-4" />
-            Aplicar ao rascunho
-          </Button>
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>
+                    Publicar versão {selectedVersionSnapshot?.version.label}
+                  </AlertDialogTitle>
+                  <AlertDialogDescription>
+                    A versão selecionada será marcada como ativa no orquestrador. Você pode opcionalmente sincronizar o rascunho com os nós desta versão.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <div className="space-y-4 py-2">
+                  <div className="rounded-md border bg-muted/20 p-3 text-sm">
+                    <div className="font-semibold text-foreground">
+                      {selectedVersionSnapshot?.version.label}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      Publicada em{' '}
+                      {selectedVersionSnapshot
+                        ? new Date(selectedVersionSnapshot.version.createdAt).toLocaleString('pt-BR')
+                        : '--'}
+                    </div>
+                    {versionDiff && (
+                      <div className="mt-2 flex items-center gap-3 text-xs text-muted-foreground">
+                        <span>{versionDiff.addedStages.length} etapas novas</span>
+                        <span>•</span>
+                        <span>{versionDiff.removedStages.length} removidas</span>
+                        <span>•</span>
+                        <span>{versionDiff.changedStages.length} alteradas</span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex items-center justify-between rounded-md border bg-muted/10 p-3">
+                    <div>
+                      <p className="text-sm font-medium text-foreground">Atualizar rascunho</p>
+                      <p className="text-xs text-muted-foreground">
+                        Substitui o blueprint atual pelos nós e conexões desta versão.
+                      </p>
+                    </div>
+                    <Switch checked={publishSyncDraft} onCheckedChange={setPublishSyncDraft} />
+                  </div>
+                </div>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                  <AlertDialogAction
+                    disabled={isPublishingVersion}
+                    onClick={() => handlePublishVersion({ updateDraft: publishSyncDraft })}
+                    className="bg-primary text-primary-foreground hover:bg-primary/90"
+                  >
+                    {isPublishingVersion ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                    Publicar versão
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+            <Button
+              variant="default"
+              disabled={!selectedVersionSnapshot || isLoadingVersionDetail}
+              onClick={handleApplyVersion}
+            >
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Aplicar ao rascunho
+            </Button>
           </DrawerFooter>
         </DrawerContent>
       </Drawer>

@@ -49,7 +49,7 @@ export function XPProgressChart({ className }: XPProgressChartProps) {
     setLoading(true)
     try {
       const { data: sessionData, error: sessionError } = await (await import('@/lib/supabase')).supabase.auth.getSession()
-      
+
       if (sessionError || !sessionData?.session) {
         console.warn('No active session for XP history:', sessionError)
         setLoading(false)
@@ -97,7 +97,7 @@ export function XPProgressChart({ className }: XPProgressChartProps) {
         } catch {
           // Se não conseguir parsear, usar mensagem padrão
         }
-        
+
         // Usar console.warn para erros HTTP (não críticos)
         console.warn('Error fetching XP history:', errorMessage)
         setLoading(false)
@@ -110,11 +110,11 @@ export function XPProgressChart({ className }: XPProgressChartProps) {
     } catch (error: any) {
       // Erros de rede ou outros erros não relacionados a HTTP
       // Para erros de rede, usar console.warn em vez de console.error
-      const isNetworkError = error?.message === 'Failed to fetch' || 
-                            error?.name === 'TypeError' ||
-                            error?.message?.includes('fetch') ||
-                            error?.message?.includes('network')
-      
+      const isNetworkError = error?.message === 'Failed to fetch' ||
+        error?.name === 'TypeError' ||
+        error?.message?.includes('fetch') ||
+        error?.message?.includes('network')
+
       if (isNetworkError) {
         console.warn('Network error fetching XP history:', error?.message || error)
       } else {
@@ -191,7 +191,7 @@ export function XPProgressChart({ className }: XPProgressChartProps) {
           </div>
           <div className="flex items-center gap-2">
             <Tabs value={chartType} onValueChange={(v) => setChartType(v as any)}>
-              <TabsList size="sm">
+              <TabsList>
                 <TabsTrigger value="area">Área</TabsTrigger>
                 <TabsTrigger value="line">Linha</TabsTrigger>
                 <TabsTrigger value="bar">Barras</TabsTrigger>
@@ -204,17 +204,17 @@ export function XPProgressChart({ className }: XPProgressChartProps) {
         {/* Filtros */}
         <div className="flex flex-wrap items-center gap-2">
           <Tabs value={period} onValueChange={(v) => setPeriod(v as any)}>
-            <TabsList size="sm">
+            <TabsList>
               <TabsTrigger value="7d">7 dias</TabsTrigger>
               <TabsTrigger value="30d">30 dias</TabsTrigger>
               <TabsTrigger value="90d">90 dias</TabsTrigger>
               <TabsTrigger value="all">Todo</TabsTrigger>
             </TabsList>
           </Tabs>
-          
+
           {period !== '7d' && (
             <Tabs value={groupBy} onValueChange={(v) => setGroupBy(v as any)}>
-              <TabsList size="sm">
+              <TabsList>
                 <TabsTrigger value="day">Por dia</TabsTrigger>
                 <TabsTrigger value="week">Por semana</TabsTrigger>
                 <TabsTrigger value="month">Por mês</TabsTrigger>

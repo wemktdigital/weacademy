@@ -1,6 +1,8 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+export const dynamic = 'force-dynamic'
+
+import { useEffect, useMemo, useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -43,7 +45,7 @@ import { PROMPT_TEMPLATES, getDefaultTemplate } from '@/modules/laboratorio-ia/c
 import { Upload, FileText, X, File, Loader2, Info, LayoutGrid, List, CheckSquare2, Square, Power, PowerOff, Trash2 } from 'lucide-react'
 import { EmojiPicker } from '@/components/ui/emoji-picker'
 
-export default function AgentsAdminPage() {
+function AgentsAdminPageInner() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { user } = useAuth()
@@ -86,7 +88,7 @@ export default function AgentsAdminPage() {
   useEffect(() => {
     if (!checkingRole && user) {
       fetchAgents()
-      
+
       // Verificar se há parâmetros de template na URL
       const useTemplate = searchParams.get('use_template')
       if (useTemplate === 'true') {
@@ -191,14 +193,14 @@ export default function AgentsAdminPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    
+
     try {
       const url = editingAgent
         ? `/api/lab-ia/admin/agents/${editingAgent.id}`
         : '/api/lab-ia/admin/agents'
-      
+
       const method = editingAgent ? 'PUT' : 'POST'
-      
+
       // Obter token de autenticação
       const { data: sessionData } = await supabase.auth.getSession()
       const token = sessionData?.session?.access_token
@@ -211,7 +213,7 @@ export default function AgentsAdminPage() {
 
       const response = await fetch(url, {
         method,
-        headers: { 
+        headers: {
           'Content-Type': 'application/json',
           ...(token && { 'Authorization': `Bearer ${token}` })
         },
@@ -227,7 +229,7 @@ export default function AgentsAdminPage() {
       toast.success(
         editingAgent ? 'Agente atualizado com sucesso!' : 'Agente criado com sucesso!'
       )
-      
+
       setOpenDialog(false)
       resetForm()
       fetchAgents()
@@ -448,7 +450,7 @@ export default function AgentsAdminPage() {
 
       // Marcar como completo antes de adicionar à lista
       setUploadProgress(100)
-      
+
       // Pequeno delay para mostrar 100%
       await new Promise(resolve => setTimeout(resolve, 300))
 
@@ -497,7 +499,7 @@ export default function AgentsAdminPage() {
     if (selectedAgentIds.size === filteredAgents.length) {
       setSelectedAgentIds(new Set())
     } else {
-      setSelectedAgentIds(new Set(filteredAgents.map((a) => a.id)))
+      setSelectedAgentIds(new Set(filteredAgents.map((a) => a.id).filter(Boolean) as string[]))
     }
   }
 
@@ -599,7 +601,7 @@ export default function AgentsAdminPage() {
     // Carregar arquivos de conhecimento se existirem
     console.log('[DEBUG] Editando agente:', agent)
     console.log('[DEBUG] knowledge_base_files:', agent.knowledge_base_files)
-    
+
     if (agent.knowledge_base_files && Array.isArray(agent.knowledge_base_files) && agent.knowledge_base_files.length > 0) {
       setKnowledgeFiles(agent.knowledge_base_files as Array<{ name: string; url: string }>)
       console.log('[DEBUG] Arquivos carregados:', agent.knowledge_base_files)
@@ -644,7 +646,7 @@ export default function AgentsAdminPage() {
               <div className="flex-1">
                 <h3 className="font-semibold text-sm mb-1 dark:text-white">Como usar agentes criados</h3>
                 <p className="text-xs text-muted-foreground dark:text-slate-200/80">
-                  Após criar um agente, vá para o <strong>Laboratório de IA</strong> e clique no botão <strong>"Agentes"</strong> no topo da tela. 
+                  Após criar um agente, vá para o <strong>Laboratório de IA</strong> e clique no botão <strong>"Agentes"</strong> no topo da tela.
                   Selecione o agente desejado e comece a conversar. O agente aplicará automaticamente suas instruções e base de conhecimento nas respostas.
                 </p>
               </div>
@@ -803,19 +805,18 @@ export default function AgentsAdminPage() {
               {filteredAgents.map((agent) => (
                 <Card
                   key={agent.id}
-                  className={`dark:bg-slate-900/80 dark:border-slate-700/60 dark:text-slate-100 transition hover:shadow-lg hover:shadow-primary/5 dark:hover:shadow-sky-500/10 ${
-                    selectedAgentIds.has(agent.id) ? 'ring-2 ring-primary' : ''
-                  }`}
+                  className={`dark:bg-slate-900/80 dark:border-slate-700/60 dark:text-slate-100 transition hover:shadow-lg hover:shadow-primary/5 dark:hover:shadow-sky-500/10 ${selectedAgentIds.has(agent.id!) ? 'ring-2 ring-primary' : ''
+                    }`}
                 >
                   <CardHeader>
                     <div className="flex items-start justify-between">
                       <div className="flex items-start gap-2 flex-1">
                         <button
                           type="button"
-                          onClick={() => toggleAgentSelection(agent.id)}
+                          onClick={() => toggleAgentSelection(agent.id!)}
                           className="mt-1 flex-shrink-0"
                         >
-                          {selectedAgentIds.has(agent.id) ? (
+                          {selectedAgentIds.has(agent.id!) ? (
                             <CheckSquare2 className="h-5 w-5 text-primary" />
                           ) : (
                             <Square className="h-5 w-5 text-muted-foreground hover:text-primary transition-colors" />
@@ -836,51 +837,51 @@ export default function AgentsAdminPage() {
                       </div>
                     </div>
                   </CardHeader>
-                <CardContent>
-                  <p className="text-sm text-muted-foreground mb-4 dark:text-slate-300">
-                    {agent.description || 'Sem descrição'}
-                  </p>
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground dark:text-slate-400">Tipo:</span>
-                      <Badge variant="outline">{agent.type}</Badge>
+                  <CardContent>
+                    <p className="text-sm text-muted-foreground mb-4 dark:text-slate-300">
+                      {agent.description || 'Sem descrição'}
+                    </p>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground dark:text-slate-400">Tipo:</span>
+                        <Badge variant="outline">{agent.type}</Badge>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground dark:text-slate-400">Provedor:</span>
+                        <span className="dark:text-slate-200">{agent.provider || 'N/A'}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground dark:text-slate-400">Categoria:</span>
+                        <span className="dark:text-slate-200">{agent.category || 'N/A'}</span>
+                      </div>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground dark:text-slate-400">Provedor:</span>
-                      <span className="dark:text-slate-200">{agent.provider || 'N/A'}</span>
+                    <div className="flex gap-2 mt-4">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleEdit(agent)}
+                      >
+                        Editar
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleDuplicate(agent)}
+                      >
+                        Duplicar
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => setDeleteAgentId(agent.id!)}
+                      >
+                        Excluir
+                      </Button>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground dark:text-slate-400">Categoria:</span>
-                      <span className="dark:text-slate-200">{agent.category || 'N/A'}</span>
-                    </div>
-                  </div>
-                  <div className="flex gap-2 mt-4">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleEdit(agent)}
-                    >
-                      Editar
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleDuplicate(agent)}
-                    >
-                      Duplicar
-                    </Button>
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => setDeleteAgentId(agent.id)}
-                    >
-                      Excluir
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
           </>
         ) : (
           <>
@@ -913,19 +914,18 @@ export default function AgentsAdminPage() {
               {filteredAgents.map((agent) => (
                 <Card
                   key={agent.id}
-                  className={`dark:bg-slate-900/80 dark:border-slate-700/60 dark:text-slate-100 transition hover:shadow-md hover:shadow-primary/5 dark:hover:shadow-sky-500/10 ${
-                    selectedAgentIds.has(agent.id) ? 'ring-2 ring-primary' : ''
-                  }`}
+                  className={`dark:bg-slate-900/80 dark:border-slate-700/60 dark:text-slate-100 transition hover:shadow-md hover:shadow-primary/5 dark:hover:shadow-sky-500/10 ${selectedAgentIds.has(agent.id!) ? 'ring-2 ring-primary' : ''
+                    }`}
                 >
                   <CardContent className="p-4">
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex items-start gap-4 flex-1 min-w-0">
                         <button
                           type="button"
-                          onClick={() => toggleAgentSelection(agent.id)}
+                          onClick={() => toggleAgentSelection(agent.id!)}
                           className="mt-1 flex-shrink-0"
                         >
-                          {selectedAgentIds.has(agent.id) ? (
+                          {selectedAgentIds.has(agent.id!) ? (
                             <CheckSquare2 className="h-5 w-5 text-primary" />
                           ) : (
                             <Square className="h-5 w-5 text-muted-foreground hover:text-primary transition-colors" />
@@ -933,69 +933,69 @@ export default function AgentsAdminPage() {
                         </button>
                         <span className="text-3xl flex-shrink-0">{agent.icon || '🤖'}</span>
                         <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-3 mb-2">
-                          <h3 className="text-lg font-semibold text-foreground dark:text-white truncate">
-                            {agent.name}
-                          </h3>
-                          <Badge
-                            variant={agent.active ? 'default' : 'secondary'}
-                            className="flex-shrink-0"
-                          >
-                            {agent.active ? 'Ativo' : 'Inativo'}
-                          </Badge>
-                          <Badge variant="outline" className="flex-shrink-0">
-                            {agent.type}
-                          </Badge>
-                        </div>
-                        <p className="text-sm text-muted-foreground mb-3 dark:text-slate-300 line-clamp-2">
-                          {agent.description || 'Sem descrição'}
-                        </p>
-                        <div className="flex flex-wrap gap-4 text-sm">
-                          <div className="flex items-center gap-2">
-                            <span className="text-muted-foreground dark:text-slate-400">Provedor:</span>
-                            <span className="font-medium dark:text-slate-200">{agent.provider || 'N/A'}</span>
+                          <div className="flex items-center gap-3 mb-2">
+                            <h3 className="text-lg font-semibold text-foreground dark:text-white truncate">
+                              {agent.name}
+                            </h3>
+                            <Badge
+                              variant={agent.active ? 'default' : 'secondary'}
+                              className="flex-shrink-0"
+                            >
+                              {agent.active ? 'Ativo' : 'Inativo'}
+                            </Badge>
+                            <Badge variant="outline" className="flex-shrink-0">
+                              {agent.type}
+                            </Badge>
                           </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-muted-foreground dark:text-slate-400">Modelo:</span>
-                            <span className="font-medium dark:text-slate-200">{agent.model || 'N/A'}</span>
-                          </div>
-                          {agent.category && (
+                          <p className="text-sm text-muted-foreground mb-3 dark:text-slate-300 line-clamp-2">
+                            {agent.description || 'Sem descrição'}
+                          </p>
+                          <div className="flex flex-wrap gap-4 text-sm">
                             <div className="flex items-center gap-2">
-                              <span className="text-muted-foreground dark:text-slate-400">Categoria:</span>
-                              <span className="font-medium dark:text-slate-200">{agent.category}</span>
+                              <span className="text-muted-foreground dark:text-slate-400">Provedor:</span>
+                              <span className="font-medium dark:text-slate-200">{agent.provider || 'N/A'}</span>
                             </div>
-                          )}
+                            <div className="flex items-center gap-2">
+                              <span className="text-muted-foreground dark:text-slate-400">Modelo:</span>
+                              <span className="font-medium dark:text-slate-200">{agent.model || 'N/A'}</span>
+                            </div>
+                            {agent.category && (
+                              <div className="flex items-center gap-2">
+                                <span className="text-muted-foreground dark:text-slate-400">Categoria:</span>
+                                <span className="font-medium dark:text-slate-200">{agent.category}</span>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </div>
+                      <div className="flex gap-2 flex-shrink-0">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleEdit(agent)}
+                        >
+                          Editar
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleDuplicate(agent)}
+                        >
+                          Duplicar
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => setDeleteAgentId(agent.id!)}
+                        >
+                          Excluir
+                        </Button>
+                      </div>
                     </div>
-                    <div className="flex gap-2 flex-shrink-0">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleEdit(agent)}
-                      >
-                        Editar
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleDuplicate(agent)}
-                      >
-                        Duplicar
-                      </Button>
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        onClick={() => setDeleteAgentId(agent.id)}
-                      >
-                        Excluir
-                      </Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
           </>
         )}
 
@@ -1185,7 +1185,7 @@ export default function AgentsAdminPage() {
                   maxLength={2000}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Instruções detalhadas de como usar o agente. Inclua exemplos de entrada, formato esperado e dicas de uso. 
+                  Instruções detalhadas de como usar o agente. Inclua exemplos de entrada, formato esperado e dicas de uso.
                   Máximo 2000 caracteres.
                 </p>
                 {formData.usage_instructions && (
@@ -1370,5 +1370,17 @@ export default function AgentsAdminPage() {
         </AlertDialog>
       </div>
     </div>
+  )
+}
+
+export default function AgentsAdminPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center h-screen">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      </div>
+    }>
+      <AgentsAdminPageInner />
+    </Suspense>
   )
 }

@@ -5,15 +5,16 @@ import { forget, remember } from '@/modules/laboratorio-ia/services/memory'
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { key: string } }
+  props: { params: Promise<{ key: string }> }
 ) {
+  const params = await props.params
   try {
     // Verificar autenticação - tentar token primeiro, depois cookies
     let user = null
-    
+
     const authHeader = request.headers.get('authorization')
     const token = authHeader?.replace('Bearer ', '')
-    
+
     if (token) {
       // Tentar autenticar com token do header
       const supabaseWithToken = createClient(
@@ -27,13 +28,13 @@ export async function DELETE(
           },
         }
       )
-      
+
       const { data: { user: tokenUser }, error: tokenError } = await supabaseWithToken.auth.getUser(token)
       if (!tokenError && tokenUser) {
         user = tokenUser
       }
     }
-    
+
     // Se não autenticou via token, tentar via cookies
     if (!user) {
       const sb = await supabaseServer()
@@ -73,15 +74,16 @@ export async function DELETE(
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { key: string } }
+  props: { params: Promise<{ key: string }> }
 ) {
+  const params = await props.params
   try {
     // Verificar autenticação - tentar token primeiro, depois cookies
     let user = null
-    
+
     const authHeader = request.headers.get('authorization')
     const token = authHeader?.replace('Bearer ', '')
-    
+
     if (token) {
       // Tentar autenticar com token do header
       const supabaseWithToken = createClient(
@@ -95,13 +97,13 @@ export async function PUT(
           },
         }
       )
-      
+
       const { data: { user: tokenUser }, error: tokenError } = await supabaseWithToken.auth.getUser(token)
       if (!tokenError && tokenUser) {
         user = tokenUser
       }
     }
-    
+
     // Se não autenticou via token, tentar via cookies
     if (!user) {
       const sb = await supabaseServer()

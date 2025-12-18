@@ -12,7 +12,7 @@ export interface EventMetadata {
 export async function trackEvent(
   eventName: string,
   metadata: EventMetadata = {}
-): Promise<void> {
+): Promise<boolean> {
   try {
     // Obter informações do navegador
     const pageUrl = typeof window !== 'undefined' ? window.location.href : null
@@ -41,10 +41,11 @@ export async function trackEvent(
  * Rastreia visualização de página
  * @param pagePath - Caminho da página
  */
-export async function trackPageView(pagePath: string): Promise<void> {
-  await trackEvent('page_view', {
-    page_path: pagePath,
-    page_title: typeof document !== 'undefined' ? document.title : null
+export async function trackPageView(pageName: string, metadata?: EventMetadata): Promise<boolean> {
+  return trackEvent('page_view', {
+    page_path: pageName,
+    page_title: typeof document !== 'undefined' ? document.title : null,
+    ...metadata
   })
 }
 
@@ -88,11 +89,13 @@ export async function trackCourseAction(
  */
 export async function trackSearch(
   searchTerm: string,
-  resultsCount?: number
-): Promise<void> {
-  await trackEvent('search', {
+  resultsCount?: number,
+  category?: string
+): Promise<boolean> {
+  return trackEvent('search', {
     search_term: searchTerm,
-    results_count: resultsCount
+    results_count: resultsCount,
+    category
   })
 }
 
@@ -196,4 +199,37 @@ export async function trackAILabUsage(
     agent_id: agentId,
     ...metadata
   })
+}
+
+// Additional functions to match useEventTracking interface
+export async function trackClick(elementName: string, metadata?: EventMetadata): Promise<boolean> {
+  return trackEvent('click', { element_name: elementName, ...metadata })
+}
+
+export async function trackNavigation(from: string, to: string, metadata?: EventMetadata): Promise<boolean> {
+  return trackEvent('navigation', { from, to, ...metadata })
+}
+
+export async function trackCourseStart(courseId: string, courseName: string): Promise<boolean> {
+  return trackEvent('course_started', { course_id: courseId, course_name: courseName })
+}
+
+export async function trackCourseComplete(courseId: string, courseName: string): Promise<boolean> {
+  return trackEvent('course_completed', { course_id: courseId, course_name: courseName })
+}
+
+export async function trackUserLogin(method?: string): Promise<boolean> {
+  return trackEvent('user_login', { method })
+}
+
+export async function trackUserLogout(): Promise<boolean> {
+  return trackEvent('user_logout', {})
+}
+
+export async function trackFileDownload(fileName: string, fileType: string, fileSize?: number): Promise<boolean> {
+  return trackEvent('file_download', { file_name: fileName, file_type: fileType, file_size: fileSize })
+}
+
+export async function trackFileUpload(fileName: string, fileType: string, fileSize?: number): Promise<boolean> {
+  return trackEvent('file_upload', { file_name: fileName, file_type: fileType, file_size: fileSize })
 }

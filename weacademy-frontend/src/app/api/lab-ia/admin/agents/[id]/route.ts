@@ -13,11 +13,11 @@ export async function PUT(
 ) {
   try {
     const { id } = await params
-    
+
     // Verificar autenticação via header Authorization
     const authHeader = request.headers.get('authorization')
     const token = authHeader?.replace('Bearer ', '')
-    
+
     let user = null
 
     // Tentar autenticar via token primeiro
@@ -50,13 +50,13 @@ export async function PUT(
           auth: {
             storage: {
               getItem: async (key: string) => cookieStore.get(key)?.value || null,
-              setItem: async (key: string, value: string) => {},
-              removeItem: async (key: string) => {},
+              setItem: async (key: string, value: string) => { },
+              removeItem: async (key: string) => { },
             },
           },
         }
       )
-      
+
       const { data: { user: cookieUser }, error: authError } = await supabase.auth.getUser()
       if (!authError && cookieUser) {
         user = cookieUser
@@ -115,10 +115,10 @@ export async function PUT(
     return NextResponse.json(agent)
   } catch (error) {
     console.error('Error updating agent:', error)
-    
+
     if (error instanceof z.ZodError) {
       return NextResponse.json(
-        { error: 'Validation error', details: error.errors },
+        { error: 'Validation error', details: (error as any).errors },
         { status: 400 }
       )
     }
@@ -136,11 +136,11 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params
-    
+
     // Verificar autenticação via header Authorization
     const authHeader = request.headers.get('authorization')
     const token = authHeader?.replace('Bearer ', '')
-    
+
     let user = null
 
     // Tentar autenticar via token primeiro
@@ -173,13 +173,13 @@ export async function DELETE(
           auth: {
             storage: {
               getItem: async (key: string) => cookieStore.get(key)?.value || null,
-              setItem: async (key: string, value: string) => {},
-              removeItem: async (key: string) => {},
+              setItem: async (key: string, value: string) => { },
+              removeItem: async (key: string) => { },
             },
           },
         }
       )
-      
+
       const { data: { user: cookieUser }, error: authError } = await supabase.auth.getUser()
       if (!authError && cookieUser) {
         user = cookieUser

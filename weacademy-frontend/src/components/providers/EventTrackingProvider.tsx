@@ -1,16 +1,14 @@
 'use client'
 
-import React, { useEffect, useRef } from 'react'
+import React, { useEffect, useRef, Suspense } from 'react'
 import { usePathname, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { trackPageView, trackEvent } from '@/lib/analytics'
 
 /**
- * Provider que rastreia automaticamente eventos na aplicação
- * - Visualizações de página
- * - Login/logout de usuários
+ * Componente interno que usa useSearchParams
  */
-export function EventTrackingProvider({ children }: { children: React.ReactNode }) {
+function EventTrackingInner({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const { user } = useAuth()
@@ -20,17 +18,17 @@ export function EventTrackingProvider({ children }: { children: React.ReactNode 
   // Rastrear visualizações de página
   useEffect(() => {
     const currentPath = pathname + (searchParams?.toString() ? `?${searchParams.toString()}` : '')
-    
+
     // Evitar rastrear a mesma página múltiplas vezes
     if (currentPath !== lastPathnameRef.current) {
       lastPathnameRef.current = currentPath
-      
+
       // Extrair nome da página do pathname
       const pageName = pathname
         .split('/')
         .filter(Boolean)
         .join('_') || 'home'
-      
+
       // Aguardar um pouco para garantir que a página carregou
       const timer = setTimeout(() => {
         trackPageView(pageName)
@@ -43,7 +41,7 @@ export function EventTrackingProvider({ children }: { children: React.ReactNode 
   // Rastrear login/logout
   useEffect(() => {
     const currentUserId = user?.id || null
-    
+
     // Detectar login (usuário mudou de null para um ID)
     if (lastUserRef.current === null && currentUserId !== null) {
       trackEvent('user_login', {
@@ -51,15 +49,28 @@ export function EventTrackingProvider({ children }: { children: React.ReactNode 
         login_method: 'email'
       })
     }
-    
+
     // Detectar logout (usuário mudou de um ID para null)
     if (lastUserRef.current !== null && currentUserId === null) {
       trackEvent('user_logout', {})
     }
-    
+
     lastUserRef.current = currentUserId
   }, [user])
 
   return <>{children}</>
+}
+
+/**
+ * Provider que rastreia automaticamente eventos na aplicação
+ * - Visualizações de página
+ * - Login/logout de usuários
+ */
+export function EventTrackingProvider({ children }: { children: React.ReactNode }) {
+  return (
+    <Suspense fallback={<>{children}</>}>
+      <EventTrackingInner>{children}</EventTrackingInner>
+    </Suspense>
+  )
 }
 

@@ -17,6 +17,7 @@ import { cn } from '@/lib/utils'
 import {
   WorkflowInstanceRecord,
   WorkflowStageRunRecord,
+  WorkflowStageRecord,
 } from '@/modules/laboratorio-ia/services/workflowOrchestrator'
 
 function useFetcher<T>(url: string) {

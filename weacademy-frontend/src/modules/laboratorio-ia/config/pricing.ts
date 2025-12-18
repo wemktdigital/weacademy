@@ -12,22 +12,29 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
   // PubMed - busca de artigos científicos (gratuito via NCBI E-utilities)
   'pubmed:pubmed-search': { input: 0.00, output: 0.00, notes: 'Gratuito. Busca e recuperação de artigos científicos do PubMed via NCBI E-utilities' },
   // OpenAI - geração de texto
-  'openai:gpt-5': { input: 5.0, output: 15.0 },
+  'openai:gpt-5.2': { input: 8.0, output: 24.0 },
   'openai:gpt-5.1': { input: 6.0, output: 18.0 },
+  'openai:gpt-5': { input: 5.0, output: 15.0 },
   'openai:gpt-5-mini': { input: 0.60, output: 2.40 },
   'openai:gpt-5-nano': { input: 0.10, output: 0.40 },
-  'openai:gpt-4o': { input: 2.50, output: 10.00 },
-  'openai:gpt-4o-mini': { input: 0.15, output: 0.60 },
-  // OpenAI - transcrição de áudio
-  'openai:gpt-4o-mini-transcribe': { input: 0.15, output: 0.00, notes: 'Cobrança por minuto de áudio transcrito. $0.15/minuto. Especializado em transcrição de áudio com alta precisão' },
-  'openai:gpt-4o-transcribe': { input: 0.30, output: 0.00, notes: 'Cobrança por minuto de áudio transcrito. $0.30/minuto. Versão avançada com melhor precisão e suporte a múltiplos idiomas' },
-  'openai:gpt-4o-transcribe-diarize': { input: 0.45, output: 0.00, notes: 'Cobrança por minuto de áudio transcrito. $0.45/minuto. Inclui diarização (identificação de falantes) para conversas com múltiplos participantes' },
+  'openai:o3': { input: 5.00, output: 15.00 },
+  'openai:o4-mini': { input: 0.60, output: 2.40 },
+  'openai:o4-mini-deep-research': { input: 0.80, output: 3.20 },
+  'openai:o3-mini': { input: 0.15, output: 0.60 },
+  'openai:o1-mini': { input: 1.10, output: 4.40 },
+
+  // OpenAI - transcrição e áudio (TTS/STT)
+  'openai:gpt-4o-mini-tts': { input: 0.015, output: 0.030, notes: 'Cobrança por 1k caracteres. ~$0.015/1k input.' },
+  'openai:gpt-4o-transcribe': { input: 0.30, output: 0.00, notes: 'Cobrança por minuto de áudio transcrito. $0.30/minuto.' },
+
   // OpenAI - geração de vídeo (Sora 2)
-  'openai:sora-2': { input: 0.10, output: 0.00, notes: 'Cobrança por segundo de vídeo gerado (720p). $0.10/segundo. Duração máxima: 5 segundos' },
-  'openai:sora-2-pro': { input: 0.30, output: 0.00, notes: 'Cobrança por segundo de vídeo gerado. 720p: $0.30/s, 1024p: $0.50/s. Duração máxima: 12 segundos. Suporta resolução mais alta e melhor controle de movimento' },
-  // OpenAI - geração de imagem (GPT-Image-1)
-  'openai:gpt-image-1': { input: 0.04, output: 0.00, notes: 'Cobrança por imagem gerada. $0.04/imagem. Suporta múltiplas resoluções e estilos' },
-  'openai:gpt-image-1-mini': { input: 0.02, output: 0.00, notes: 'Cobrança por imagem gerada. $0.02/imagem. Versão econômica com qualidade otimizada' },
+  'openai:sora-2': { input: 0.10, output: 0.00, notes: 'Cobrança por segundo de vídeo gerado (720p). $0.10/segundo.' },
+  'openai:sora-2-pro': { input: 0.30, output: 0.00, notes: 'Cobrança por segundo de vídeo gerado. 720p: $0.30/s, 1024p: $0.50/s.' },
+
+  // OpenAI - geração de imagem (GPT-Image)
+  'openai:gpt-image-1.5': { input: 0.06, output: 0.00, notes: 'Cobrança por imagem gerada. $0.06/imagem. Maior coerência e detalhes.' },
+  'openai:gpt-image-1': { input: 0.04, output: 0.00, notes: 'Cobrança por imagem gerada. $0.04/imagem.' },
+  'openai:gpt-image-1-mini': { input: 0.02, output: 0.00, notes: 'Cobrança por imagem gerada. $0.02/imagem.' },
   // Replicate - geração de imagem (FLUX 1.1 Pro)
   'replicate:black-forest-labs/flux-1.1-pro': { input: 0.003, output: 0.00, notes: 'Cobrança por segundo de execução. ~$0.003/s. Modelo de alta qualidade com excelente aderência ao prompt' },
   // Replicate - geração de imagem (FLUX.1 Krea [dev])
@@ -48,28 +55,15 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
   'replicate:ideogram-ai/ideogram-v3-quality': { input: 0.09, output: 0.00, notes: 'Cobrança por imagem gerada. $0.09/imagem. Versão de mais alta qualidade, renderização precisa de texto e máximo fotorealismo' },
   // Replicate - geração de personagens consistentes (Ideogram Character)
   'replicate:ideogram-ai/ideogram-character': { input: 0.05, output: 0.00, notes: 'Cobrança por imagem gerada. $0.05/imagem. Gera variações consistentes de personagens a partir de uma imagem de referência' },
-  'openai:gpt-4-turbo': { input: 10.00, output: 30.00 },
-  'openai:gpt-4': { input: 30.00, output: 60.00 },
-  'openai:gpt-3.5-turbo': { input: 0.50, output: 1.50 },
-  'openai:o4-mini': { input: 0.60, output: 2.40 },
-  'openai:o3-mini': { input: 0.15, output: 0.60 },
-  'openai:o1-preview': { input: 15.00, output: 60.00 },
-  'openai:o1-mini': { input: 1.10, output: 4.40 },
+
 
   // Google Gemini
-  // Gemini 3 Pro - Pricing varia baseado no número de tokens: $2/$12 (<200k) ou $4/$18 (>200k) por 1M tokens
-  'google:gemini-3-pro-preview-high': { input: 2.0, output: 12.0, notes: 'Pricing por 1M tokens: $2/$12 (<200k tokens) ou $4/$18 (>200k tokens). High thinking (padrão) - maximiza profundidade de raciocínio' },
-  'google:gemini-3-pro-preview-low': { input: 2.0, output: 12.0, notes: 'Pricing por 1M tokens: $2/$12 (<200k tokens) ou $4/$18 (>200k tokens). Low thinking - minimiza latência e custo para tarefas simples' },
+  'google:gemini-3-pro-preview': { input: 2.0, output: 12.0, notes: 'Pricing por 1M tokens. High thinking (padrão).' },
+  'google:gemini-3-pro-image-preview': { input: 2.0, output: 12.0, notes: 'Geração e edição de imagens via prompt multimodal.' },
   'google:gemini-2.5-pro': { input: 3.50, output: 10.50 },
   'google:gemini-2.5-flash': { input: 0.40, output: 1.20 },
-  'google:gemini-2.5-flash-lite': { input: 0.03, output: 0.12 },
-  'google:gemini-2.5-flash-image': { input: 0.40, output: 1.20 },
-  'google:gemini-2.0-pro': { input: 3.50, output: 10.50 },
-  'google:gemini-2.0-flash': { input: 0.35, output: 1.05 },
-  'google:gemini-1.5-pro': { input: 1.25, output: 5.00 },
-  'google:gemini-1.5-flash': { input: 0.075, output: 0.30 },
-  'google:gemini-1.5-flash-lite': { input: 0.006, output: 0.024 },
-  'google:gemma-3-27b-it': { input: 0.35, output: 0.35 },
+
+  // Google Specialized (Video/Audio)
   'google:veo-3.1-generate-preview': { input: 1.00, output: 1.00, notes: 'Cobrança por minuto gerado (aprox.)' },
   'google:veo-3.1-fast-generate-preview': { input: 0.50, output: 0.50, notes: 'Cobrança por minuto gerado (aprox.)' },
   'google:imagenes-2': { input: 1.00, output: 0.00, notes: 'Preço por geração de imagem' },
@@ -81,17 +75,24 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
   'deepseek:deepseek-r1': { input: 1.12, output: 4.48 },
 
   // Grok (xAI)
-  'grok:grok-4-fast': { input: 0.20, output: 0.20 },
-  'grok:grok-4-fast-reasoning': { input: 0.80, output: 0.80 },
-  'grok:grok-3': { input: 1.00, output: 1.00 },
-  'grok:grok-3-mini': { input: 0.15, output: 0.15 },
+  // Grok (xAI)
+  'grok:grok-4-1-fast-reasoning': { input: 0.80, output: 3.20 },
+  'grok:grok-4-1-fast-non-reasoning': { input: 0.20, output: 0.80 },
+  'grok:grok-2-image-1212': { input: 0.04, output: 0.00, notes: 'Cobrança por imagem gerada. ~$0.04/imagem.' },
 
   // Anthropic Claude
+  // Anthropic Claude
+  'anthropic:claude-4-5-sonnet-latest': { input: 6.00, output: 24.00 },
+  'anthropic:claude-4-sonnet-latest': { input: 4.50, output: 18.00 },
+  'anthropic:claude-4-5-opus-latest': { input: 25.00, output: 100.00 },
+  'anthropic:claude-4-1-opus-latest': { input: 20.00, output: 80.00 },
+  'anthropic:claude-4-5-haiku-latest': { input: 1.50, output: 7.50 },
   'anthropic:claude-3-5-sonnet-20241022': { input: 3.00, output: 15.00 },
   'anthropic:claude-3-5-haiku-20241022': { input: 0.80, output: 4.00 },
   'anthropic:claude-3-7-sonnet': { input: 3.75, output: 15.00 },
   'anthropic:claude-3-7-haiku': { input: 0.88, output: 4.50 },
   'anthropic:claude-3-opus-20240229': { input: 15.00, output: 75.00 },
+  'anthropic:claude-3-haiku-20240307': { input: 0.25, output: 1.25 },
 
   // Replicate - LLMs (custo por execução aproximado convertido para tokens)
   'replicate:meta/meta-llama-3.1-405b-instruct': { input: 15.0, output: 15.0, notes: 'Cobrança por tempo de uso; valor médio convertido' },

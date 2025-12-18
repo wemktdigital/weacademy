@@ -32,7 +32,7 @@ export function validateOutput(
   try {
     // Tentar fazer parse do output (pode ser JSON ou texto)
     let parsedOutput: any
-    
+
     // Tentar parse como JSON primeiro
     try {
       parsedOutput = JSON.parse(output)
@@ -95,7 +95,7 @@ function calculateBasicQuality(output: string): QualityMetrics {
   const coherence = Math.min(
     1,
     (output.includes('.') || output.includes('!') || output.includes('?')) ? 0.7 : 0.3 +
-    (words.length > 5 ? 0.3 : 0)
+      (words.length > 5 ? 0.3 : 0)
   )
 
   // Completude assume 1 se há conteúdo
@@ -127,7 +127,7 @@ function calculateQualityMetrics(
     const values = Object.values(parsedOutput).filter(v => v !== null && v !== undefined && v !== '')
 
     // Completude: percentual de campos preenchidos
-    const completeness = keys.length > 0 
+    const completeness = keys.length > 0
       ? Math.min(1, values.length / keys.length)
       : basicQuality.completeness
 
@@ -150,7 +150,8 @@ function calculateQualityMetrics(
 function generateSuggestions(error: z.ZodError, output: string): string[] {
   const suggestions: string[] = []
 
-  error.errors.forEach((err) => {
+  const validationErrors = (error as any).errors as any[];
+  validationErrors.forEach((err: any) => {
     const path = err.path.join('.')
     const code = err.code
 
@@ -246,7 +247,7 @@ function createZodSchemaFromObject(def: any): z.ZodSchema<any> {
   // Se tem properties, é um objeto
   if (def.properties) {
     const shape: Record<string, z.ZodTypeAny> = {}
-    
+
     Object.keys(def.properties).forEach((key) => {
       const propDef = def.properties[key]
       shape[key] = createZodTypeFromDef(propDef, !def.required?.includes(key))
